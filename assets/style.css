@@ -2,12 +2,13 @@
   color-scheme: light;
   --ink: #111;
   --muted: #555;
-  --faint: #777;
+  --faint: #666;
   --paper: #fff;
   --shade: #f2f2f2;
   --line: #aaa;
   --link: #0000cc;
   --visited: #551a8b;
+  --caution: #5d4b00;
   --warning: #8b0000;
   --max: 64rem;
   --serif: Georgia, "Times New Roman", Times, serif;
@@ -253,7 +254,6 @@ button:focus-visible {
 
 .entry-grid {
   margin-top: 1rem;
-  border-top: 1px solid var(--line);
 }
 
 .entry-card {
@@ -279,7 +279,7 @@ button:focus-visible {
 }
 
 .trust-badge.qualified {
-  color: var(--warning);
+  color: var(--caution);
   font-weight: bold;
 }
 
@@ -426,7 +426,7 @@ footer {
 
 .entry-heading h1 {
   margin-top: .5rem;
-  font-size: 1.8rem;
+  font-size: 2rem;
 }
 
 .byline {
@@ -466,7 +466,7 @@ footer {
 
 .entry-page h3 {
   margin: 1.2rem 0 .4rem;
-  font-size: .95rem;
+  font-size: 1rem;
 }
 
 code,
@@ -488,9 +488,16 @@ pre {
 }
 
 .plain-list,
+.reason-list,
 .warning-list {
   margin: .4rem 0;
   padding-left: 1.5rem;
+}
+
+.reason-list {
+  padding: .65rem .75rem .65rem 2rem;
+  border-left: 2px solid var(--caution);
+  background: var(--shade);
 }
 
 .warning-list {
@@ -512,6 +519,9 @@ pre {
 }
 
 .score {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   padding: .55rem;
   border-right: 1px dotted var(--line);
 }
@@ -522,7 +532,7 @@ pre {
 
 .score span {
   display: block;
-  min-height: 2.6em;
+  margin-bottom: .35rem;
   color: var(--muted);
   font: .7rem/1.3 var(--sans);
   text-transform: uppercase;
@@ -536,10 +546,6 @@ pre {
   color: var(--muted);
 }
 
-.button {
-  font-size: .9rem;
-}
-
 .machine-record pre {
   max-height: 34rem;
   overflow: auto;
@@ -549,27 +555,6 @@ pre {
   font-size: .75rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.json-details {
-  margin-top: .9rem;
-}
-
-.json-details summary {
-  color: var(--link);
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 [hidden] {
@@ -625,13 +610,18 @@ pre {
 }
 
 @media print {
+  body,
+  .entry-page {
+    min-height: 0;
+  }
+
   body {
     font-size: 11pt;
   }
 
   .site-header nav,
-  .toolbar,
-  footer {
+  .skip-link,
+  .toolbar {
     display: none;
   }
 
@@ -643,6 +633,12 @@ pre {
   a,
   a:visited {
     color: var(--ink);
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 90%;
+    overflow-wrap: anywhere;
   }
 
   .entry-card,

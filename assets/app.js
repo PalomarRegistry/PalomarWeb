@@ -69,14 +69,14 @@ function entryCard(entry) {
   const abstract = el("p", "card-abstract", entry.abstract);
   const meta = el("div", "card-meta");
   const authors = el("div");
-  authors.append(el("small", "", "AUTHORS"), el("span", "", authorNames(entry)));
+  authors.append(el("small", "", "Authors"), el("span", "", authorNames(entry)));
   const theorems = el("div");
-  theorems.append(el("small", "", "THEOREMS"), el("span", "", theoremNames(entry)));
+  theorems.append(el("small", "", "Theorems"), el("span", "", theoremNames(entry)));
   meta.append(authors, theorems);
   const footer = el("div", "card-footer");
   footer.append(
     link(entry.source.repository, entry.source.tree_url, "repo-link"),
-    link("View record", `entry.html?id=${encodeURIComponent(entry.id)}&version=${entry.version}`, "record-link"),
+    link("View record", `entry.html?id=${encodeURIComponent(entry.id)}&version=${entry.version}`),
   );
   card.append(top, title, abstract, meta, footer);
   return card;
@@ -203,7 +203,7 @@ function renderEntry(entry, content, canonicalUrl) {
   }
   if (entry.trust.reasons.length) {
     trust.append(el("h3", "", "Qualification reasons"));
-    const reasons = el("ul", "warning-list");
+    const reasons = el("ul", "reason-list");
     for (const reason of entry.trust.reasons) reasons.append(el("li", "", reason));
     trust.append(reasons);
   }
@@ -229,19 +229,16 @@ function renderEntry(entry, content, canonicalUrl) {
   } else {
     editorial.append(el("p", "no-warnings", "No permanent editorial warnings were recorded."));
   }
-  editorial.append(link("Read the public review", entry.review.report_url, "button quiet"));
+  editorial.append(link("Read the public review", entry.review.report_url));
 
   const machine = el("section", "machine-record");
   machine.append(el("div", "eyebrow", "For machines and mirrors"), el("h2", "", "Canonical JSON"));
   const machineLinks = el("p");
   machineLinks.append(link("Open the canonical JSON record", canonicalUrl.href));
   machine.append(machineLinks);
-  const jsonDetails = el("details", "json-details");
-  jsonDetails.append(el("summary", "", "Show JSON on this page"));
   const pre = el("pre");
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
-  jsonDetails.append(pre);
-  machine.append(jsonDetails);
+  machine.append(pre);
 
   content.append(heading, evidence, trust, editorial, machine);
 }
