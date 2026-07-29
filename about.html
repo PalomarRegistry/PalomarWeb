@@ -1,33 +1,27 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="How the Palomar registry verifies and reviews Lean formalizations.">
-    <meta name="theme-color" content="#0b1723">
-    <title>About · Palomar</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#f2f2f2">
+    <title>About — Palomar</title>
     <link rel="stylesheet" href="assets/style.css">
   </head>
   <body data-page="about">
     <a class="skip-link" href="#content">Skip to content</a>
     <header class="site-header">
-      <a class="brand" href="./">
-        <span class="brand-mark" aria-hidden="true"><span class="orbit"></span><span class="star"></span></span>
-        <span>Palomar</span>
-      </a>
+      <a class="brand" href="./">Palomar</a>
       <nav aria-label="Main navigation">
         <a href="./">Registry</a>
-        <a class="active" href="about.html">About</a>
-        <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Submit ↗</a>
+        <a class="active" href="about.html" aria-current="page">About</a>
+        <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Submit</a>
       </nav>
     </header>
 
     <main id="content" class="about">
-      <div class="eyebrow">What the registry means</div>
-      <h1>A precise floor,<br><em>not a journal ceiling.</em></h1>
+      <h1>About Palomar</h1>
+      <p class="subtitle">What the registry means</p>
       <p class="lede">
         Palomar gives a stable, searchable home to formal results that clear a
         published minimum standard. It separates machine verification,
@@ -38,23 +32,23 @@
         <h2 id="process-heading">From snapshot to record</h2>
         <ol>
           <li>
-            <span>01</span>
+            <span>1.</span>
             <div><h3>Immutable source</h3><p>A GitHub issue points to a public repository and full Git commit. Moving branches are never registry evidence.</p></div>
           </li>
           <li>
-            <span>02</span>
+            <span>2.</span>
             <div><h3>Small statement surface</h3><p><code>Challenge.lean</code> states the advertised result. Its transitive imports may come only from Lean core, Mathlib, Tau Ceti, or an already indexed Palomar project.</p></div>
           </li>
           <li>
-            <span>03</span>
+            <span>3.</span>
             <div><h3>Sandboxed comparison</h3><p>Comparator rebuilds Challenge and Solution separately under landrun, checks exact declaration identity and permitted axioms, then replays the proof through the Lean kernel.</p></div>
           </li>
           <li>
-            <span>04</span>
+            <span>4.</span>
             <div><h3>Editorial review</h3><p>Versioned AI review checks metadata, informal-to-Lean alignment, definitions, prior literature, notability, and clarity. Failures, uncertainty, and permanent warnings stay visible.</p></div>
           </li>
           <li>
-            <span>05</span>
+            <span>5.</span>
             <div><h3>Append-only publication</h3><p>An accepted result becomes an immutable JSON record with a permanent identifier and version. Corrections add versions; history is not rewritten.</p></div>
           </li>
         </ol>
@@ -74,14 +68,14 @@
       </section>
 
       <section class="cta">
-        <div><div class="eyebrow">Have a result?</div><h2>Submit one immutable snapshot.</h2></div>
-        <a class="button primary" href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the submission form ↗</a>
+        <div><h2>Have a result?</h2><p>Submit one immutable snapshot.</p></div>
+        <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the submission form</a>
       </section>
     </main>
 
     <footer>
-      <div><span class="footer-brand">Palomar</span><p>A community-oriented registry prototype for Lean-verified results.</p></div>
-      <div class="footer-links"><a href="https://github.com/kim-em/PalomarPolicy">Policy</a><a href="https://github.com/kim-em/PalomarDatabase">API</a><a href="https://github.com/kim-em/PalomarWeb">Source</a></div>
+      <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
+      <div class="footer-links"><a href="https://github.com/kim-em/PalomarPolicy">Policy</a><a href="https://github.com/kim-em/PalomarDatabase">Data</a><a href="https://github.com/kim-em/PalomarWeb">Source</a></div>
     </footer>
   </body>
 </html>

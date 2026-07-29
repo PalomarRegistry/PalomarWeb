@@ -44,7 +44,9 @@ function latestVersions(entries) {
 function trustBadge(entry) {
   const high = entry.trust.level === "high";
   const badge = el("span", `trust-badge ${high ? "high" : "qualified"}`);
-  badge.append(el("span", "trust-dot"), document.createTextNode(high ? "Mathlib-only surface" : "Extended import surface"));
+  badge.textContent = high
+    ? "Trust: Mathlib-only surface"
+    : "Trust: extended import surface";
   return badge;
 }
 
@@ -74,7 +76,7 @@ function entryCard(entry) {
   const footer = el("div", "card-footer");
   footer.append(
     link(entry.source.repository, entry.source.tree_url, "repo-link"),
-    link("View record →", `entry.html?id=${encodeURIComponent(entry.id)}&version=${entry.version}`, "record-link"),
+    link("View record", `entry.html?id=${encodeURIComponent(entry.id)}&version=${entry.version}`, "record-link"),
   );
   card.append(top, title, abstract, meta, footer);
   return card;
@@ -128,9 +130,11 @@ async function renderIndex() {
     document.querySelectorAll(".filter").forEach((button) => {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;
-        document.querySelectorAll(".filter").forEach((candidate) =>
-          candidate.classList.toggle("active", candidate === button),
-        );
+        document.querySelectorAll(".filter").forEach((candidate) => {
+          const active = candidate === button;
+          candidate.classList.toggle("active", active);
+          candidate.setAttribute("aria-pressed", String(active));
+        });
         update();
       });
     });
@@ -155,8 +159,8 @@ function externalDetailRow(labelText, text, href) {
   return row;
 }
 
-function renderEntry(entry, content) {
-  document.title = `${entry.title} · Palomar`;
+function renderEntry(entry, content, canonicalUrl) {
+  document.title = `${entry.title} — Palomar`;
   const heading = el("header", "entry-heading");
   const top = el("div", "card-top");
   top.append(el("span", "entry-id", `${entry.id} · version ${entry.version}`), trustBadge(entry));
@@ -225,13 +229,19 @@ function renderEntry(entry, content) {
   } else {
     editorial.append(el("p", "no-warnings", "No permanent editorial warnings were recorded."));
   }
-  editorial.append(link("Read the public review ↗", entry.review.report_url, "button quiet"));
+  editorial.append(link("Read the public review", entry.review.report_url, "button quiet"));
 
   const machine = el("section", "machine-record");
   machine.append(el("div", "eyebrow", "For machines and mirrors"), el("h2", "", "Canonical JSON"));
+  const machineLinks = el("p");
+  machineLinks.append(link("Open the canonical JSON record", canonicalUrl.href));
+  machine.append(machineLinks);
+  const jsonDetails = el("details", "json-details");
+  jsonDetails.append(el("summary", "", "Show JSON on this page"));
   const pre = el("pre");
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
-  machine.append(pre);
+  jsonDetails.append(pre);
+  machine.append(jsonDetails);
 
   content.append(heading, evidence, trust, editorial, machine);
 }
@@ -250,10 +260,11 @@ async function renderEntryPage() {
     const index = await fetchJson(databaseUrl);
     const summary = index.entries.find((item) => item.id === id && item.version === version);
     if (!summary) throw new Error("entry not found");
-    const entry = await fetchJson(new URL(summary.path, databaseBase));
+    const canonicalUrl = new URL(summary.path, databaseBase);
+    const entry = await fetchJson(canonicalUrl);
     status.hidden = true;
     content.hidden = false;
-    renderEntry(entry, content);
+    renderEntry(entry, content, canonicalUrl);
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
