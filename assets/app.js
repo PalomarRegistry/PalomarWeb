@@ -159,6 +159,12 @@ function externalDetailRow(labelText, text, href) {
   return row;
 }
 
+function pinnedSourceFileUrl(entry, path) {
+  const repository = entry.source.repository_url.replace(/\/+$/, "");
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  return `${repository}/blob/${entry.source.commit}/${encodedPath}`;
+}
+
 function renderEntry(entry, content, canonicalUrl) {
   document.title = `${entry.title} — Palomar`;
   const heading = el("header", "entry-heading");
@@ -176,6 +182,11 @@ function renderEntry(entry, content, canonicalUrl) {
   const details = el("dl", "details");
   details.append(
     externalDetailRow("Immutable source", `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`, entry.source.tree_url),
+    externalDetailRow(
+      "Challenge file",
+      `Open ${entry.formalization.challenge_path}`,
+      pinnedSourceFileUrl(entry, entry.formalization.challenge_path),
+    ),
     detailRow("Lean toolchain", entry.formalization.lean_toolchain),
     detailRow("Compared theorems", theoremNames(entry)),
     detailRow("Permitted axioms", entry.formalization.permitted_axioms.join(", ") || "none"),
