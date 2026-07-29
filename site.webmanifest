@@ -1,0 +1,8 @@
+{
+  "name": "Palomar Registry",
+  "short_name": "Palomar",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07111a",
+  "theme_color": "#0b1723"
+}

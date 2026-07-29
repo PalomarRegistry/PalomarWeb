@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A public registry of Lean-verified mathematical results.">
+    <meta name="theme-color" content="#0b1723">
+    <title>Palomar · Lean-verified mathematics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="manifest" href="site.webmanifest">
+  </head>
+  <body data-page="index">
+    <a class="skip-link" href="#registry">Skip to registry</a>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Palomar home">
+        <span class="brand-mark" aria-hidden="true">
+          <span class="orbit"></span>
+          <span class="star"></span>
+        </span>
+        <span>Palomar</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a class="active" href="./">Registry</a>
+        <a href="about.html">About</a>
+        <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Submit ↗</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow">Lean-verified · permanently pinned · openly reviewed</div>
+        <h1>A clear view of<br><em>formal mathematics.</em></h1>
+        <p class="hero-copy">
+          Palomar records mathematical claims at immutable Git commits, checks
+          their proofs with Comparator, and publishes the exact statement,
+          provenance, trust surface, and editorial warnings.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#registry">Explore the registry</a>
+          <a class="button quiet" href="about.html">How verification works</a>
+        </div>
+        <div class="metric-row" aria-live="polite">
+          <div><span id="metric-results">—</span><small>accepted results</small></div>
+          <div><span id="metric-projects">—</span><small>source projects</small></div>
+          <div><span id="metric-high-trust">—</span><small>Mathlib-only surfaces</small></div>
+        </div>
+      </section>
+
+      <section class="registry-section" id="registry" aria-labelledby="registry-heading">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">The registry</div>
+            <h2 id="registry-heading">Accepted results</h2>
+          </div>
+          <a class="data-link" href="https://github.com/kim-em/PalomarDatabase">
+            Raw data &amp; schema ↗
+          </a>
+        </div>
+
+        <div class="toolbar">
+          <label class="search">
+            <span class="sr-only">Search entries</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+            <input id="search" type="search" placeholder="Search title, author, theorem, repository…" autocomplete="off">
+          </label>
+          <div class="filters" role="group" aria-label="Trust filters">
+            <button class="filter active" type="button" data-trust="all">All</button>
+            <button class="filter" type="button" data-trust="high">Mathlib-only</button>
+            <button class="filter" type="button" data-trust="qualified">Extended imports</button>
+          </div>
+        </div>
+
+        <div id="status" class="status">Reading the Palomar database…</div>
+        <div id="entry-grid" class="entry-grid" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <footer>
+      <div>
+        <span class="footer-brand">Palomar</span>
+        <p>A community-oriented registry prototype for Lean-verified results.</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/kim-em/PalomarPolicy">Policy</a>
+        <a href="https://github.com/kim-em/PalomarDatabase">API</a>
+        <a href="https://github.com/leanprover/comparator">Comparator</a>
+        <a href="https://github.com/kim-em/PalomarWeb">Source</a>
+      </div>
+    </footer>
+    <script type="module" src="assets/app.js"></script>
+  </body>
+</html>
