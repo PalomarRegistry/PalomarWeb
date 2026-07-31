@@ -439,6 +439,29 @@ footer {
   border-top: 1px solid var(--line);
 }
 
+.challenge-links {
+  margin-bottom: .75rem;
+  font: .9rem/1.4 var(--sans);
+}
+
+.challenge-frame {
+  display: block;
+  width: 100%;
+  height: min(42rem, 70vh);
+  min-height: 18rem;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.challenge-fallback {
+  max-width: 62ch;
+  color: var(--muted);
+}
+
+.render-page {
+  width: min(calc(100% - 2rem), 90rem);
+}
+
 .details {
   margin: 0;
   border-block: 1px solid var(--line);

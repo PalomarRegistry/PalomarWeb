@@ -1,9 +1,19 @@
+import {
+  challengeArtifactUrl,
+  challengeSourceUrl,
+  entryRecordPath,
+  isInlineChallenge,
+} from "./rendering.js";
+
 const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
+const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
 
 const params = new URLSearchParams(window.location.search);
 const databaseUrl = params.get("database") || DEFAULT_DATABASE;
 const databaseBase = new URL(".", databaseUrl);
+const renderBase = params.get("render-base") ||
+  (params.has("database") ? databaseBase.href : DEFAULT_RENDER_BASE);
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -65,7 +75,7 @@ function entryCard(entry) {
   const top = el("div", "card-top");
   top.append(el("span", "entry-id", `${entry.id} · v${entry.version}`), trustBadge(entry));
   const title = el("h3");
-  title.append(link(entry.title, `entry.html?id=${encodeURIComponent(entry.id)}&version=${entry.version}`));
+  title.append(link(entry.title, localPageUrl("entry.html", entry)));
   const abstract = el("p", "card-abstract", entry.abstract);
   const meta = el("div", "card-meta");
   const authors = el("div");
@@ -76,7 +86,7 @@ function entryCard(entry) {
   const footer = el("div", "card-footer");
   footer.append(
     link(entry.source.repository, entry.source.tree_url, "repo-link"),
-    link("View record", `entry.html?id=${encodeURIComponent(entry.id)}&version=${entry.version}`),
+    link("View record", localPageUrl("entry.html", entry)),
   );
   card.append(top, title, abstract, meta, footer);
   return card;
@@ -165,6 +175,56 @@ function pinnedSourceFileUrl(entry, path) {
   return `${repository}/blob/${entry.source.commit}/${encodedPath}`;
 }
 
+function localPageUrl(page, entry) {
+  const target = new URL(page, window.location.href);
+  target.search = "";
+  target.searchParams.set("id", entry.id);
+  target.searchParams.set("version", String(entry.version));
+  for (const name of ["database", "render-base"]) {
+    if (params.has(name)) target.searchParams.set(name, params.get(name));
+  }
+  return target.href;
+}
+
+function challengeFrame(entry) {
+  const frame = el("iframe", "challenge-frame");
+  frame.src = challengeArtifactUrl(entry, renderBase).href;
+  frame.title = `Rendered Challenge for ${entry.id} version ${entry.version}`;
+  frame.loading = "lazy";
+  frame.referrerPolicy = "no-referrer";
+  frame.setAttribute("sandbox", "allow-scripts");
+  return frame;
+}
+
+function challengePresentation(entry, { forceFrame = false } = {}) {
+  const section = el("section", "challenge-presentation");
+  const heading = el("div", "section-heading");
+  const titleBlock = el("div");
+  titleBlock.append(el("div", "eyebrow", "Formal statement"), el("h2", "", "Challenge"));
+  heading.append(titleBlock);
+  section.append(heading);
+
+  const links = el("p", "challenge-links");
+  links.append(link("View canonical Challenge.lean", challengeSourceUrl(entry), "challenge-source"));
+  if (!forceFrame) {
+    links.append(" · ", link("Open rendered Challenge", localPageUrl("render.html", entry)));
+  }
+  section.append(links);
+
+  if (forceFrame || isInlineChallenge(entry)) {
+    section.append(challengeFrame(entry));
+  } else {
+    section.append(
+      el(
+        "p",
+        "challenge-fallback",
+        "This Challenge is larger than the inline reading limit; use the rendered view above.",
+      ),
+    );
+  }
+  return section;
+}
+
 function renderEntry(entry, content, canonicalUrl) {
   document.title = `${entry.title} — Palomar`;
   const heading = el("header", "entry-heading");
@@ -251,7 +311,16 @@ function renderEntry(entry, content, canonicalUrl) {
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
   machine.append(pre);
 
-  content.append(heading, evidence, trust, editorial, machine);
+  content.append(heading, challengePresentation(entry), evidence, trust, editorial, machine);
+}
+
+async function loadEntry(id, version) {
+  const index = await fetchJson(databaseUrl);
+  const summary = index.entries.find((item) => item.id === id && item.version === version);
+  if (!summary) throw new Error("entry not found");
+  const path = entryRecordPath(id, version, summary.path);
+  const canonicalUrl = new URL(path, databaseBase);
+  return { entry: await fetchJson(canonicalUrl), canonicalUrl };
 }
 
 async function renderEntryPage() {
@@ -265,11 +334,7 @@ async function renderEntryPage() {
     return;
   }
   try {
-    const index = await fetchJson(databaseUrl);
-    const summary = index.entries.find((item) => item.id === id && item.version === version);
-    if (!summary) throw new Error("entry not found");
-    const canonicalUrl = new URL(summary.path, databaseBase);
-    const entry = await fetchJson(canonicalUrl);
+    const { entry, canonicalUrl } = await loadEntry(id, version);
     status.hidden = true;
     content.hidden = false;
     renderEntry(entry, content, canonicalUrl);
@@ -279,5 +344,33 @@ async function renderEntryPage() {
   }
 }
 
+async function renderChallengePage() {
+  const status = document.querySelector("#status");
+  const content = document.querySelector("#render-content");
+  const id = params.get("id");
+  const version = Number(params.get("version"));
+  if (!/^PALOMAR-\d{6}$/.test(id || "") || !Number.isInteger(version) || version < 1) {
+    status.textContent = "This render link is missing a valid Palomar ID and version.";
+    status.classList.add("error");
+    return;
+  }
+  try {
+    const { entry } = await loadEntry(id, version);
+    document.title = `Challenge — ${entry.title} — Palomar`;
+    const heading = el("header", "entry-heading");
+    heading.append(
+      el("div", "entry-id", `${entry.id} · version ${entry.version}`),
+      el("h1", "", entry.title),
+    );
+    content.append(heading, challengePresentation(entry, { forceFrame: true }));
+    status.hidden = true;
+    content.hidden = false;
+  } catch (error) {
+    status.textContent = `The rendered Challenge could not be loaded: ${error.message}`;
+    status.classList.add("error");
+  }
+}
+
 if (document.body.dataset.page === "index") renderIndex();
 if (document.body.dataset.page === "entry") renderEntryPage();
+if (document.body.dataset.page === "render") renderChallengePage();
