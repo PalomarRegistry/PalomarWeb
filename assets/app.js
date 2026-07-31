@@ -138,9 +138,6 @@ async function renderIndex() {
     document.querySelector("#metric-projects").textContent = String(
       new Set(entries.map((entry) => entry.source.repository)).size,
     );
-    document.querySelector("#metric-high-trust").textContent = String(
-      entries.filter((entry) => entry.trust.level === "high").length,
-    );
     if (!entries.length) {
       status.textContent =
         "The telescope is ready. No entries have been published yet; the first accepted database PR will appear here automatically.";
