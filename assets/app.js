@@ -30,6 +30,11 @@ function link(text, href, className) {
   return node;
 }
 
+function setOptionalText(selector, text) {
+  const node = document.querySelector(selector);
+  if (node) node.textContent = text;
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-cache" });
   if (!response.ok) {
@@ -132,8 +137,11 @@ async function renderIndex() {
   try {
     const index = await fetchJson(databaseUrl);
     const entries = latestVersions(await loadEntries(index));
-    document.querySelector("#metric-results").textContent = String(entries.length);
-    document.querySelector("#metric-projects").textContent = String(
+    // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
+    // Metrics are presentation-only, so a removed metric must not abort the registry.
+    setOptionalText("#metric-results", String(entries.length));
+    setOptionalText(
+      "#metric-projects",
       new Set(entries.map((entry) => entry.source.repository)).size,
     );
     if (!entries.length) {
@@ -365,7 +373,7 @@ function solutionMetadata(entry, renderMetadata) {
   details.append(
     externalDetailRow(
       "Proof file",
-      `Open ${entry.formalization.solution_path}`,
+      entry.formalization.solution_path,
       pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
     detailRow("Proof file checksum (SHA-256)", entry.verification.solution_sha256),
@@ -431,12 +439,12 @@ async function renderEntry(entry, content, canonicalUrl) {
     externalDetailRow("Fixed source version", `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`, entry.source.tree_url),
     externalDetailRow(
       "Statement file",
-      `Open ${entry.formalization.challenge_path}`,
+      entry.formalization.challenge_path,
       pinnedSourceFileUrl(entry, entry.formalization.challenge_path),
     ),
     externalDetailRow(
       "Proof file",
-      `Open ${entry.formalization.solution_path}`,
+      entry.formalization.solution_path,
       pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
     detailRow("Lean version", entry.formalization.lean_toolchain),

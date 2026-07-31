@@ -1,6 +1,15 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const database = encodeURIComponent("http://127.0.0.1:4173/database/index.json");
+const previousRef = process.env.PALOMAR_PREVIOUS_REF;
+const currentIndex = readFileSync(fileURLToPath(new URL("../index.html", import.meta.url)), "utf8");
+
+function fileAtPreviousDeployment(path) {
+  return execFileSync("git", ["show", `${previousRef}:${path}`], { encoding: "utf8" });
+}
 
 test("landing cards show the acceptance date and dated identifier", async ({ page }) => {
   await page.goto(`/?database=${database}`);
@@ -11,6 +20,22 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Mathlib only" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
+});
+
+test("optional metric markup cannot take down the registry", async ({ page }) => {
+  const withoutProjectMetric = currentIndex.replace(
+    /\s*<span><strong id="metric-projects">.*?<\/strong> source projects<\/span>/,
+    "",
+  );
+  expect(withoutProjectMetric).not.toEqual(currentIndex);
+  await page.route("http://127.0.0.1:4173/", (route) => route.fulfill({
+    body: withoutProjectMetric,
+    contentType: "text/html; charset=utf-8",
+  }));
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card")).toHaveCount(2);
+  await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
 
 test("eligible Challenge renders inline without origin privilege", async ({ page }) => {
@@ -53,7 +78,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".acceptance-callout")).toContainText(
     "Every required check passed, so Palomar accepted the submission",
   );
-  await expect(page.getByRole("link", { name: "Open Solution.lean" }).first()).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Solution.lean" }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Solution.lean`,
   );
@@ -80,4 +105,32 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
+});
+
+test("current HTML remains compatible with cached JavaScript from the previous deployment", async ({ page }) => {
+  test.skip(!previousRef, "PALOMAR_PREVIOUS_REF is only set in deployment and pull-request CI");
+  await page.route("**/assets/app.js", (route) => route.fulfill({
+    body: fileAtPreviousDeployment("assets/app.js"),
+    contentType: "text/javascript; charset=utf-8",
+  }));
+  await page.route("**/assets/rendering.js", (route) => route.fulfill({
+    body: fileAtPreviousDeployment("assets/rendering.js"),
+    contentType: "text/javascript; charset=utf-8",
+  }));
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card")).toHaveCount(2);
+  await expect(page.locator("#status")).not.toContainText("could not be loaded");
+});
+
+test("current JavaScript remains compatible with cached HTML from the previous deployment", async ({ page }) => {
+  test.skip(!previousRef, "PALOMAR_PREVIOUS_REF is only set in deployment and pull-request CI");
+  await page.route("http://127.0.0.1:4173/", (route) => route.fulfill({
+    body: fileAtPreviousDeployment("index.html"),
+    contentType: "text/html; charset=utf-8",
+  }));
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card")).toHaveCount(2);
+  await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
