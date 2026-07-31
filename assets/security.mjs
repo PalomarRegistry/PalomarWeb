@@ -1,14 +1,15 @@
-export const SUPPORTED_SCHEMA_VERSION = 1;
+export const SUPPORTED_SCHEMA_VERSION = 2;
 export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
 
 const SUBMISSION_REPOSITORY = "kim-em/PalomarSubmission";
-const ID_RE = /^PALOMAR-([0-9]{6})$/;
+const ID_RE = /^PALOMAR-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{6})$/;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const POSITIVE_INTEGER_RE = /^[1-9][0-9]*$/;
+const DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
@@ -38,6 +39,16 @@ function stringArray(value, field) {
   for (const [position, item] of array(value, field).entries()) {
     string(item, `${field}[${position}]`);
   }
+  return value;
+}
+
+function commit(value, field) {
+  if (!COMMIT_RE.test(value)) fail(`${field} is not a full lowercase commit`);
+  return value;
+}
+
+function digest(value, field) {
+  if (!SHA256_RE.test(value)) fail(`${field} is not a SHA-256 digest`);
   return value;
 }
 
@@ -172,7 +183,18 @@ export function safeRepositoryPath(value, field = "repository path") {
 
 function validateCanonicalRecordLinks(entry) {
   const identifier = ID_RE.exec(entry.id);
-  const issue = Number(identifier[1]);
+  if (identifier[1] !== entry.accepted_at) fail("entry ID date does not match accepted_at");
+  const issue = Number(identifier[2]);
+  const submission = entry.submission;
+  if (
+    submission.repository !== SUBMISSION_REPOSITORY ||
+    submission.issue !== issue ||
+    submission.url !== `https://github.com/${SUBMISSION_REPOSITORY}/issues/${issue}`
+  ) {
+    fail("submission evidence does not match the Palomar ID and canonical issue");
+  }
+  safeExternalUrl(submission.url);
+
   const source = entry.source;
   if (!REPOSITORY_RE.test(source.repository)) fail("source.repository is malformed");
   if (!COMMIT_RE.test(source.commit)) fail("source.commit is not a full lowercase commit");
@@ -220,10 +242,18 @@ export function validateEntry(entry, summary) {
   }
   string(entry.title, "entry.title");
   string(entry.abstract, "entry.abstract");
+  const acceptedAt = string(entry.accepted_at, "entry.accepted_at");
+  if (!DATE_RE.test(acceptedAt)) fail("entry.accepted_at is malformed");
 
   for (const [position, value] of array(entry.authors, "entry.authors").entries()) {
     string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
   }
+
+  const submission = object(entry.submission, "entry.submission");
+  string(submission.repository, "entry.submission.repository");
+  integer(submission.issue, "entry.submission.issue");
+  string(submission.url, "entry.submission.url");
+  string(submission.submitter, "entry.submission.submitter");
 
   const source = object(entry.source, "entry.source");
   string(source.repository, "entry.source.repository");
@@ -234,43 +264,88 @@ export function validateEntry(entry, summary) {
   const formalization = object(entry.formalization, "entry.formalization");
   safeRepositoryPath(formalization.challenge_path, "entry.formalization.challenge_path");
   safeRepositoryPath(formalization.solution_path, "entry.formalization.solution_path");
+  safeRepositoryPath(
+    formalization.comparator_config_path,
+    "entry.formalization.comparator_config_path",
+  );
+  safeRepositoryPath(
+    formalization.formalization_metadata_path,
+    "entry.formalization.formalization_metadata_path",
+  );
   string(formalization.lean_toolchain, "entry.formalization.lean_toolchain");
   stringArray(formalization.theorem_names, "entry.formalization.theorem_names");
+  stringArray(formalization.definition_names, "entry.formalization.definition_names");
   stringArray(formalization.permitted_axioms, "entry.formalization.permitted_axioms");
+  for (const [position, value] of array(
+    formalization.project_dependencies,
+    "entry.formalization.project_dependencies",
+  ).entries()) {
+    const dependency = object(value, `entry.formalization.project_dependencies[${position}]`);
+    string(dependency.name, `entry.formalization.project_dependencies[${position}].name`);
+    if (!REPOSITORY_RE.test(dependency.repository)) {
+      fail(`entry.formalization.project_dependencies[${position}].repository is malformed`);
+    }
+    commit(
+      dependency.revision,
+      `entry.formalization.project_dependencies[${position}].revision`,
+    );
+  }
 
   const verification = object(entry.verification, "entry.verification");
+  string(verification.verified_at, "entry.verification.verified_at");
   string(verification.workflow_url, "entry.verification.workflow_url");
-  if (!COMMIT_RE.test(verification.comparator_commit)) fail("comparator_commit is malformed");
-  if (!SHA256_RE.test(verification.challenge_sha256)) fail("challenge_sha256 is malformed");
-  if (!SHA256_RE.test(verification.solution_sha256)) fail("solution_sha256 is malformed");
+  commit(verification.comparator_commit, "entry.verification.comparator_commit");
+  commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
+  commit(verification.landrun_commit, "entry.verification.landrun_commit");
+  digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
+  digest(verification.solution_sha256, "entry.verification.solution_sha256");
 
   const trust = object(entry.trust, "entry.trust");
   if (!['high', 'qualified'].includes(trust.level)) fail("entry.trust.level is unsupported");
   integer(trust.challenge_lines, "entry.trust.challenge_lines");
   integer(trust.challenge_bytes, "entry.trust.challenge_bytes");
   stringArray(trust.challenge_imports, "entry.trust.challenge_imports");
-  array(trust.challenge_dependencies, "entry.trust.challenge_dependencies");
+  for (const [position, value] of array(
+    trust.challenge_dependencies,
+    "entry.trust.challenge_dependencies",
+  ).entries()) {
+    const dependency = object(value, `entry.trust.challenge_dependencies[${position}]`);
+    if (!REPOSITORY_RE.test(dependency.repository)) {
+      fail(`entry.trust.challenge_dependencies[${position}].repository is malformed`);
+    }
+    if (!['allowlisted', 'palomar-indexed'].includes(dependency.provenance)) {
+      fail(`entry.trust.challenge_dependencies[${position}].provenance is unsupported`);
+    }
+    if (dependency.palomar_id !== undefined && !ID_RE.test(dependency.palomar_id)) {
+      fail(`entry.trust.challenge_dependencies[${position}].palomar_id is malformed`);
+    }
+  }
   stringArray(trust.reasons, "entry.trust.reasons");
 
   const review = object(entry.review, "entry.review");
+  string(review.reviewed_at, "entry.review.reviewed_at");
+  commit(review.policy_commit, "entry.review.policy_commit");
   if (review.verdict !== "accept") fail("entry.review.verdict is not accept");
   string(review.report_url, "entry.review.report_url");
+  stringArray(review.reviewer_models, "entry.review.reviewer_models");
   object(review.scores, "entry.review.scores");
   stringArray(review.warnings, "entry.review.warnings");
 
-  if (entry.challenge_render !== undefined) {
-    const render = object(entry.challenge_render, "entry.challenge_render");
-    const treeHash = string(render.artifact_tree_sha256, "entry.challenge_render.artifact_tree_sha256");
-    const expectedPath = `renders/${id}-v${version}/${treeHash}/`;
-    if (
-      render.format !== "verso-html" ||
-      render.entrypoint !== "Challenge/index.html" ||
-      !SHA256_RE.test(treeHash) ||
-      render.artifact_path !== expectedPath
-    ) {
-      fail("entry.challenge_render is not canonical");
-    }
+  const render = object(entry.challenge_render, "entry.challenge_render");
+  const treeHash = string(render.artifact_tree_sha256, "entry.challenge_render.artifact_tree_sha256");
+  const expectedPath = `renders/${id}-v${version}/${treeHash}/`;
+  if (
+    render.format !== "verso-html" ||
+    render.entrypoint !== "Challenge/index.html" ||
+    !SHA256_RE.test(treeHash) ||
+    render.artifact_path !== expectedPath
+  ) {
+    fail("entry.challenge_render is not canonical");
   }
+  commit(render.verso_commit, "entry.challenge_render.verso_commit");
+  commit(render.renderer_commit, "entry.challenge_render.renderer_commit");
+  commit(render.landrun_commit, "entry.challenge_render.landrun_commit");
+  string(render.rendered_at, "entry.challenge_render.rendered_at");
 
   validateCanonicalRecordLinks(entry);
   return entry;

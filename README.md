@@ -29,6 +29,6 @@ referrer.
 
 The website is a presentation layer only. Permanent data and schemas live in
 PalomarDatabase; consumers should use that repository directly. A versioned ID
-such as `PALOMAR-000001-v1` names one immutable record. An ID without a version
+such as `PALOMAR-2026-07-29-000001-v1` names one immutable record. An ID without a version
 means the latest record; later versions may change its theorem, source, authors,
 or subject, so stable citations must include the version.

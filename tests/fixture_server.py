@@ -15,14 +15,22 @@ HASH = "a" * 64
 
 
 def entry(identifier: str, lines: int) -> dict:
+    issue = int(identifier.rsplit("-", 1)[-1])
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": identifier,
+        "accepted_at": "2026-07-29",
         "version": 1,
         "status": "accepted",
         "title": f"Fixture {identifier}",
         "abstract": "A browser confinement fixture.",
         "authors": [{"name": "Example"}],
+        "submission": {
+            "repository": "kim-em/PalomarSubmission",
+            "issue": issue,
+            "url": f"https://github.com/kim-em/PalomarSubmission/issues/{issue}",
+            "submitter": "example",
+        },
         "source": {
             "repository": "example/challenge",
             "repository_url": "https://github.com/example/challenge",
@@ -32,16 +40,28 @@ def entry(identifier: str, lines: int) -> dict:
         "formalization": {
             "challenge_path": "Challenge.lean",
             "solution_path": "Solution.lean",
+            "comparator_config_path": "comparator.json",
+            "formalization_metadata_path": "formalization.yaml",
             "theorem_names": ["Example.theorem"],
             "definition_names": [],
             "lean_toolchain": "leanprover/lean4:v4.31.0-rc2",
             "permitted_axioms": [],
+            "project_dependencies": [
+                {
+                    "name": "exampleDependency",
+                    "repository": "example/dependency",
+                    "revision": "3" * 40,
+                }
+            ],
         },
         "verification": {
             "comparator_commit": "2" * 40,
+            "lean4export_commit": "3" * 40,
+            "landrun_commit": "4" * 40,
             "workflow_url": "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
             "challenge_sha256": "b" * 64,
             "solution_sha256": "c" * 64,
+            "verified_at": "2026-07-29T08:46:32Z",
         },
         "trust": {
             "level": "high",
@@ -52,12 +72,21 @@ def entry(identifier: str, lines: int) -> dict:
             "reasons": [],
         },
         "review": {
+            "reviewed_at": "2026-07-29T08:53:02Z",
+            "policy_commit": "5" * 40,
             "verdict": "accept",
-            "scores": {"clarity": 5},
+            "reviewer_models": ["fixture:model"],
+            "scores": {
+                "statement_alignment": 5,
+                "definition_fidelity": 5,
+                "notability": 5,
+                "literature": 5,
+                "clarity": 5,
+            },
             "warnings": [],
             "report_url": (
                 "https://github.com/kim-em/PalomarSubmission/issues/"
-                f"{int(identifier.removeprefix('PALOMAR-'))}#issuecomment-456"
+                f"{issue}#issuecomment-456"
             ),
         },
         "challenge_render": {
@@ -65,13 +94,17 @@ def entry(identifier: str, lines: int) -> dict:
             "artifact_path": f"renders/{identifier}-v1/{HASH}/",
             "entrypoint": "Challenge/index.html",
             "artifact_tree_sha256": HASH,
+            "verso_commit": "6" * 40,
+            "renderer_commit": "7" * 40,
+            "landrun_commit": "8" * 40,
+            "rendered_at": "2026-07-29T09:00:00Z",
         },
     }
 
 
 ENTRIES = {
-    "PALOMAR-000123": entry("PALOMAR-000123", 100),
-    "PALOMAR-000124": entry("PALOMAR-000124", 101),
+    "PALOMAR-2026-07-29-000123": entry("PALOMAR-2026-07-29-000123", 100),
+    "PALOMAR-2026-07-29-000124": entry("PALOMAR-2026-07-29-000124", 101),
 }
 
 
@@ -91,7 +124,8 @@ class Handler(SimpleHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/database/index.json":
             payload = {
-                "schema_version": 1,
+                "schema_version": 2,
+                "generated_at": "2026-07-29T09:00:00Z",
                 "entries": [
                     {
                         "id": item["id"],
@@ -105,27 +139,52 @@ class Handler(SimpleHTTPRequestHandler):
             }
             self.send_bytes(json.dumps(payload).encode(), "application/json")
             return
-        match = re.fullmatch(r"/database/entries/(PALOMAR-[0-9]{6})-v1\.json", path)
+        match = re.fullmatch(
+            r"/database/entries/(PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})-v1\.json",
+            path,
+        )
         if match and match.group(1) in ENTRIES:
             self.send_bytes(json.dumps(ENTRIES[match.group(1)]).encode(), "application/json")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-[0-9]{{6}}-v1/{HASH}/Challenge/index\.html",
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/Challenge/index\.html",
             path,
         ):
             page = f"""<!doctype html>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Hostile render fixture</title>
-<body><h1>Rendered theorem</h1><script defer src="../attack.js"></script></body>"""
+<style>html, body {{ height: auto; overflow: auto; }} body {{ margin: 0; }}
+.theorem {{ padding: 1rem; }} .theorem-lines {{ height: 70rem; }}</style>
+<body><main><p class="docstring">The theorem doc-string.</p>
+<div class="theorem"><pre>theorem Example.theorem :</pre><div class="theorem-lines"></div>
+<pre id="theorem-end">  True := by trivial</pre></div>
+</main><script defer src="../attack.js"></script></body>"""
             self.send_bytes(page.encode(), "text/html; charset=utf-8")
             return
-        if re.fullmatch(rf"/database/renders/PALOMAR-[0-9]{{6}}-v1/{HASH}/attack\.js", path):
+        if re.fullmatch(
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/challenge-metadata\.json",
+            path,
+        ):
+            metadata = {
+                "schema_version": 2,
+                "imports": ["Mathlib"],
+                "module_doc": "# Fixture module\n\nParsed outside the Verso renderer.",
+                "declarations": ["Example.theorem"],
+                "solution_imports": ["ExampleDependency"],
+            }
+            self.send_bytes(json.dumps(metadata).encode(), "application/json")
+            return
+        if re.fullmatch(
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/attack\.js",
+            path,
+        ):
             script = """
 document.body.dataset.scriptRan = "true";
 try { top.document.body.dataset.compromised = "true"; }
 catch (_) { document.body.dataset.topAccess = "blocked"; }
 try { localStorage.setItem("palomar-attack", "true"); }
 catch (_) { document.body.dataset.storageAccess = "blocked"; }
+parent.postMessage({type: "palomar-render-height", height: Math.ceil(document.querySelector("main").getBoundingClientRect().height)}, "*");
 """
             self.send_bytes(script.encode(), "text/javascript; charset=utf-8")
             return

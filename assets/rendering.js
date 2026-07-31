@@ -1,7 +1,7 @@
 export const INLINE_CHALLENGE_MAX_LINES = 100;
 export const INLINE_CHALLENGE_MAX_BYTES = 32 * 1024;
 
-const ID = /^PALOMAR-[0-9]{6}$/;
+const ID = /^PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}$/;
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -61,6 +61,10 @@ export function challengeArtifactUrl(entry, renderBase) {
     throw new Error("Challenge render base must use HTTP or HTTPS");
   }
   return new URL(`${expectedPath}${render.entrypoint}`, base);
+}
+
+export function challengeMetadataUrl(entry, renderBase) {
+  return new URL("../challenge-metadata.json", challengeArtifactUrl(entry, renderBase));
 }
 
 export function entryRecordPath(id, version, path) {

@@ -1,8 +1,6 @@
 name: Test presentation
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 permissions:
@@ -13,8 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
@@ -24,3 +23,5 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+        env:
+          PALOMAR_PREVIOUS_REF: ${{ github.event.pull_request.base.sha }}
