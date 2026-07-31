@@ -24,9 +24,9 @@
       <section class="hero">
         <h1>Registry of Lean-verified mathematics</h1>
         <p class="hero-copy">
-          Palomar records mathematical claims at immutable Git commits, checks
-          their proofs with Comparator, and publishes the exact statement,
-          provenance, trust surface, and editorial warnings.
+          Palomar records mathematical claims from fixed versions of their
+          source files, checks their proofs with Lean, and publishes the exact
+          statement, the libraries it uses, and any review warnings.
         </p>
         <div class="metric-row" aria-live="polite">
           <span><strong id="metric-results">—</strong> accepted results</span>
@@ -47,11 +47,11 @@
             <span>Search:</span>
             <input id="search" type="search" placeholder="title, author, theorem, or repository" autocomplete="off">
           </label>
-          <div class="filters" role="group" aria-label="Trust filters">
+          <div class="filters" role="group" aria-label="Statement dependency filters">
             <span>Show:</span>
             <button class="filter active" type="button" data-trust="all" aria-pressed="true">All</button>
-            <button class="filter" type="button" data-trust="high" aria-pressed="false">Mathlib-only</button>
-            <button class="filter" type="button" data-trust="qualified" aria-pressed="false">Extended imports</button>
+            <button class="filter" type="button" data-trust="high" aria-pressed="false">Mathlib only</button>
+            <button class="filter" type="button" data-trust="qualified" aria-pressed="false">Additional libraries</button>
           </div>
         </div>
 

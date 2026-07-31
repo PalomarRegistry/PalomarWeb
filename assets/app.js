@@ -78,8 +78,8 @@ function trustBadge(entry) {
   const high = entry.trust.level === "high";
   const badge = el("span", `trust-badge ${high ? "high" : "qualified"}`);
   badge.textContent = high
-    ? "Trust: Mathlib-only surface"
-    : "Trust: extended import surface";
+    ? "Dependencies: Mathlib only"
+    : "Dependencies: additional libraries";
   return badge;
 }
 
@@ -214,7 +214,7 @@ function localPageUrl(page, entry) {
 function challengeFrame(entry) {
   const frame = el("iframe", "challenge-frame");
   frame.src = challengeArtifactUrl(entry, renderBase).href;
-  frame.title = `Rendered Challenge for ${entry.id} version ${entry.version}`;
+  frame.title = `Formatted statement for ${entry.id} version ${entry.version}`;
   frame.loading = "lazy";
   frame.referrerPolicy = "no-referrer";
   frame.setAttribute("sandbox", "allow-scripts");
@@ -262,20 +262,20 @@ function validateChallengeMetadata(entry, metadata) {
 
 function challengeMetadata(metadata) {
   const panel = el("div", "challenge-metadata");
-  panel.append(el("div", "eyebrow", "Parsed source metadata"));
+  panel.append(el("div", "eyebrow", "Statement file information"));
   const imports = el("div", "challenge-metadata-row");
-  imports.append(el("strong", "", "Direct imports"));
+  imports.append(el("strong", "", "Libraries imported by the statement"));
   const tokens = el("span", "token-list");
   for (const item of metadata.imports) tokens.append(el("code", "", item));
   imports.append(tokens);
   panel.append(imports);
   if (metadata.module_doc) {
     const moduleDoc = el("details", "challenge-module-doc");
-    moduleDoc.append(el("summary", "", "Module documentation"));
+    moduleDoc.append(el("summary", "", "Notes from the statement file"));
     moduleDoc.append(el("pre", "", metadata.module_doc));
     panel.append(moduleDoc);
   } else {
-    panel.append(el("p", "challenge-no-module-doc", "No module documentation was found."));
+    panel.append(el("p", "challenge-no-module-doc", "No notes were found in the statement file."));
   }
   return panel;
 }
@@ -284,15 +284,15 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
   const titleBlock = el("div");
-  titleBlock.append(el("div", "eyebrow", "Formal statement"), el("h2", "", "Challenge"));
+  titleBlock.append(el("div", "eyebrow", "Formal statement"), el("h2", "", "Statement"));
   heading.append(titleBlock);
   section.append(heading);
 
   const links = el("p", "challenge-links");
-  links.append(link("View canonical Challenge.lean", challengeSourceUrl(entry), "challenge-source"));
+  links.append(link("View statement file (Challenge.lean)", challengeSourceUrl(entry), "challenge-source"));
   const inline = isInlineChallenge(entry);
   if (!forceFrame && !inline) {
-    links.append(" · ", link("Open rendered Challenge", localPageUrl("render.html", entry)));
+    links.append(" · ", link("Open formatted statement", localPageUrl("render.html", entry)));
   }
   section.append(links);
 
@@ -308,7 +308,7 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
       el(
         "p",
         "challenge-fallback",
-        "This historical rendering predates declaration-only presentation metadata; use the canonical Challenge.lean link above.",
+        "This older entry cannot display its statement on this page. Use the statement file link above.",
       ),
     );
     return {section, metadata: null};
@@ -322,7 +322,7 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
       el(
         "p",
         "challenge-fallback",
-        "This Challenge is larger than the inline reading limit; use the rendered view above.",
+        "This statement is too large to display here; use the formatted view above.",
       ),
     );
   }
@@ -339,7 +339,7 @@ function acceptanceCallout(entry) {
     el(
       "p",
       "",
-      "Palomar checked the pinned Solution with Lean, matched every advertised declaration with Comparator, verified the permitted axiom set, and completed editorial review. Every required check passed; Palomar accepted the submission.",
+      "Palomar used Lean to check the recorded proof against the recorded statement and confirmed that it uses only the allowed axioms. The documented review was also completed. Every required check passed, so Palomar accepted the submission.",
     ),
   );
   callout.append(check, copy);
@@ -350,29 +350,29 @@ function solutionMetadata(entry, renderMetadata) {
   const section = el("section", "entry-solution");
   const heading = el("div", "section-heading");
   const title = el("div");
-  title.append(el("div", "eyebrow", "Accepted proof artifact"), el("h2", "", "Verified solution"));
+  title.append(el("div", "eyebrow", "Accepted proof"), el("h2", "", "Verified proof"));
   heading.append(title, el("span", "decision accepted-decision", "Accepted"));
   section.append(heading);
   section.append(
     el(
       "p",
       "solution-summary",
-      "The accepted Solution.lean was checked at the immutable source commit against the pinned transitive Lake dependency closure below.",
+      "Lean checked the accepted proof using the exact versions of the source files and libraries listed below.",
     ),
   );
 
   const details = el("dl", "details solution-details");
   details.append(
     externalDetailRow(
-      "Solution file",
+      "Proof file",
       `Open ${entry.formalization.solution_path}`,
       pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
-    detailRow("Solution SHA-256", entry.verification.solution_sha256),
+    detailRow("Proof file checksum (SHA-256)", entry.verification.solution_sha256),
   );
   if (renderMetadata?.schema_version >= 2) {
     const row = el("div", "detail-row");
-    row.append(el("dt", "", "Direct imports"));
+    row.append(el("dt", "", "Libraries imported by the proof"));
     const value = el("dd", "token-list");
     for (const item of renderMetadata.solution_imports) value.append(el("code", "", item));
     row.append(value);
@@ -386,7 +386,7 @@ function solutionMetadata(entry, renderMetadata) {
     el(
       "summary",
       "",
-      `${dependencies.length} pinned repositories in the transitive Lake closure`,
+      `${dependencies.length} source repositories used by the proof`,
     ),
   );
   const list = el("ul", "dependency-list");
@@ -418,7 +418,7 @@ async function renderEntry(entry, content, canonicalUrl) {
   const evidence = el("section", "entry-evidence");
   const evidenceTitle = el("div", "section-heading");
   const titleBlock = el("div");
-  titleBlock.append(el("div", "eyebrow", "Machine evidence"), el("h2", "", "What was checked"));
+  titleBlock.append(el("div", "eyebrow", "Verification"), el("h2", "", "What was checked"));
   evidenceTitle.append(titleBlock);
   evidence.append(evidenceTitle, acceptanceCallout(entry));
   const details = el("dl", "details");
@@ -428,44 +428,53 @@ async function renderEntry(entry, content, canonicalUrl) {
       "Lean verification date",
       displayDate(entry.verification.verified_at.slice(0, 10)),
     ),
-    externalDetailRow("Immutable source", `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`, entry.source.tree_url),
+    externalDetailRow("Fixed source version", `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`, entry.source.tree_url),
     externalDetailRow(
-      "Challenge file",
+      "Statement file",
       `Open ${entry.formalization.challenge_path}`,
       pinnedSourceFileUrl(entry, entry.formalization.challenge_path),
     ),
     externalDetailRow(
-      "Solution file",
+      "Proof file",
       `Open ${entry.formalization.solution_path}`,
       pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
-    detailRow("Lean toolchain", entry.formalization.lean_toolchain),
-    detailRow("Compared theorems", theoremNames(entry)),
+    detailRow("Lean version", entry.formalization.lean_toolchain),
+    detailRow("Theorems checked", theoremNames(entry)),
     detailRow("Permitted axioms", entry.formalization.permitted_axioms.join(", ") || "none"),
-    detailRow("Challenge surface", `${entry.trust.challenge_lines} lines · ${entry.trust.challenge_bytes} bytes`),
-    externalDetailRow("Comparator run", entry.verification.comparator_commit.slice(0, 12), entry.verification.workflow_url),
+    detailRow("Statement file size", `${entry.trust.challenge_lines} lines · ${entry.trust.challenge_bytes} bytes`),
+    externalDetailRow("Verification record", entry.verification.comparator_commit.slice(0, 12), entry.verification.workflow_url),
   );
   evidence.append(details);
 
   const trust = el("section", "entry-trust");
   const trustTitle = el("div", "section-heading");
   const trustBlock = el("div");
-  trustBlock.append(el("div", "eyebrow", "Statement trust"), el("h2", "", entry.trust.level === "high" ? "Mathlib-only challenge surface" : "Qualified challenge surface"));
+  trustBlock.append(
+    el("div", "eyebrow", "Statement dependencies"),
+    el(
+      "h2",
+      "",
+      entry.trust.level === "high"
+        ? "Depends only on Mathlib"
+        : "Depends on additional libraries",
+    ),
+  );
   trustTitle.append(trustBlock, trustBadge(entry));
   trust.append(trustTitle);
   const imports = el("div", "token-list");
   for (const item of entry.trust.challenge_imports) imports.append(el("code", "", item));
-  trust.append(el("h3", "", "Direct imports"), imports);
+  trust.append(el("h3", "", "Libraries imported by the statement"), imports);
   if (entry.trust.challenge_dependencies.length) {
-    trust.append(el("h3", "", "Trusted source repositories"));
+    trust.append(el("h3", "", "Source repositories"));
     const dependencies = el("ul", "plain-list");
     for (const dependency of entry.trust.challenge_dependencies) {
-      dependencies.append(el("li", "", `${dependency.repository} · ${dependency.provenance}`));
+      dependencies.append(el("li", "", dependency.repository));
     }
     trust.append(dependencies);
   }
   if (entry.trust.reasons.length) {
-    trust.append(el("h3", "", "Qualification reasons"));
+    trust.append(el("h3", "", "Why additional libraries are needed"));
     const reasons = el("ul", "reason-list");
     for (const reason of entry.trust.reasons) reasons.append(el("li", "", reason));
     trust.append(reasons);
@@ -495,9 +504,9 @@ async function renderEntry(entry, content, canonicalUrl) {
   editorial.append(link("Read the public review", entry.review.report_url));
 
   const machine = el("section", "machine-record");
-  machine.append(el("div", "eyebrow", "For machines and mirrors"), el("h2", "", "Canonical JSON"));
+  machine.append(el("div", "eyebrow", "Full record"), el("h2", "", "Registry data"));
   const machineLinks = el("p");
-  machineLinks.append(link("Open the canonical JSON record", canonicalUrl.href));
+  machineLinks.append(link("Open the full data record (JSON)", canonicalUrl.href));
   machine.append(machineLinks);
   const pre = el("pre");
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
@@ -557,7 +566,7 @@ async function renderChallengePage() {
   }
   try {
     const { entry } = await loadEntry(id, version);
-    document.title = `Challenge — ${entry.title} — Palomar`;
+    document.title = `Statement — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
       el("div", "entry-id", `${entry.id} · version ${entry.version}`),
@@ -568,7 +577,7 @@ async function renderChallengePage() {
     status.hidden = true;
     content.hidden = false;
   } catch (error) {
-    status.textContent = `The rendered Challenge could not be loaded: ${error.message}`;
+    status.textContent = `The formatted statement could not be loaded: ${error.message}`;
     status.classList.add("error");
   }
 }
