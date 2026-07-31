@@ -24,6 +24,7 @@ const CANONICAL_WEB_BASE = "https://kim-em.github.io/PalomarWeb/";
 
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
+const VERSION_PARAMETER = /^[1-9][0-9]*$/;
 
 function dataSource() {
   const databaseUrl = selectDatabaseUrl(window.location.href, window.location.search);
@@ -151,13 +152,13 @@ function entryCard(entry, versionCount) {
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
   if (versionCount > 1) {
-    footer.append(
-      internalLink(
-        `${versionCount} versions`,
-        historyUrl,
-        "version-history-link",
-      ),
+    const historyLink = internalLink(
+      `${versionCount} versions`,
+      historyUrl,
+      "version-history-link",
     );
+    historyLink.setAttribute("aria-label", `${versionCount} versions of ${entry.id}`);
+    footer.append(historyLink);
   }
   card.append(top, title, abstract, meta, footer);
   return card;
@@ -178,12 +179,12 @@ async function renderIndex() {
   try {
     const { databaseUrl, databaseBase } = dataSource();
     const index = validateIndex(await fetchJson(databaseUrl));
-    const allEntries = await loadEntries(index, databaseBase);
-    const entries = latestVersions(allEntries);
     const versionCounts = new Map();
-    for (const entry of allEntries) {
-      versionCounts.set(entry.id, (versionCounts.get(entry.id) || 0) + 1);
+    for (const summary of index.entries) {
+      versionCounts.set(summary.id, (versionCounts.get(summary.id) || 0) + 1);
     }
+    const currentIndex = { entries: latestVersions(index.entries) };
+    const entries = await loadEntries(currentIndex, databaseBase);
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     setOptionalText("#metric-results", String(entries.length));
@@ -282,9 +283,11 @@ function setCanonicalEntryPage(entry) {
 function versionNotice(entry, currentVersion) {
   if (entry.version === currentVersion) return null;
   const notice = el("aside", "version-notice");
-  notice.setAttribute("role", "status");
+  const heading = el("h2", "", "Newer version available");
+  heading.id = "newer-version-heading";
+  notice.setAttribute("aria-labelledby", heading.id);
   notice.append(
-    el("strong", "", "Newer version available"),
+    heading,
     el(
       "p",
       "",
@@ -323,12 +326,13 @@ function versionHistory(entry, versions, currentVersion) {
 
   const list = el("ol", "version-list");
   list.reversed = true;
+  list.setAttribute("role", "list");
   for (const summary of [...versions].reverse()) {
     const item = el("li");
     const label = `Version ${summary.version}`;
     if (summary.version === entry.version) {
       const selected = el("strong", "selected-version", label);
-      selected.setAttribute("aria-current", "page");
+      selected.setAttribute("aria-current", "true");
       item.append(selected);
     } else {
       item.append(internalLink(label, localPageUrl("entry.html", summary)));
@@ -720,16 +724,20 @@ async function renderEntryPage() {
   const content = document.querySelector("#entry-content");
   const id = params.get("id");
   const versionParameter = params.get("version");
-  const version = versionParameter === null ? null : Number(versionParameter);
+  const version = versionParameter === null || !VERSION_PARAMETER.test(versionParameter)
+    ? null
+    : Number(versionParameter);
   if (
     !PALOMAR_ID.test(id || "") ||
-    (version !== null && (!Number.isInteger(version) || version < 1))
+    (versionParameter !== null &&
+      (!VERSION_PARAMETER.test(versionParameter) || !Number.isSafeInteger(version)))
   ) {
     status.textContent = "This registry link has a missing or invalid Palomar ID or version.";
     status.classList.add("error");
     return;
   }
   try {
+    const requestedHash = window.location.hash;
     const {
       entry,
       canonicalUrl,
@@ -738,7 +746,9 @@ async function renderEntryPage() {
       currentVersion,
     } = await loadEntry(id, version);
     if (version === null) {
-      window.history.replaceState(null, "", localPageUrl("entry.html", entry));
+      const resolvedUrl = localPageUrl("entry.html", entry);
+      resolvedUrl.hash = requestedHash;
+      window.history.replaceState(null, "", resolvedUrl);
     }
     status.hidden = true;
     content.hidden = false;
@@ -750,7 +760,7 @@ async function renderEntryPage() {
       versions,
       currentVersion,
     );
-    if (window.location.hash === "#version-history") {
+    if (requestedHash === "#version-history") {
       document.querySelector("#version-history").scrollIntoView();
     }
   } catch (error) {
@@ -763,8 +773,13 @@ async function renderChallengePage() {
   const status = document.querySelector("#status");
   const content = document.querySelector("#render-content");
   const id = params.get("id");
-  const version = Number(params.get("version"));
-  if (!PALOMAR_ID.test(id || "") || !Number.isInteger(version) || version < 1) {
+  const versionParameter = params.get("version") || "";
+  const version = Number(versionParameter);
+  if (
+    !PALOMAR_ID.test(id || "") ||
+    !VERSION_PARAMETER.test(versionParameter) ||
+    !Number.isSafeInteger(version)
+  ) {
     status.textContent = "This render link is missing a valid Palomar ID and version.";
     status.classList.add("error");
     return;

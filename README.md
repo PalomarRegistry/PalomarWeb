@@ -47,7 +47,7 @@ https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&vers
 
 Its HTML canonical link points to that same official, explicit version,
 including when a newer version exists or the site is viewed through a mirror or
-local fixture. An `id`-only URL is a floating convenience link: the site
+local fixture. An `id`-only entry URL is a floating convenience link: the site
 resolves it to the current version and replaces the browser URL with the
 explicit snapshot URL.
 
