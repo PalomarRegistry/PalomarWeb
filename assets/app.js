@@ -111,8 +111,8 @@ function trustBadge(entry) {
   const high = entry.trust.level === "high";
   const badge = el("span", `trust-badge ${high ? "high" : "qualified"}`);
   badge.textContent = high
-    ? "Dependencies: Mathlib only"
-    : "Dependencies: additional libraries";
+    ? "Statement dependencies: Mathlib only"
+    : "Statement dependencies: additional libraries";
   return badge;
 }
 
