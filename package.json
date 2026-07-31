@@ -1,0 +1,12 @@
+{
+  "name": "palomar-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/rendering.test.js",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}
