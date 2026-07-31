@@ -29,6 +29,37 @@ referrer.
 
 The website is a presentation layer only. Permanent data and schemas live in
 PalomarDatabase; consumers should use that repository directly. A versioned ID
-such as `PALOMAR-2026-07-29-000001-v1` names one immutable record. An ID without a version
-means the latest record; later versions may change its theorem, source, authors,
-or subject, so stable citations must include the version.
+such as `PALOMAR-2026-07-29-000001-v1` names one immutable record. An ID without
+a version means the latest record; later versions may change its theorem,
+source, authors, or subject, so stable citations must include the version.
+
+## Version presentation
+
+Palomar uses integer versions and treats the greatest registered version of a
+permanent ID as current. Registry cards show only that version and link to its
+history when older snapshots exist.
+
+An entry URL with both `id` and `version` identifies one immutable snapshot:
+
+```text
+https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&version=1
+```
+
+Its HTML canonical link points to that same official, explicit version,
+including when a newer version exists or the site is viewed through a mirror or
+local fixture. An `id`-only URL is a floating convenience link: the site
+resolves it to the current version and replaces the browser URL with the
+explicit snapshot URL.
+
+Entry pages list all registered versions. Older pages display a prominent link
+to the current version. Each page renders the selected version's own authorship,
+statement, proof, trust information, review, and warnings; information is never
+borrowed from a newer record. The site provides links, not computed diffs.
+PalomarDatabase does not yet define change summaries, withdrawal states, or
+major/minor versions, so the website does not infer them. If a richer version
+scheme is adopted later, it will require a new URL contract; existing integer
+snapshot URLs remain permanent.
+
+This remains a runtime-JSON site: JavaScript is required for registry and entry
+content. The static entry shell explains this and links to the immutable JSON
+records for no-JavaScript readers.
