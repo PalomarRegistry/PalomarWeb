@@ -17,6 +17,8 @@ HASH = "a" * 64
 def entry(identifier: str, lines: int) -> dict:
     return {
         "id": identifier,
+        "accepted_at": "2026-07-29",
+        "aliases": [identifier.replace("PALOMAR-2026-07-29-", "PALOMAR-")],
         "version": 1,
         "title": f"Fixture {identifier}",
         "abstract": "A browser confinement fixture.",
@@ -29,12 +31,25 @@ def entry(identifier: str, lines: int) -> dict:
         },
         "formalization": {
             "challenge_path": "Challenge.lean",
+            "solution_path": "Solution.lean",
             "theorem_names": ["Example.theorem"],
             "definition_names": [],
             "lean_toolchain": "leanprover/lean4:v4.31.0-rc2",
             "permitted_axioms": [],
+            "project_dependencies": [
+                {
+                    "name": "exampleDependency",
+                    "repository": "example/dependency",
+                    "revision": "3" * 40,
+                }
+            ],
         },
-        "verification": {"comparator_commit": "2" * 40, "workflow_url": "https://example.test/run"},
+        "verification": {
+            "comparator_commit": "2" * 40,
+            "workflow_url": "https://example.test/run",
+            "solution_sha256": "4" * 64,
+            "verified_at": "2026-07-29T08:46:32Z",
+        },
         "trust": {
             "level": "high",
             "challenge_lines": lines,
@@ -47,6 +62,7 @@ def entry(identifier: str, lines: int) -> dict:
             "scores": {"clarity": 5},
             "warnings": [],
             "report_url": "https://example.test/review",
+            "reviewed_at": "2026-07-29T08:53:02Z",
         },
         "challenge_render": {
             "format": "verso-html",
@@ -58,8 +74,8 @@ def entry(identifier: str, lines: int) -> dict:
 
 
 ENTRIES = {
-    "PALOMAR-000123": entry("PALOMAR-000123", 100),
-    "PALOMAR-000124": entry("PALOMAR-000124", 101),
+    "PALOMAR-2026-07-29-000123": entry("PALOMAR-2026-07-29-000123", 100),
+    "PALOMAR-2026-07-29-000124": entry("PALOMAR-2026-07-29-000124", 101),
 }
 
 
@@ -84,18 +100,22 @@ class Handler(SimpleHTTPRequestHandler):
                         "id": item["id"],
                         "version": 1,
                         "path": f"entries/{item['id']}-v1.json",
+                        "aliases": item["aliases"],
                     }
                     for item in ENTRIES.values()
                 ]
             }
             self.send_bytes(json.dumps(payload).encode(), "application/json")
             return
-        match = re.fullmatch(r"/database/entries/(PALOMAR-[0-9]{6})-v1\.json", path)
+        match = re.fullmatch(
+            r"/database/entries/(PALOMAR-(?:[0-9]{4}-[0-9]{2}-[0-9]{2}-)?[0-9]{6})-v1\.json",
+            path,
+        )
         if match and match.group(1) in ENTRIES:
             self.send_bytes(json.dumps(ENTRIES[match.group(1)]).encode(), "application/json")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-[0-9]{{6}}-v1/{HASH}/Challenge/index\.html",
+            rf"/database/renders/PALOMAR-(?:[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-)?[0-9]{{6}}-v1/{HASH}/Challenge/index\.html",
             path,
         ):
             page = f"""<!doctype html>
@@ -110,24 +130,29 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_bytes(page.encode(), "text/html; charset=utf-8")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-[0-9]{{6}}-v1/{HASH}/challenge-metadata\.json",
+            rf"/database/renders/PALOMAR-(?:[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-)?[0-9]{{6}}-v1/{HASH}/challenge-metadata\.json",
             path,
         ):
             metadata = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "imports": ["Mathlib"],
                 "module_doc": "# Fixture module\n\nParsed outside the Verso surface.",
                 "declarations": ["Example.theorem"],
+                "solution_imports": ["ExampleDependency"],
             }
             self.send_bytes(json.dumps(metadata).encode(), "application/json")
             return
-        if re.fullmatch(rf"/database/renders/PALOMAR-[0-9]{{6}}-v1/{HASH}/attack\.js", path):
+        if re.fullmatch(
+            rf"/database/renders/PALOMAR-(?:[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-)?[0-9]{{6}}-v1/{HASH}/attack\.js",
+            path,
+        ):
             script = """
 document.body.dataset.scriptRan = "true";
 try { top.document.body.dataset.compromised = "true"; }
 catch (_) { document.body.dataset.topAccess = "blocked"; }
 try { localStorage.setItem("palomar-attack", "true"); }
 catch (_) { document.body.dataset.storageAccess = "blocked"; }
+parent.postMessage({type: "palomar-render-height", height: Math.ceil(document.querySelector("main").getBoundingClientRect().height)}, "*");
 """
             self.send_bytes(script.encode(), "text/javascript; charset=utf-8")
             return

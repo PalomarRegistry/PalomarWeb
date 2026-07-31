@@ -15,6 +15,7 @@ const databaseUrl = params.get("database") || DEFAULT_DATABASE;
 const databaseBase = new URL(".", databaseUrl);
 const renderBase = params.get("render-base") ||
   (params.has("database") ? databaseBase.href : DEFAULT_RENDER_BASE);
+const PALOMAR_ID = /^PALOMAR-(?:\d{4}-\d{2}-\d{2}-)?\d{6}$/;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -47,9 +48,28 @@ function theoremNames(entry) {
   return entry.formalization.theorem_names.join(", ");
 }
 
+function acceptanceDate(entry) {
+  const value = entry.accepted_at || entry.review?.reviewed_at?.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) {
+    throw new Error("entry is missing a valid acceptance date");
+  }
+  return value;
+}
+
+function displayDate(value) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00Z`));
+}
+
 function latestVersions(entries) {
+  const aliases = new Set(entries.flatMap((entry) => entry.aliases || []));
   const latest = new Map();
   for (const entry of entries) {
+    if (aliases.has(entry.id)) continue;
     const previous = latest.get(entry.id);
     if (!previous || entry.version > previous.version) latest.set(entry.id, entry);
   }
@@ -78,7 +98,12 @@ function entryCard(entry) {
   ].join(" ").toLowerCase();
 
   const top = el("div", "card-top");
-  top.append(el("span", "entry-id", `${entry.id} · v${entry.version}`), trustBadge(entry));
+  const identity = el("div", "card-identity");
+  identity.append(
+    el("span", "entry-id", `${entry.id} · v${entry.version}`),
+    el("span", "entry-date", `Accepted ${displayDate(acceptanceDate(entry))}`),
+  );
+  top.append(identity, trustBadge(entry));
   const title = el("h3");
   title.append(link(entry.title, localPageUrl("entry.html", entry)));
   const abstract = el("p", "card-abstract", entry.abstract);
@@ -199,6 +224,15 @@ function challengeFrame(entry) {
   frame.referrerPolicy = "no-referrer";
   frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("scrolling", "auto");
+  window.addEventListener("message", (event) => {
+    if (event.source !== frame.contentWindow || event.data?.type !== "palomar-render-height") {
+      return;
+    }
+    const height = event.data.height;
+    if (!Number.isSafeInteger(height) || height <= 0) return;
+    frame.style.height = `${Math.max(160, Math.min(672, height + 2))}px`;
+    frame.dataset.heightAdjusted = "true";
+  });
   return frame;
 }
 
@@ -212,13 +246,21 @@ function validateChallengeMetadata(entry, metadata) {
     Array.isArray(left) && left.length === right.length &&
       left.every((value, index) => value === right[index]);
   if (
-    metadata?.schema_version !== 1 ||
+    ![1, 2].includes(metadata?.schema_version) ||
     !sameArray(metadata.declarations, expectedDeclarations) ||
     !sameArray(metadata.imports, expectedImports) ||
     !(metadata.module_doc === null ||
       (typeof metadata.module_doc === "string" && metadata.module_doc.length <= 256 * 1024))
   ) {
     throw new Error("Challenge render metadata does not match the registry entry");
+  }
+  if (
+    metadata.schema_version >= 2 &&
+    (!Array.isArray(metadata.solution_imports) ||
+      metadata.solution_imports.length > 1_000 ||
+      !metadata.solution_imports.every((item) => typeof item === "string" && item.length > 0))
+  ) {
+    throw new Error("Challenge render metadata contains invalid Solution imports");
   }
   return metadata;
 }
@@ -253,7 +295,8 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
 
   const links = el("p", "challenge-links");
   links.append(link("View canonical Challenge.lean", challengeSourceUrl(entry), "challenge-source"));
-  if (!forceFrame) {
+  const inline = isInlineChallenge(entry);
+  if (!forceFrame && !inline) {
     links.append(" · ", link("Open rendered Challenge", localPageUrl("render.html", entry)));
   }
   section.append(links);
@@ -273,11 +316,11 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
         "This historical rendering predates declaration-only presentation metadata; use the canonical Challenge.lean link above.",
       ),
     );
-    return section;
+    return {section, metadata: null};
   }
   section.append(challengeMetadata(metadata));
 
-  if (forceFrame || isInlineChallenge(entry)) {
+  if (forceFrame || inline) {
     section.append(challengeFrame(entry));
   } else {
     section.append(
@@ -288,6 +331,83 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
       ),
     );
   }
+  return {section, metadata};
+}
+
+function acceptanceCallout(entry) {
+  const callout = el("div", "acceptance-callout");
+  const check = el("span", "acceptance-check", "✓");
+  check.setAttribute("aria-hidden", "true");
+  const copy = el("div");
+  copy.append(
+    el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
+    el(
+      "p",
+      "",
+      "Palomar checked the pinned Solution with Lean, matched every advertised declaration with Comparator, verified the permitted axiom set, and accepted the editorial review.",
+    ),
+  );
+  callout.append(check, copy);
+  return callout;
+}
+
+function solutionMetadata(entry, renderMetadata) {
+  const section = el("section", "entry-solution");
+  const heading = el("div", "section-heading");
+  const title = el("div");
+  title.append(el("div", "eyebrow", "Accepted proof artifact"), el("h2", "", "Verified solution"));
+  heading.append(title, el("span", "decision accepted-decision", "Accepted"));
+  section.append(heading);
+  section.append(
+    el(
+      "p",
+      "solution-summary",
+      "The accepted Solution.lean was checked at the immutable source commit against the pinned transitive Lake dependency closure below.",
+    ),
+  );
+
+  const details = el("dl", "details solution-details");
+  details.append(
+    externalDetailRow(
+      "Solution file",
+      `Open ${entry.formalization.solution_path}`,
+      pinnedSourceFileUrl(entry, entry.formalization.solution_path),
+    ),
+    detailRow("Solution SHA-256", entry.verification.solution_sha256),
+  );
+  if (renderMetadata?.schema_version >= 2) {
+    const row = el("div", "detail-row");
+    row.append(el("dt", "", "Direct imports"));
+    const value = el("dd", "token-list");
+    for (const item of renderMetadata.solution_imports) value.append(el("code", "", item));
+    row.append(value);
+    details.append(row);
+  }
+  section.append(details);
+
+  const dependencies = entry.formalization.project_dependencies;
+  const closure = el("details", "solution-dependencies");
+  closure.append(
+    el(
+      "summary",
+      "",
+      `${dependencies.length} pinned repositories in the transitive Lake closure`,
+    ),
+  );
+  const list = el("ul", "dependency-list");
+  for (const dependency of dependencies) {
+    const item = el("li");
+    item.append(
+      link(
+        dependency.repository,
+        `https://github.com/${dependency.repository}/tree/${dependency.revision}`,
+      ),
+      el("code", "", dependency.revision.slice(0, 12)),
+    );
+    list.append(item);
+  }
+  closure.append(list);
+  section.append(closure);
   return section;
 }
 
@@ -305,13 +425,24 @@ async function renderEntry(entry, content, canonicalUrl) {
   const titleBlock = el("div");
   titleBlock.append(el("div", "eyebrow", "Machine evidence"), el("h2", "", "What was checked"));
   evidenceTitle.append(titleBlock);
+  evidence.append(evidenceTitle, acceptanceCallout(entry));
   const details = el("dl", "details");
   details.append(
+    detailRow("Acceptance date", displayDate(acceptanceDate(entry))),
+    detailRow(
+      "Lean verification date",
+      displayDate(entry.verification.verified_at.slice(0, 10)),
+    ),
     externalDetailRow("Immutable source", `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`, entry.source.tree_url),
     externalDetailRow(
       "Challenge file",
       `Open ${entry.formalization.challenge_path}`,
       pinnedSourceFileUrl(entry, entry.formalization.challenge_path),
+    ),
+    externalDetailRow(
+      "Solution file",
+      `Open ${entry.formalization.solution_path}`,
+      pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
     detailRow("Lean toolchain", entry.formalization.lean_toolchain),
     detailRow("Compared theorems", theoremNames(entry)),
@@ -319,7 +450,7 @@ async function renderEntry(entry, content, canonicalUrl) {
     detailRow("Challenge surface", `${entry.trust.challenge_lines} lines · ${entry.trust.challenge_bytes} bytes`),
     externalDetailRow("Comparator run", entry.verification.comparator_commit.slice(0, 12), entry.verification.workflow_url),
   );
-  evidence.append(evidenceTitle, details);
+  evidence.append(details);
 
   const trust = el("section", "entry-trust");
   const trustTitle = el("div", "section-heading");
@@ -377,11 +508,13 @@ async function renderEntry(entry, content, canonicalUrl) {
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
   machine.append(pre);
 
+  const challenge = await challengePresentation(entry);
   content.append(
     heading,
-    await challengePresentation(entry),
+    challenge.section,
     evidence,
     trust,
+    solutionMetadata(entry, challenge.metadata),
     editorial,
     machine,
   );
@@ -389,11 +522,15 @@ async function renderEntry(entry, content, canonicalUrl) {
 
 async function loadEntry(id, version) {
   const index = await fetchJson(databaseUrl);
+  const replacements = index.entries
+    .filter((item) => Array.isArray(item.aliases) && item.aliases.includes(id))
+    .sort((left, right) => right.version - left.version);
+  if (replacements.length) return { replacement: replacements[0] };
   const summary = index.entries.find((item) => item.id === id && item.version === version);
   if (!summary) throw new Error("entry not found");
   const path = entryRecordPath(id, version, summary.path);
   const canonicalUrl = new URL(path, databaseBase);
-  return { entry: await fetchJson(canonicalUrl), canonicalUrl };
+  return { entry: await fetchJson(canonicalUrl), canonicalUrl, replacement: null };
 }
 
 async function renderEntryPage() {
@@ -401,13 +538,17 @@ async function renderEntryPage() {
   const content = document.querySelector("#entry-content");
   const id = params.get("id");
   const version = Number(params.get("version"));
-  if (!/^PALOMAR-\d{6}$/.test(id || "") || !Number.isInteger(version) || version < 1) {
+  if (!PALOMAR_ID.test(id || "") || !Number.isInteger(version) || version < 1) {
     status.textContent = "This registry link is missing a valid Palomar ID and version.";
     status.classList.add("error");
     return;
   }
   try {
-    const { entry, canonicalUrl } = await loadEntry(id, version);
+    const { entry, canonicalUrl, replacement } = await loadEntry(id, version);
+    if (replacement) {
+      window.location.replace(localPageUrl("entry.html", replacement));
+      return;
+    }
     status.hidden = true;
     content.hidden = false;
     await renderEntry(entry, content, canonicalUrl);
@@ -422,20 +563,25 @@ async function renderChallengePage() {
   const content = document.querySelector("#render-content");
   const id = params.get("id");
   const version = Number(params.get("version"));
-  if (!/^PALOMAR-\d{6}$/.test(id || "") || !Number.isInteger(version) || version < 1) {
+  if (!PALOMAR_ID.test(id || "") || !Number.isInteger(version) || version < 1) {
     status.textContent = "This render link is missing a valid Palomar ID and version.";
     status.classList.add("error");
     return;
   }
   try {
-    const { entry } = await loadEntry(id, version);
+    const { entry, replacement } = await loadEntry(id, version);
+    if (replacement) {
+      window.location.replace(localPageUrl("render.html", replacement));
+      return;
+    }
     document.title = `Challenge — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
       el("div", "entry-id", `${entry.id} · version ${entry.version}`),
       el("h1", "", entry.title),
     );
-    content.append(heading, await challengePresentation(entry, { forceFrame: true }));
+    const challenge = await challengePresentation(entry, { forceFrame: true });
+    content.append(heading, challenge.section);
     status.hidden = true;
     content.hidden = false;
   } catch (error) {
