@@ -12,14 +12,103 @@ function fileAtPreviousDeployment(path) {
 }
 
 test("landing cards show the acceptance date and dated identifier", async ({ page }) => {
+  await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) => route.abort());
   await page.goto(`/?database=${database}`);
   const first = page.locator(".entry-card").first();
   await expect(first.locator(".entry-id")).toContainText("PALOMAR-2026-07-29-");
+  await expect(first.locator(".entry-id")).toContainText("current version 2");
   await expect(first.locator(".entry-date")).toHaveText("Accepted 29 July 2026");
   await expect(first.locator(".trust-badge")).toHaveText("Dependencies: Mathlib only");
+  await expect(first.getByRole("link", { name: "2 versions" })).toHaveAttribute(
+    "href",
+    /entry\.html\?.*version=2.*#version-history$/,
+  );
+  await expect(first.locator(".version-history-link")).toHaveAttribute(
+    "aria-label",
+    "2 versions of PALOMAR-2026-07-29-000123",
+  );
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Mathlib only" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
+});
+
+test("an unversioned entry link resolves to the current immutable URL", async ({ page }) => {
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}#version-history`,
+  );
+
+  await expect(page.locator(".entry-heading h1")).toHaveText(
+    "Fixture PALOMAR-2026-07-29-000123 version 2",
+  );
+  await expect(page).toHaveURL(/entry\.html\?id=PALOMAR-2026-07-29-000123&version=2&database=/);
+  await expect(page).toHaveURL(/#version-history$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    "https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000123&version=2",
+  );
+});
+
+test("entry pages list immutable versions and flag superseded snapshots", async ({ page }) => {
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+
+  const notice = page.locator(".version-notice");
+  await expect(notice.getByRole("heading", { name: "Newer version available" })).toBeVisible();
+  await expect(notice).toContainText("Newer version available");
+  await expect(notice).toContainText("Version 2 is the current version");
+  await expect(notice.getByRole("link", { name: "View current version 2" })).toHaveAttribute(
+    "href",
+    /entry\.html\?.*version=2/,
+  );
+
+  const history = page.locator("#version-history");
+  await expect(history.getByRole("heading", { name: "Versions" })).toBeVisible();
+  await expect(history.locator("li")).toHaveCount(2);
+  await expect(history.locator("li").nth(0)).toContainText("Version 2");
+  await expect(history.locator("li").nth(0)).toContainText("Current");
+  await expect(history.locator("li").nth(1)).toContainText("Version 1");
+  await expect(history.locator("li").nth(1)).toContainText("Superseded");
+  await expect(history.locator("li").nth(1)).toContainText("Viewing");
+  await expect(page.locator(".entry-heading h1")).toHaveText(
+    "Fixture PALOMAR-2026-07-29-000123 version 1",
+  );
+  await expect(page.locator(".machine-record a")).toHaveText(
+    "Open PALOMAR-2026-07-29-000123-v1.json",
+  );
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    "https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000123&version=1",
+  );
+});
+
+test("a single current version has no supersession treatment", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").nth(1);
+  await expect(card.locator(".version-history-link")).toHaveCount(0);
+
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`,
+  );
+  await expect(page.locator(".version-notice")).toHaveCount(0);
+  await expect(page.locator("#version-history li")).toHaveCount(1);
+});
+
+test("entry version parameters use canonical positive-integer spelling", async ({ page }) => {
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=2.0&database=${database}`,
+  );
+  await expect(page.locator("#status")).toContainText("missing or invalid Palomar ID or version");
+  await expect(page.locator("#entry-content")).toBeHidden();
+});
+
+test("the index version-history link reaches history loaded at runtime", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator(".entry-card").first().getByRole("link", { name: "2 versions" }).click();
+
+  await expect(page).toHaveURL(/#version-history$/);
+  await expect(page.locator("#version-history")).toBeInViewport();
 });
 
 test("optional metric markup cannot take down the registry", async ({ page }) => {

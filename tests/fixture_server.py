@@ -14,15 +14,15 @@ PORT = 4173
 HASH = "a" * 64
 
 
-def entry(identifier: str, lines: int) -> dict:
+def entry(identifier: str, lines: int, version: int = 1) -> dict:
     issue = int(identifier.rsplit("-", 1)[-1])
     return {
         "schema_version": 2,
         "id": identifier,
         "accepted_at": "2026-07-29",
-        "version": 1,
+        "version": version,
         "status": "accepted",
-        "title": f"Fixture {identifier}",
+        "title": f"Fixture {identifier} version {version}",
         "abstract": "A browser confinement fixture.",
         "authors": [{"name": "Example"}],
         "submission": {
@@ -91,7 +91,7 @@ def entry(identifier: str, lines: int) -> dict:
         },
         "challenge_render": {
             "format": "verso-html",
-            "artifact_path": f"renders/{identifier}-v1/{HASH}/",
+            "artifact_path": f"renders/{identifier}-v{version}/{HASH}/",
             "entrypoint": "Challenge/index.html",
             "artifact_tree_sha256": HASH,
             "verso_commit": "6" * 40,
@@ -103,8 +103,15 @@ def entry(identifier: str, lines: int) -> dict:
 
 
 ENTRIES = {
-    "PALOMAR-2026-07-29-000123": entry("PALOMAR-2026-07-29-000123", 100),
-    "PALOMAR-2026-07-29-000124": entry("PALOMAR-2026-07-29-000124", 101),
+    ("PALOMAR-2026-07-29-000123", 1): entry(
+        "PALOMAR-2026-07-29-000123", 100, 1
+    ),
+    ("PALOMAR-2026-07-29-000123", 2): entry(
+        "PALOMAR-2026-07-29-000123", 100, 2
+    ),
+    ("PALOMAR-2026-07-29-000124", 1): entry(
+        "PALOMAR-2026-07-29-000124", 101, 1
+    ),
 }
 
 
@@ -129,10 +136,10 @@ class Handler(SimpleHTTPRequestHandler):
                 "entries": [
                     {
                         "id": item["id"],
-                        "version": 1,
+                        "version": item["version"],
                         "title": item["title"],
                         "status": "accepted",
-                        "path": f"entries/{item['id']}-v1.json",
+                        "path": f"entries/{item['id']}-v{item['version']}.json",
                     }
                     for item in ENTRIES.values()
                 ]
@@ -140,14 +147,15 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_bytes(json.dumps(payload).encode(), "application/json")
             return
         match = re.fullmatch(
-            r"/database/entries/(PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})-v1\.json",
+            r"/database/entries/(PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})-v([1-9][0-9]*)\.json",
             path,
         )
-        if match and match.group(1) in ENTRIES:
-            self.send_bytes(json.dumps(ENTRIES[match.group(1)]).encode(), "application/json")
+        entry_key = (match.group(1), int(match.group(2))) if match else None
+        if entry_key in ENTRIES:
+            self.send_bytes(json.dumps(ENTRIES[entry_key]).encode(), "application/json")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/Challenge/index\.html",
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v[1-9][0-9]*/{HASH}/Challenge/index\.html",
             path,
         ):
             page = f"""<!doctype html>
@@ -162,7 +170,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_bytes(page.encode(), "text/html; charset=utf-8")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/challenge-metadata\.json",
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v[1-9][0-9]*/{HASH}/challenge-metadata\.json",
             path,
         ):
             metadata = {
@@ -175,7 +183,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_bytes(json.dumps(metadata).encode(), "application/json")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/attack\.js",
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v[1-9][0-9]*/{HASH}/attack\.js",
             path,
         ):
             script = """

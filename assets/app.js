@@ -20,8 +20,11 @@ import {
   workflowRunId,
 } from "./security.mjs";
 
+const CANONICAL_WEB_BASE = "https://kim-em.github.io/PalomarWeb/";
+
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
+const VERSION_PARAMETER = /^[1-9][0-9]*$/;
 
 function dataSource() {
   const databaseUrl = selectDatabaseUrl(window.location.href, window.location.search);
@@ -113,7 +116,7 @@ function trustBadge(entry) {
   return badge;
 }
 
-function entryCard(entry) {
+function entryCard(entry, versionCount) {
   const card = el("article", "entry-card");
   card.dataset.trust = entry.trust.level;
   card.dataset.search = [
@@ -128,7 +131,7 @@ function entryCard(entry) {
   const top = el("div", "card-top");
   const identity = el("div", "card-identity");
   identity.append(
-    el("span", "entry-id", `${entry.id} · v${entry.version}`),
+    el("span", "entry-id", `${entry.id} · current version ${entry.version}`),
     el("span", "entry-date", `Accepted ${displayDate(acceptanceDate(entry))}`),
   );
   top.append(identity, trustBadge(entry));
@@ -142,10 +145,21 @@ function entryCard(entry) {
   theorems.append(el("small", "", "Theorems"), el("span", "", theoremNames(entry)));
   meta.append(authors, theorems);
   const footer = el("div", "card-footer");
+  const historyUrl = new URL(localPageUrl("entry.html", entry));
+  historyUrl.hash = "version-history";
   footer.append(
     externalLink(entry.source.repository, entry.source.tree_url, "repo-link"),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
+  if (versionCount > 1) {
+    const historyLink = internalLink(
+      `${versionCount} versions`,
+      historyUrl,
+      "version-history-link",
+    );
+    historyLink.setAttribute("aria-label", `${versionCount} versions of ${entry.id}`);
+    footer.append(historyLink);
+  }
   card.append(top, title, abstract, meta, footer);
   return card;
 }
@@ -165,7 +179,12 @@ async function renderIndex() {
   try {
     const { databaseUrl, databaseBase } = dataSource();
     const index = validateIndex(await fetchJson(databaseUrl));
-    const entries = latestVersions(await loadEntries(index, databaseBase));
+    const versionCounts = new Map();
+    for (const summary of index.entries) {
+      versionCounts.set(summary.id, (versionCounts.get(summary.id) || 0) + 1);
+    }
+    const currentIndex = { entries: latestVersions(index.entries) };
+    const entries = await loadEntries(currentIndex, databaseBase);
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     setOptionalText("#metric-results", String(entries.length));
@@ -181,7 +200,7 @@ async function renderIndex() {
     }
     status.hidden = true;
     for (const entry of entries.sort((a, b) => a.id.localeCompare(b.id))) {
-      grid.append(entryCard(entry));
+      grid.append(entryCard(entry, versionCounts.get(entry.id)));
     }
     let trust = "all";
     const search = document.querySelector("#search");
@@ -242,6 +261,96 @@ function localPageUrl(page, entry) {
     }
   }
   return safeInternalUrl(target, window.location.href);
+}
+
+function canonicalEntryPageUrl(entry) {
+  const target = new URL("entry.html", CANONICAL_WEB_BASE);
+  target.searchParams.set("id", entry.id);
+  target.searchParams.set("version", String(entry.version));
+  return safeExternalUrl(target);
+}
+
+function setCanonicalEntryPage(entry) {
+  let canonical = document.querySelector('link[rel="canonical"]');
+  if (!canonical) {
+    canonical = document.createElement("link");
+    canonical.rel = "canonical";
+    document.head.append(canonical);
+  }
+  canonical.href = canonicalEntryPageUrl(entry).href;
+}
+
+function versionNotice(entry, currentVersion) {
+  if (entry.version === currentVersion) return null;
+  const notice = el("aside", "version-notice");
+  const heading = el("h2", "", "Newer version available");
+  heading.id = "newer-version-heading";
+  notice.setAttribute("aria-labelledby", heading.id);
+  notice.append(
+    heading,
+    el(
+      "p",
+      "",
+      `You are viewing immutable version ${entry.version}. Version ${currentVersion} is the current version of this record.`,
+    ),
+  );
+  notice.append(
+    internalLink(
+      `View current version ${currentVersion}`,
+      localPageUrl("entry.html", { id: entry.id, version: currentVersion }),
+    ),
+  );
+  return notice;
+}
+
+function versionHistory(entry, versions, currentVersion) {
+  const section = el("section", "version-history");
+  section.id = "version-history";
+  section.setAttribute("aria-labelledby", "version-history-heading");
+  const heading = el("div", "section-heading");
+  const title = el("div");
+  title.append(
+    el("div", "eyebrow", "Registry history"),
+    el("h2", "", "Versions"),
+  );
+  title.querySelector("h2").id = "version-history-heading";
+  heading.append(title);
+  section.append(
+    heading,
+    el(
+      "p",
+      "version-history-intro",
+      "Every version is an immutable accepted snapshot. The authorship, statement, proof, review, warnings, and dependency information on this page belong to the selected version only.",
+    ),
+  );
+
+  const list = el("ol", "version-list");
+  list.reversed = true;
+  list.setAttribute("role", "list");
+  for (const summary of [...versions].reverse()) {
+    const item = el("li");
+    const label = `Version ${summary.version}`;
+    if (summary.version === entry.version) {
+      const selected = el("strong", "selected-version", label);
+      selected.setAttribute("aria-current", "true");
+      item.append(selected);
+    } else {
+      item.append(internalLink(label, localPageUrl("entry.html", summary)));
+    }
+    item.append(
+      el(
+        "span",
+        `version-state ${summary.version === currentVersion ? "current" : "superseded"}`,
+        summary.version === currentVersion ? "Current" : "Superseded",
+      ),
+    );
+    if (summary.version === entry.version) {
+      item.append(el("span", "viewing-version", "Viewing"));
+    }
+    list.append(item);
+  }
+  section.append(list);
+  return section;
 }
 
 function challengeFrame(entry, renderBase) {
@@ -447,8 +556,16 @@ function solutionMetadata(entry, renderMetadata) {
   return section;
 }
 
-async function renderEntry(entry, content, canonicalUrl, renderBase) {
+async function renderEntry(
+  entry,
+  content,
+  canonicalUrl,
+  renderBase,
+  versions,
+  currentVersion,
+) {
   document.title = `${entry.title} — Palomar`;
+  setCanonicalEntryPage(entry);
   const heading = el("header", "entry-heading");
   const top = el("div", "card-top");
   top.append(el("span", "entry-id", `${entry.id} · version ${entry.version}`), trustBadge(entry));
@@ -566,8 +683,11 @@ async function renderEntry(entry, content, canonicalUrl, renderBase) {
   machine.append(pre);
 
   const challenge = await challengePresentation(entry, renderBase);
+  content.append(heading);
+  const notice = versionNotice(entry, currentVersion);
+  if (notice) content.append(notice);
   content.append(
-    heading,
+    versionHistory(entry, versions, currentVersion),
     challenge.section,
     evidence,
     trust,
@@ -577,31 +697,72 @@ async function renderEntry(entry, content, canonicalUrl, renderBase) {
   );
 }
 
-async function loadEntry(id, version) {
+async function loadEntry(id, requestedVersion) {
   const { databaseUrl, databaseBase, renderBase } = dataSource();
   const index = validateIndex(await fetchJson(databaseUrl));
+  const versions = index.entries
+    .filter((item) => item.id === id)
+    .sort((left, right) => left.version - right.version);
+  if (!versions.length) throw new Error("entry not found");
+  const currentVersion = versions.at(-1).version;
+  const version = requestedVersion ?? currentVersion;
   const summary = index.entries.find((item) => item.id === id && item.version === version);
   if (!summary) throw new Error("entry not found");
   const canonicalUrl = entryRecordUrl(summary, databaseBase);
   const entry = validateEntry(await fetchJson(canonicalUrl), summary);
-  return { entry, canonicalUrl, renderBase };
+  return {
+    entry,
+    canonicalUrl,
+    renderBase,
+    versions,
+    currentVersion,
+  };
 }
 
 async function renderEntryPage() {
   const status = document.querySelector("#status");
   const content = document.querySelector("#entry-content");
   const id = params.get("id");
-  const version = Number(params.get("version"));
-  if (!PALOMAR_ID.test(id || "") || !Number.isInteger(version) || version < 1) {
-    status.textContent = "This registry link is missing a valid Palomar ID and version.";
+  const versionParameter = params.get("version");
+  const version = versionParameter === null || !VERSION_PARAMETER.test(versionParameter)
+    ? null
+    : Number(versionParameter);
+  if (
+    !PALOMAR_ID.test(id || "") ||
+    (versionParameter !== null &&
+      (!VERSION_PARAMETER.test(versionParameter) || !Number.isSafeInteger(version)))
+  ) {
+    status.textContent = "This registry link has a missing or invalid Palomar ID or version.";
     status.classList.add("error");
     return;
   }
   try {
-    const { entry, canonicalUrl, renderBase } = await loadEntry(id, version);
+    const requestedHash = window.location.hash;
+    const {
+      entry,
+      canonicalUrl,
+      renderBase,
+      versions,
+      currentVersion,
+    } = await loadEntry(id, version);
+    if (version === null) {
+      const resolvedUrl = localPageUrl("entry.html", entry);
+      resolvedUrl.hash = requestedHash;
+      window.history.replaceState(null, "", resolvedUrl);
+    }
     status.hidden = true;
     content.hidden = false;
-    await renderEntry(entry, content, canonicalUrl, renderBase);
+    await renderEntry(
+      entry,
+      content,
+      canonicalUrl,
+      renderBase,
+      versions,
+      currentVersion,
+    );
+    if (requestedHash === "#version-history") {
+      document.querySelector("#version-history").scrollIntoView();
+    }
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -612,8 +773,13 @@ async function renderChallengePage() {
   const status = document.querySelector("#status");
   const content = document.querySelector("#render-content");
   const id = params.get("id");
-  const version = Number(params.get("version"));
-  if (!PALOMAR_ID.test(id || "") || !Number.isInteger(version) || version < 1) {
+  const versionParameter = params.get("version") || "";
+  const version = Number(versionParameter);
+  if (
+    !PALOMAR_ID.test(id || "") ||
+    !VERSION_PARAMETER.test(versionParameter) ||
+    !Number.isSafeInteger(version)
+  ) {
     status.textContent = "This render link is missing a valid Palomar ID and version.";
     status.classList.add("error");
     return;

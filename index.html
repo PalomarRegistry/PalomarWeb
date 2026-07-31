@@ -56,7 +56,15 @@
           </div>
         </div>
 
-        <div id="status" class="status">Reading the Palomar database…</div>
+        <div id="status" class="status">
+          Reading the Palomar database…
+          <noscript>
+            <br>
+            The registry requires JavaScript because it reads PalomarDatabase at
+            runtime. You can instead
+            <a href="https://github.com/kim-em/PalomarDatabase/tree/main/entries">browse the JSON records directly</a>.
+          </noscript>
+        </div>
         <div id="entry-grid" class="entry-grid" aria-live="polite"></div>
       </section>
     </main>
