@@ -344,7 +344,7 @@ function acceptanceCallout(entry) {
     el(
       "p",
       "",
-      "Palomar checked the pinned Solution with Lean, matched every advertised declaration with Comparator, verified the permitted axiom set, and accepted the editorial review.",
+      "Palomar checked the pinned Solution with Lean, matched every advertised declaration with Comparator, verified the permitted axiom set, and completed editorial review. Every required check passed; Palomar accepted the submission.",
     ),
   );
   callout.append(check, copy);
