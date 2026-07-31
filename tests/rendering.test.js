@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   challengeArtifactUrl,
+  challengeMetadataUrl,
   challengeSourceUrl,
   entryRecordPath,
   isInlineChallenge,
@@ -53,6 +54,13 @@ test("artifact URL is derived only from the content-addressed registry fields", 
   const traversal = entry();
   traversal.challenge_render.artifact_path = "renders/../../attacker/";
   assert.throws(() => challengeArtifactUrl(traversal, "https://example.test/"), /invalid/);
+});
+
+test("artifact metadata URL stays inside the content-addressed bundle", () => {
+  assert.equal(
+    challengeMetadataUrl(entry(), "https://kim-em.github.io/PalomarDatabase/").href,
+    `https://kim-em.github.io/PalomarDatabase/renders/PALOMAR-000123-v1/${"a".repeat(64)}/challenge-metadata.json`,
+  );
 });
 
 test("source URL is always the immutable canonical GitHub file", () => {

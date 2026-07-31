@@ -101,8 +101,25 @@ class Handler(SimpleHTTPRequestHandler):
             page = f"""<!doctype html>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Hostile render fixture</title>
-<body><h1>Rendered theorem</h1><script defer src="../attack.js"></script></body>"""
+<style>html, body {{ height: auto; overflow: auto; }} body {{ margin: 0; }}
+.theorem {{ padding: 1rem; }} .theorem-lines {{ height: 70rem; }}</style>
+<body><main><p class="docstring">The theorem doc-string.</p>
+<div class="theorem"><pre>theorem Example.theorem :</pre><div class="theorem-lines"></div>
+<pre id="theorem-end">  True := by trivial</pre></div>
+</main><script defer src="../attack.js"></script></body>"""
             self.send_bytes(page.encode(), "text/html; charset=utf-8")
+            return
+        if re.fullmatch(
+            rf"/database/renders/PALOMAR-[0-9]{{6}}-v1/{HASH}/challenge-metadata\.json",
+            path,
+        ):
+            metadata = {
+                "schema_version": 1,
+                "imports": ["Mathlib"],
+                "module_doc": "# Fixture module\n\nParsed outside the Verso surface.",
+                "declarations": ["Example.theorem"],
+            }
+            self.send_bytes(json.dumps(metadata).encode(), "application/json")
             return
         if re.fullmatch(rf"/database/renders/PALOMAR-[0-9]{{6}}-v1/{HASH}/attack\.js", path):
             script = """
