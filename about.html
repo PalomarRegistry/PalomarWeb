@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="How the Palomar registry verifies and reviews Lean formalizations.">
     <meta name="theme-color" content="#ffffff">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; frame-src 'self' https://kim-em.github.io; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
     <title>About — Palomar</title>
     <link rel="stylesheet" href="assets/style.css">
   </head>
@@ -49,7 +50,7 @@
           </li>
           <li>
             <span>5.</span>
-            <div><h3>Append-only publication</h3><p>An accepted result becomes an immutable JSON record with a permanent identifier and version. Corrections add versions; history is not rewritten.</p></div>
+            <div><h3>Append-only publication</h3><p>An accepted result becomes an immutable JSON record identified by both its Palomar ID and version. Later versions may change the theorem, source, authors, or subject radically. Cite an explicit version for stable meaning; an ID without a version means the latest record and may change meaning.</p></div>
           </li>
         </ol>
       </section>

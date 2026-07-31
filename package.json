@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/rendering.test.js",
+    "test": "node --test tests/rendering.test.js tests/security.test.mjs",
     "test:browser": "playwright test"
   },
   "devDependencies": {

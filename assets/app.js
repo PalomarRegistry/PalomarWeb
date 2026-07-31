@@ -1,19 +1,32 @@
 import {
   challengeArtifactUrl,
   challengeSourceUrl,
-  entryRecordPath,
   isInlineChallenge,
 } from "./rendering.js";
-
-const DEFAULT_DATABASE =
-  "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
-const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
+import {
+  databaseBaseFor,
+  entryRecordUrl,
+  isLoopbackHostname,
+  pinnedSourceFileUrl,
+  reportIssueNumber,
+  safeDataUrl,
+  safeExternalUrl,
+  safeInternalUrl,
+  selectDatabaseUrl,
+  selectRenderBase,
+  validateEntry,
+  validateIndex,
+  workflowRunId,
+} from "./security.mjs";
 
 const params = new URLSearchParams(window.location.search);
-const databaseUrl = params.get("database") || DEFAULT_DATABASE;
-const databaseBase = new URL(".", databaseUrl);
-const renderBase = params.get("render-base") ||
-  (params.has("database") ? databaseBase.href : DEFAULT_RENDER_BASE);
+
+function dataSource() {
+  const databaseUrl = selectDatabaseUrl(window.location.href, window.location.search);
+  const databaseBase = databaseBaseFor(databaseUrl);
+  const renderBase = selectRenderBase(window.location.href, window.location.search, databaseBase);
+  return { databaseUrl, databaseBase, renderBase };
+}
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -22,10 +35,22 @@ function el(tag, className, text) {
   return node;
 }
 
-function link(text, href, className) {
+function anchor(text, href, className) {
   const node = el("a", className, text);
-  node.href = href;
+  node.href = href.href;
   return node;
+}
+
+function externalLink(text, href, className) {
+  return anchor(text, safeExternalUrl(href), className);
+}
+
+function dataLink(text, href, className) {
+  return anchor(text, safeDataUrl(href, window.location.href), className);
+}
+
+function internalLink(text, href, className) {
+  return anchor(text, safeInternalUrl(href, window.location.href), className);
 }
 
 async function fetchJson(url) {
@@ -75,7 +100,7 @@ function entryCard(entry) {
   const top = el("div", "card-top");
   top.append(el("span", "entry-id", `${entry.id} · v${entry.version}`), trustBadge(entry));
   const title = el("h3");
-  title.append(link(entry.title, localPageUrl("entry.html", entry)));
+  title.append(internalLink(entry.title, localPageUrl("entry.html", entry)));
   const abstract = el("p", "card-abstract", entry.abstract);
   const meta = el("div", "card-meta");
   const authors = el("div");
@@ -85,16 +110,19 @@ function entryCard(entry) {
   meta.append(authors, theorems);
   const footer = el("div", "card-footer");
   footer.append(
-    link(entry.source.repository, entry.source.tree_url, "repo-link"),
-    link("View record", localPageUrl("entry.html", entry)),
+    externalLink(entry.source.repository, entry.source.tree_url, "repo-link"),
+    internalLink("View record", localPageUrl("entry.html", entry)),
   );
   card.append(top, title, abstract, meta, footer);
   return card;
 }
 
-async function loadEntries(index) {
+async function loadEntries(index, databaseBase) {
   return Promise.all(
-    index.entries.map((summary) => fetchJson(new URL(summary.path, databaseBase))),
+    index.entries.map(async (summary) => {
+      const entry = await fetchJson(entryRecordUrl(summary, databaseBase));
+      return validateEntry(entry, summary);
+    }),
   );
 }
 
@@ -102,8 +130,9 @@ async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
   try {
-    const index = await fetchJson(databaseUrl);
-    const entries = latestVersions(await loadEntries(index));
+    const { databaseUrl, databaseBase } = dataSource();
+    const index = validateIndex(await fetchJson(databaseUrl));
+    const entries = latestVersions(await loadEntries(index, databaseBase));
     document.querySelector("#metric-results").textContent = String(entries.length);
     document.querySelector("#metric-projects").textContent = String(
       new Set(entries.map((entry) => entry.source.repository)).size,
@@ -164,15 +193,9 @@ function externalDetailRow(labelText, text, href) {
   const row = el("div", "detail-row");
   row.append(el("dt", "", labelText));
   const value = el("dd");
-  value.append(link(text, href));
+  value.append(externalLink(text, href));
   row.append(value);
   return row;
-}
-
-function pinnedSourceFileUrl(entry, path) {
-  const repository = entry.source.repository_url.replace(/\/+$/, "");
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-  return `${repository}/blob/${entry.source.commit}/${encodedPath}`;
 }
 
 function localPageUrl(page, entry) {
@@ -180,15 +203,20 @@ function localPageUrl(page, entry) {
   target.search = "";
   target.searchParams.set("id", entry.id);
   target.searchParams.set("version", String(entry.version));
-  for (const name of ["database", "render-base"]) {
-    if (params.has(name)) target.searchParams.set(name, params.get(name));
+  if (isLoopbackHostname(window.location.hostname)) {
+    for (const name of ["database", "render-base"]) {
+      if (params.has(name)) target.searchParams.set(name, params.get(name));
+    }
   }
-  return target.href;
+  return safeInternalUrl(target, window.location.href);
 }
 
-function challengeFrame(entry) {
+function challengeFrame(entry, renderBase) {
   const frame = el("iframe", "challenge-frame");
-  frame.src = challengeArtifactUrl(entry, renderBase).href;
+  frame.src = safeDataUrl(
+    challengeArtifactUrl(entry, renderBase).href,
+    window.location.href,
+  ).href;
   frame.title = `Rendered Challenge for ${entry.id} version ${entry.version}`;
   frame.loading = "lazy";
   frame.referrerPolicy = "no-referrer";
@@ -196,7 +224,7 @@ function challengeFrame(entry) {
   return frame;
 }
 
-function challengePresentation(entry, { forceFrame = false } = {}) {
+function challengePresentation(entry, renderBase, { forceFrame = false } = {}) {
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
   const titleBlock = el("div");
@@ -205,14 +233,22 @@ function challengePresentation(entry, { forceFrame = false } = {}) {
   section.append(heading);
 
   const links = el("p", "challenge-links");
-  links.append(link("View canonical Challenge.lean", challengeSourceUrl(entry), "challenge-source"));
-  if (!forceFrame) {
-    links.append(" · ", link("Open rendered Challenge", localPageUrl("render.html", entry)));
+  links.append(
+    externalLink("View canonical Challenge.lean", challengeSourceUrl(entry), "challenge-source"),
+  );
+  const hasRender = entry.challenge_render !== undefined;
+  if (!forceFrame && hasRender) {
+    links.append(
+      " · ",
+      internalLink("Open rendered Challenge", localPageUrl("render.html", entry)),
+    );
   }
   section.append(links);
 
-  if (forceFrame || isInlineChallenge(entry)) {
-    section.append(challengeFrame(entry));
+  if (hasRender && (forceFrame || isInlineChallenge(entry))) {
+    section.append(challengeFrame(entry, renderBase));
+  } else if (!hasRender) {
+    section.append(el("p", "challenge-fallback", "No rendered Challenge is published for this record."));
   } else {
     section.append(
       el(
@@ -225,7 +261,7 @@ function challengePresentation(entry, { forceFrame = false } = {}) {
   return section;
 }
 
-function renderEntry(entry, content, canonicalUrl) {
+function renderEntry(entry, content, canonicalUrl, renderBase) {
   document.title = `${entry.title} — Palomar`;
   const heading = el("header", "entry-heading");
   const top = el("div", "card-top");
@@ -247,11 +283,18 @@ function renderEntry(entry, content, canonicalUrl) {
       `Open ${entry.formalization.challenge_path}`,
       pinnedSourceFileUrl(entry, entry.formalization.challenge_path),
     ),
+    detailRow("Challenge SHA-256", entry.verification.challenge_sha256),
+    detailRow("Solution SHA-256", entry.verification.solution_sha256),
     detailRow("Lean toolchain", entry.formalization.lean_toolchain),
     detailRow("Compared theorems", theoremNames(entry)),
     detailRow("Permitted axioms", entry.formalization.permitted_axioms.join(", ") || "none"),
     detailRow("Challenge surface", `${entry.trust.challenge_lines} lines · ${entry.trust.challenge_bytes} bytes`),
-    externalDetailRow("Comparator run", entry.verification.comparator_commit.slice(0, 12), entry.verification.workflow_url),
+    detailRow("Comparator commit", entry.verification.comparator_commit),
+    externalDetailRow(
+      "Verification workflow",
+      `Actions run ${workflowRunId(entry.verification.workflow_url)}`,
+      entry.verification.workflow_url,
+    ),
   );
   evidence.append(evidenceTitle, details);
 
@@ -300,27 +343,40 @@ function renderEntry(entry, content, canonicalUrl) {
   } else {
     editorial.append(el("p", "no-warnings", "No permanent editorial warnings were recorded."));
   }
-  editorial.append(link("Read the public review", entry.review.report_url));
+  editorial.append(
+    externalLink(
+      `Read the review on submission #${reportIssueNumber(entry.review.report_url)}`,
+      entry.review.report_url,
+    ),
+  );
 
   const machine = el("section", "machine-record");
   machine.append(el("div", "eyebrow", "For machines and mirrors"), el("h2", "", "Canonical JSON"));
   const machineLinks = el("p");
-  machineLinks.append(link("Open the canonical JSON record", canonicalUrl.href));
+  machineLinks.append(dataLink(`Open ${entry.id}-v${entry.version}.json`, canonicalUrl.href));
   machine.append(machineLinks);
   const pre = el("pre");
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
   machine.append(pre);
 
-  content.append(heading, challengePresentation(entry), evidence, trust, editorial, machine);
+  content.append(
+    heading,
+    challengePresentation(entry, renderBase),
+    evidence,
+    trust,
+    editorial,
+    machine,
+  );
 }
 
 async function loadEntry(id, version) {
-  const index = await fetchJson(databaseUrl);
+  const { databaseUrl, databaseBase, renderBase } = dataSource();
+  const index = validateIndex(await fetchJson(databaseUrl));
   const summary = index.entries.find((item) => item.id === id && item.version === version);
   if (!summary) throw new Error("entry not found");
-  const path = entryRecordPath(id, version, summary.path);
-  const canonicalUrl = new URL(path, databaseBase);
-  return { entry: await fetchJson(canonicalUrl), canonicalUrl };
+  const canonicalUrl = entryRecordUrl(summary, databaseBase);
+  const entry = validateEntry(await fetchJson(canonicalUrl), summary);
+  return { entry, canonicalUrl, renderBase };
 }
 
 async function renderEntryPage() {
@@ -334,10 +390,10 @@ async function renderEntryPage() {
     return;
   }
   try {
-    const { entry, canonicalUrl } = await loadEntry(id, version);
+    const { entry, canonicalUrl, renderBase } = await loadEntry(id, version);
     status.hidden = true;
     content.hidden = false;
-    renderEntry(entry, content, canonicalUrl);
+    renderEntry(entry, content, canonicalUrl, renderBase);
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -355,14 +411,14 @@ async function renderChallengePage() {
     return;
   }
   try {
-    const { entry } = await loadEntry(id, version);
+    const { entry, renderBase } = await loadEntry(id, version);
     document.title = `Challenge — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
       el("div", "entry-id", `${entry.id} · version ${entry.version}`),
       el("h1", "", entry.title),
     );
-    content.append(heading, challengePresentation(entry, { forceFrame: true }));
+    content.append(heading, challengePresentation(entry, renderBase, { forceFrame: true }));
     status.hidden = true;
     content.hidden = false;
   } catch (error) {

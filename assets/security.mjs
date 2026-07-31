@@ -1,0 +1,299 @@
+export const SUPPORTED_SCHEMA_VERSION = 1;
+export const DEFAULT_DATABASE =
+  "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
+export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
+
+const SUBMISSION_REPOSITORY = "kim-em/PalomarSubmission";
+const ID_RE = /^PALOMAR-([0-9]{6})$/;
+const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const COMMIT_RE = /^[0-9a-f]{40}$/;
+const SHA256_RE = /^[0-9a-f]{64}$/;
+const POSITIVE_INTEGER_RE = /^[1-9][0-9]*$/;
+
+function fail(message) {
+  throw new Error(`invalid registry data: ${message}`);
+}
+
+function object(value, field) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail(`${field} must be an object`);
+  return value;
+}
+
+function string(value, field) {
+  if (typeof value !== "string" || !value) fail(`${field} must be a non-empty string`);
+  return value;
+}
+
+function integer(value, field) {
+  if (!Number.isSafeInteger(value) || value < 1) fail(`${field} must be a positive integer`);
+  return value;
+}
+
+function array(value, field) {
+  if (!Array.isArray(value)) fail(`${field} must be an array`);
+  return value;
+}
+
+function stringArray(value, field) {
+  for (const [position, item] of array(value, field).entries()) {
+    string(item, `${field}[${position}]`);
+  }
+  return value;
+}
+
+export function isLoopbackHostname(hostname) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (normalized === "localhost" || normalized === "::1") return true;
+  const octets = normalized.split(".");
+  return (
+    octets.length === 4 &&
+    octets.every((part) => /^(0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255) &&
+    Number(octets[0]) === 127
+  );
+}
+
+export function selectDatabaseUrl(locationHref, search) {
+  const locationUrl = new URL(locationHref);
+  const override = new URLSearchParams(search).get("database");
+  if (!override || !isLoopbackHostname(locationUrl.hostname)) return new URL(DEFAULT_DATABASE);
+  const candidate = new URL(override, locationUrl);
+  if (!['http:', 'https:'].includes(candidate.protocol) || candidate.username || candidate.password) {
+    throw new Error("local database fixture must use an HTTP(S) URL without credentials");
+  }
+  return candidate;
+}
+
+export function databaseBaseFor(databaseUrl) {
+  const url = new URL(databaseUrl);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error("database endpoint must use HTTP(S) without credentials");
+  }
+  return new URL(".", url);
+}
+
+export function selectRenderBase(locationHref, search, databaseBase) {
+  const locationUrl = new URL(locationHref);
+  if (!isLoopbackHostname(locationUrl.hostname)) return new URL(DEFAULT_RENDER_BASE);
+  const override = new URLSearchParams(search).get("render-base");
+  const candidate = override ? new URL(override, locationUrl) : new URL(databaseBase);
+  if (!["http:", "https:"].includes(candidate.protocol) || candidate.username || candidate.password) {
+    throw new Error("local render fixture must use an HTTP(S) URL without credentials");
+  }
+  return candidate;
+}
+
+export function safeExternalUrl(value) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("external record links must use HTTPS without credentials");
+  }
+  return url;
+}
+
+export function safeDataUrl(value, locationHref) {
+  const url = new URL(value);
+  if (url.protocol === "https:" && !url.username && !url.password) return url;
+  const locationUrl = new URL(locationHref);
+  if (
+    url.protocol === "http:" &&
+    url.origin === locationUrl.origin &&
+    isLoopbackHostname(locationUrl.hostname) &&
+    !url.username &&
+    !url.password
+  ) {
+    return url;
+  }
+  throw new Error("record data links must use HTTPS (or same-origin HTTP on loopback)");
+}
+
+export function safeInternalUrl(value, locationHref) {
+  const locationUrl = new URL(locationHref);
+  const url = new URL(value, locationUrl);
+  if (url.origin !== locationUrl.origin || !['http:', 'https:'].includes(url.protocol)) {
+    throw new Error("internal record link escaped the Palomar origin");
+  }
+  return url;
+}
+
+export function validateIndex(index) {
+  object(index, "index");
+  if (index.schema_version !== SUPPORTED_SCHEMA_VERSION) {
+    fail(`unsupported index schema_version ${String(index.schema_version)}`);
+  }
+  const seen = new Set();
+  for (const [position, value] of array(index.entries, "index.entries").entries()) {
+    const summary = object(value, `index.entries[${position}]`);
+    const id = string(summary.id, `index.entries[${position}].id`);
+    if (!ID_RE.test(id)) fail(`index.entries[${position}].id is malformed`);
+    const version = integer(summary.version, `index.entries[${position}].version`);
+    string(summary.title, `index.entries[${position}].title`);
+    if (summary.status !== "accepted") fail(`index.entries[${position}].status is not accepted`);
+    const expectedPath = `entries/${id}-v${version}.json`;
+    if (summary.path !== expectedPath) {
+      fail(`index.entries[${position}].path must be ${expectedPath}`);
+    }
+    const key = `${id}\0${version}`;
+    if (seen.has(key)) fail(`duplicate index entry ${id} version ${version}`);
+    seen.add(key);
+  }
+  return index;
+}
+
+export function entryRecordUrl(summary, databaseBase) {
+  object(summary, "entry summary");
+  const id = string(summary.id, "entry summary id");
+  const version = integer(summary.version, "entry summary version");
+  const expectedPath = `entries/${id}-v${version}.json`;
+  if (summary.path !== expectedPath) fail(`entry path must be ${expectedPath}`);
+  const base = new URL(databaseBase);
+  const expected = new URL(expectedPath, base);
+  const resolved = new URL(summary.path, base);
+  if (resolved.href !== expected.href || resolved.origin !== base.origin) {
+    fail("entry path escaped the canonical database prefix");
+  }
+  return resolved;
+}
+
+export function safeRepositoryPath(value, field = "repository path") {
+  string(value, field);
+  const segments = value.split("/");
+  if (
+    value.startsWith("/") ||
+    value.includes("\\") ||
+    value.includes("?") ||
+    value.includes("#") ||
+    segments.some((segment) => !segment || segment === "." || segment === "..") ||
+    segments[0].includes(":")
+  ) {
+    fail(`${field} is not a safe relative path`);
+  }
+  return value;
+}
+
+function validateCanonicalRecordLinks(entry) {
+  const identifier = ID_RE.exec(entry.id);
+  const issue = Number(identifier[1]);
+  const source = entry.source;
+  if (!REPOSITORY_RE.test(source.repository)) fail("source.repository is malformed");
+  if (!COMMIT_RE.test(source.commit)) fail("source.commit is not a full lowercase commit");
+  const repositoryUrl = `https://github.com/${source.repository}`;
+  if (source.repository_url !== repositoryUrl) fail("source.repository_url is not canonical");
+  if (source.tree_url !== `${repositoryUrl}/tree/${source.commit}`) {
+    fail("source.tree_url is not derived from source repository and commit");
+  }
+  safeExternalUrl(source.tree_url);
+
+  const runPrefix = `https://github.com/${SUBMISSION_REPOSITORY}/actions/runs/`;
+  const runId = entry.verification.workflow_url.slice(runPrefix.length);
+  if (
+    !entry.verification.workflow_url.startsWith(runPrefix) ||
+    !POSITIVE_INTEGER_RE.test(runId)
+  ) {
+    fail("verification.workflow_url is not a canonical PalomarSubmission Actions run");
+  }
+
+  const reportPrefix =
+    `https://github.com/${SUBMISSION_REPOSITORY}/issues/${issue}#issuecomment-`;
+  const commentId = entry.review.report_url.slice(reportPrefix.length);
+  if (!entry.review.report_url.startsWith(reportPrefix) || !POSITIVE_INTEGER_RE.test(commentId)) {
+    fail("review.report_url is not a canonical report comment for this Palomar ID");
+  }
+  safeExternalUrl(entry.verification.workflow_url);
+  safeExternalUrl(entry.review.report_url);
+}
+
+export function validateEntry(entry, summary) {
+  object(entry, "entry");
+  object(summary, "entry summary");
+  if (entry.schema_version !== SUPPORTED_SCHEMA_VERSION) {
+    fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
+  }
+  if (entry.status !== "accepted") fail("entry status is not accepted");
+  const id = string(entry.id, "entry.id");
+  if (!ID_RE.test(id)) fail("entry.id is malformed");
+  const version = integer(entry.version, "entry.version");
+  if (id !== summary.id || version !== summary.version) {
+    fail("fetched entry identity does not match the selected index summary");
+  }
+  if (entry.title !== summary.title || entry.status !== summary.status) {
+    fail("fetched entry summary fields do not match the index");
+  }
+  string(entry.title, "entry.title");
+  string(entry.abstract, "entry.abstract");
+
+  for (const [position, value] of array(entry.authors, "entry.authors").entries()) {
+    string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
+  }
+
+  const source = object(entry.source, "entry.source");
+  string(source.repository, "entry.source.repository");
+  string(source.repository_url, "entry.source.repository_url");
+  string(source.commit, "entry.source.commit");
+  string(source.tree_url, "entry.source.tree_url");
+
+  const formalization = object(entry.formalization, "entry.formalization");
+  safeRepositoryPath(formalization.challenge_path, "entry.formalization.challenge_path");
+  safeRepositoryPath(formalization.solution_path, "entry.formalization.solution_path");
+  string(formalization.lean_toolchain, "entry.formalization.lean_toolchain");
+  stringArray(formalization.theorem_names, "entry.formalization.theorem_names");
+  stringArray(formalization.permitted_axioms, "entry.formalization.permitted_axioms");
+
+  const verification = object(entry.verification, "entry.verification");
+  string(verification.workflow_url, "entry.verification.workflow_url");
+  if (!COMMIT_RE.test(verification.comparator_commit)) fail("comparator_commit is malformed");
+  if (!SHA256_RE.test(verification.challenge_sha256)) fail("challenge_sha256 is malformed");
+  if (!SHA256_RE.test(verification.solution_sha256)) fail("solution_sha256 is malformed");
+
+  const trust = object(entry.trust, "entry.trust");
+  if (!['high', 'qualified'].includes(trust.level)) fail("entry.trust.level is unsupported");
+  integer(trust.challenge_lines, "entry.trust.challenge_lines");
+  integer(trust.challenge_bytes, "entry.trust.challenge_bytes");
+  stringArray(trust.challenge_imports, "entry.trust.challenge_imports");
+  array(trust.challenge_dependencies, "entry.trust.challenge_dependencies");
+  stringArray(trust.reasons, "entry.trust.reasons");
+
+  const review = object(entry.review, "entry.review");
+  if (review.verdict !== "accept") fail("entry.review.verdict is not accept");
+  string(review.report_url, "entry.review.report_url");
+  object(review.scores, "entry.review.scores");
+  stringArray(review.warnings, "entry.review.warnings");
+
+  if (entry.challenge_render !== undefined) {
+    const render = object(entry.challenge_render, "entry.challenge_render");
+    const treeHash = string(render.artifact_tree_sha256, "entry.challenge_render.artifact_tree_sha256");
+    const expectedPath = `renders/${id}-v${version}/${treeHash}/`;
+    if (
+      render.format !== "verso-html" ||
+      render.entrypoint !== "Challenge/index.html" ||
+      !SHA256_RE.test(treeHash) ||
+      render.artifact_path !== expectedPath
+    ) {
+      fail("entry.challenge_render is not canonical");
+    }
+  }
+
+  validateCanonicalRecordLinks(entry);
+  return entry;
+}
+
+export function pinnedSourceFileUrl(entry, path) {
+  safeRepositoryPath(path, "source file path");
+  const expectedRepository = `https://github.com/${entry.source.repository}`;
+  if (
+    entry.source.repository_url !== expectedRepository ||
+    !COMMIT_RE.test(entry.source.commit)
+  ) {
+    fail("source file link lacks canonical repository evidence");
+  }
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  return safeExternalUrl(`${expectedRepository}/blob/${entry.source.commit}/${encodedPath}`);
+}
+
+export function workflowRunId(workflowUrl) {
+  return new URL(workflowUrl).pathname.split("/").at(-1);
+}
+
+export function reportIssueNumber(reportUrl) {
+  const match = new URL(reportUrl).pathname.match(/\/issues\/([1-9][0-9]*)$/);
+  return match ? match[1] : "?";
+}

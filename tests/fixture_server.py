@@ -16,8 +16,10 @@ HASH = "a" * 64
 
 def entry(identifier: str, lines: int) -> dict:
     return {
+        "schema_version": 1,
         "id": identifier,
         "version": 1,
+        "status": "accepted",
         "title": f"Fixture {identifier}",
         "abstract": "A browser confinement fixture.",
         "authors": [{"name": "Example"}],
@@ -29,12 +31,18 @@ def entry(identifier: str, lines: int) -> dict:
         },
         "formalization": {
             "challenge_path": "Challenge.lean",
+            "solution_path": "Solution.lean",
             "theorem_names": ["Example.theorem"],
             "definition_names": [],
             "lean_toolchain": "leanprover/lean4:v4.31.0-rc2",
             "permitted_axioms": [],
         },
-        "verification": {"comparator_commit": "2" * 40, "workflow_url": "https://example.test/run"},
+        "verification": {
+            "comparator_commit": "2" * 40,
+            "workflow_url": "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
+            "challenge_sha256": "b" * 64,
+            "solution_sha256": "c" * 64,
+        },
         "trust": {
             "level": "high",
             "challenge_lines": lines,
@@ -44,9 +52,13 @@ def entry(identifier: str, lines: int) -> dict:
             "reasons": [],
         },
         "review": {
+            "verdict": "accept",
             "scores": {"clarity": 5},
             "warnings": [],
-            "report_url": "https://example.test/review",
+            "report_url": (
+                "https://github.com/kim-em/PalomarSubmission/issues/"
+                f"{int(identifier.removeprefix('PALOMAR-'))}#issuecomment-456"
+            ),
         },
         "challenge_render": {
             "format": "verso-html",
@@ -79,10 +91,13 @@ class Handler(SimpleHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/database/index.json":
             payload = {
+                "schema_version": 1,
                 "entries": [
                     {
                         "id": item["id"],
                         "version": 1,
+                        "title": item["title"],
+                        "status": "accepted",
                         "path": f"entries/{item['id']}-v1.json",
                     }
                     for item in ENTRIES.values()
