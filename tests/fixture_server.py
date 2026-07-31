@@ -15,13 +15,22 @@ HASH = "a" * 64
 
 
 def entry(identifier: str, lines: int) -> dict:
+    issue = int(identifier.rsplit("-", 1)[-1])
     return {
+        "schema_version": 2,
         "id": identifier,
         "accepted_at": "2026-07-29",
         "version": 1,
+        "status": "accepted",
         "title": f"Fixture {identifier}",
         "abstract": "A browser confinement fixture.",
         "authors": [{"name": "Example"}],
+        "submission": {
+            "repository": "kim-em/PalomarSubmission",
+            "issue": issue,
+            "url": f"https://github.com/kim-em/PalomarSubmission/issues/{issue}",
+            "submitter": "example",
+        },
         "source": {
             "repository": "example/challenge",
             "repository_url": "https://github.com/example/challenge",
@@ -31,6 +40,8 @@ def entry(identifier: str, lines: int) -> dict:
         "formalization": {
             "challenge_path": "Challenge.lean",
             "solution_path": "Solution.lean",
+            "comparator_config_path": "comparator.json",
+            "formalization_metadata_path": "formalization.yaml",
             "theorem_names": ["Example.theorem"],
             "definition_names": [],
             "lean_toolchain": "leanprover/lean4:v4.31.0-rc2",
@@ -45,8 +56,11 @@ def entry(identifier: str, lines: int) -> dict:
         },
         "verification": {
             "comparator_commit": "2" * 40,
-            "workflow_url": "https://example.test/run",
-            "solution_sha256": "4" * 64,
+            "lean4export_commit": "3" * 40,
+            "landrun_commit": "4" * 40,
+            "workflow_url": "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
+            "challenge_sha256": "b" * 64,
+            "solution_sha256": "c" * 64,
             "verified_at": "2026-07-29T08:46:32Z",
         },
         "trust": {
@@ -58,16 +72,32 @@ def entry(identifier: str, lines: int) -> dict:
             "reasons": [],
         },
         "review": {
-            "scores": {"clarity": 5},
-            "warnings": [],
-            "report_url": "https://example.test/review",
             "reviewed_at": "2026-07-29T08:53:02Z",
+            "policy_commit": "5" * 40,
+            "verdict": "accept",
+            "reviewer_models": ["fixture:model"],
+            "scores": {
+                "statement_alignment": 5,
+                "definition_fidelity": 5,
+                "notability": 5,
+                "literature": 5,
+                "clarity": 5,
+            },
+            "warnings": [],
+            "report_url": (
+                "https://github.com/kim-em/PalomarSubmission/issues/"
+                f"{issue}#issuecomment-456"
+            ),
         },
         "challenge_render": {
             "format": "verso-html",
             "artifact_path": f"renders/{identifier}-v1/{HASH}/",
             "entrypoint": "Challenge/index.html",
             "artifact_tree_sha256": HASH,
+            "verso_commit": "6" * 40,
+            "renderer_commit": "7" * 40,
+            "landrun_commit": "8" * 40,
+            "rendered_at": "2026-07-29T09:00:00Z",
         },
     }
 
@@ -94,10 +124,14 @@ class Handler(SimpleHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/database/index.json":
             payload = {
+                "schema_version": 2,
+                "generated_at": "2026-07-29T09:00:00Z",
                 "entries": [
                     {
                         "id": item["id"],
                         "version": 1,
+                        "title": item["title"],
+                        "status": "accepted",
                         "path": f"entries/{item['id']}-v1.json",
                     }
                     for item in ENTRIES.values()

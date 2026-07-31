@@ -13,10 +13,12 @@ Local preview:
 python -m http.server 8000
 ```
 
-Then open <http://localhost:8000>. Override the database endpoint for a local
-fixture by adding `?database=https://example.test/index.json`. The matching
-render tree is resolved beside that custom database by default; use
-`&render-base=https://example.test/render-root/` to override it.
+Then open <http://localhost:8000>. Override the database endpoint for a fixture
+served from that development origin with `?database=/fixtures/index.json`. The
+matching render tree is resolved beside the fixture by default; use
+`&render-base=/fixtures/render-root/` to override it. These overrides are
+honored only when the site itself runs on localhost or another loopback address.
+The deployed site always reads the canonical database and render origins.
 
 Entry pages embed a rendered Challenge when the comparator names exactly one
 declaration and `Challenge.lean` is at most 100 lines and 32 KiB. Larger
@@ -26,4 +28,7 @@ always present. Rendered HTML is loaded in a fixed-height iframe with
 referrer.
 
 The website is a presentation layer only. Permanent data and schemas live in
-PalomarDatabase; consumers should use that repository directly.
+PalomarDatabase; consumers should use that repository directly. A versioned ID
+such as `PALOMAR-2026-07-29-000001-v1` names one immutable record. An ID without a version
+means the latest record; later versions may change its theorem, source, authors,
+or subject, so stable citations must include the version.

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest"];
-const assetFiles = ["app.js", "rendering.js", "style.css"];
+const assetFiles = ["app.js", "rendering.js", "security.mjs", "style.css"];
 
 function options(args) {
   const result = {
@@ -57,11 +57,15 @@ export async function buildSite({ output, version }) {
 
   const appTarget = path.join(destination, "assets", "app.js");
   const app = await readFile(appTarget, "utf8");
-  const versionedImport = app.replace(
-    'from "./rendering.js";',
-    `from "./rendering.js?v=${version}";`,
-  );
-  if (versionedImport === app) throw new Error("could not version the rendering.js import");
+  const versionedImport = app
+    .replace('from "./rendering.js";', `from "./rendering.js?v=${version}";`)
+    .replace('from "./security.mjs";', `from "./security.mjs?v=${version}";`);
+  if (
+    !versionedImport.includes(`from "./rendering.js?v=${version}";`) ||
+    !versionedImport.includes(`from "./security.mjs?v=${version}";`)
+  ) {
+    throw new Error("could not version coupled browser imports");
+  }
   await writeFile(appTarget, versionedImport);
   await writeFile(path.join(destination, ".nojekyll"), "");
 }

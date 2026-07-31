@@ -2,20 +2,33 @@ import {
   challengeArtifactUrl,
   challengeMetadataUrl,
   challengeSourceUrl,
-  entryRecordPath,
   isInlineChallenge,
 } from "./rendering.js";
-
-const DEFAULT_DATABASE =
-  "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
-const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
+import {
+  databaseBaseFor,
+  entryRecordUrl,
+  isLoopbackHostname,
+  pinnedSourceFileUrl,
+  reportIssueNumber,
+  safeDataUrl,
+  safeExternalUrl,
+  safeInternalUrl,
+  selectDatabaseUrl,
+  selectRenderBase,
+  validateEntry,
+  validateIndex,
+  workflowRunId,
+} from "./security.mjs";
 
 const params = new URLSearchParams(window.location.search);
-const databaseUrl = params.get("database") || DEFAULT_DATABASE;
-const databaseBase = new URL(".", databaseUrl);
-const renderBase = params.get("render-base") ||
-  (params.has("database") ? databaseBase.href : DEFAULT_RENDER_BASE);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
+
+function dataSource() {
+  const databaseUrl = selectDatabaseUrl(window.location.href, window.location.search);
+  const databaseBase = databaseBaseFor(databaseUrl);
+  const renderBase = selectRenderBase(window.location.href, window.location.search, databaseBase);
+  return { databaseUrl, databaseBase, renderBase };
+}
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -24,10 +37,22 @@ function el(tag, className, text) {
   return node;
 }
 
-function link(text, href, className) {
+function anchor(text, href, className) {
   const node = el("a", className, text);
-  node.href = href;
+  node.href = href.href;
   return node;
+}
+
+function externalLink(text, href, className) {
+  return anchor(text, safeExternalUrl(href), className);
+}
+
+function dataLink(text, href, className) {
+  return anchor(text, safeDataUrl(href, window.location.href), className);
+}
+
+function internalLink(text, href, className) {
+  return anchor(text, safeInternalUrl(href, window.location.href), className);
 }
 
 function setOptionalText(selector, text) {
@@ -108,7 +133,7 @@ function entryCard(entry) {
   );
   top.append(identity, trustBadge(entry));
   const title = el("h3");
-  title.append(link(entry.title, localPageUrl("entry.html", entry)));
+  title.append(internalLink(entry.title, localPageUrl("entry.html", entry)));
   const abstract = el("p", "card-abstract", entry.abstract);
   const meta = el("div", "card-meta");
   const authors = el("div");
@@ -118,16 +143,19 @@ function entryCard(entry) {
   meta.append(authors, theorems);
   const footer = el("div", "card-footer");
   footer.append(
-    link(entry.source.repository, entry.source.tree_url, "repo-link"),
-    link("View record", localPageUrl("entry.html", entry)),
+    externalLink(entry.source.repository, entry.source.tree_url, "repo-link"),
+    internalLink("View record", localPageUrl("entry.html", entry)),
   );
   card.append(top, title, abstract, meta, footer);
   return card;
 }
 
-async function loadEntries(index) {
+async function loadEntries(index, databaseBase) {
   return Promise.all(
-    index.entries.map((summary) => fetchJson(new URL(summary.path, databaseBase))),
+    index.entries.map(async (summary) => {
+      const entry = await fetchJson(entryRecordUrl(summary, databaseBase));
+      return validateEntry(entry, summary);
+    }),
   );
 }
 
@@ -135,8 +163,9 @@ async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
   try {
-    const index = await fetchJson(databaseUrl);
-    const entries = latestVersions(await loadEntries(index));
+    const { databaseUrl, databaseBase } = dataSource();
+    const index = validateIndex(await fetchJson(databaseUrl));
+    const entries = latestVersions(await loadEntries(index, databaseBase));
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     setOptionalText("#metric-results", String(entries.length));
@@ -197,15 +226,9 @@ function externalDetailRow(labelText, text, href) {
   const row = el("div", "detail-row");
   row.append(el("dt", "", labelText));
   const value = el("dd");
-  value.append(link(text, href));
+  value.append(externalLink(text, href));
   row.append(value);
   return row;
-}
-
-function pinnedSourceFileUrl(entry, path) {
-  const repository = entry.source.repository_url.replace(/\/+$/, "");
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-  return `${repository}/blob/${entry.source.commit}/${encodedPath}`;
 }
 
 function localPageUrl(page, entry) {
@@ -213,15 +236,20 @@ function localPageUrl(page, entry) {
   target.search = "";
   target.searchParams.set("id", entry.id);
   target.searchParams.set("version", String(entry.version));
-  for (const name of ["database", "render-base"]) {
-    if (params.has(name)) target.searchParams.set(name, params.get(name));
+  if (isLoopbackHostname(window.location.hostname)) {
+    for (const name of ["database", "render-base"]) {
+      if (params.has(name)) target.searchParams.set(name, params.get(name));
+    }
   }
-  return target.href;
+  return safeInternalUrl(target, window.location.href);
 }
 
-function challengeFrame(entry) {
+function challengeFrame(entry, renderBase) {
   const frame = el("iframe", "challenge-frame");
-  frame.src = challengeArtifactUrl(entry, renderBase).href;
+  frame.src = safeDataUrl(
+    challengeArtifactUrl(entry, renderBase).href,
+    window.location.href,
+  ).href;
   frame.title = `Formatted statement for ${entry.id} version ${entry.version}`;
   frame.loading = "lazy";
   frame.referrerPolicy = "no-referrer";
@@ -288,7 +316,7 @@ function challengeMetadata(metadata) {
   return panel;
 }
 
-async function challengePresentation(entry, { forceFrame = false } = {}) {
+async function challengePresentation(entry, renderBase, { forceFrame = false } = {}) {
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
   const titleBlock = el("div");
@@ -297,10 +325,15 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
   section.append(heading);
 
   const links = el("p", "challenge-links");
-  links.append(link("View statement file (Challenge.lean)", challengeSourceUrl(entry), "challenge-source"));
+  links.append(
+    externalLink("View statement file (Challenge.lean)", challengeSourceUrl(entry), "challenge-source"),
+  );
   const inline = isInlineChallenge(entry);
   if (!forceFrame && !inline) {
-    links.append(" · ", link("Open formatted statement", localPageUrl("render.html", entry)));
+    links.append(
+      " · ",
+      internalLink("Open formatted statement", localPageUrl("render.html", entry)),
+    );
   }
   section.append(links);
 
@@ -324,7 +357,7 @@ async function challengePresentation(entry, { forceFrame = false } = {}) {
   section.append(challengeMetadata(metadata));
 
   if (forceFrame || inline) {
-    section.append(challengeFrame(entry));
+    section.append(challengeFrame(entry, renderBase));
   } else {
     section.append(
       el(
@@ -401,7 +434,7 @@ function solutionMetadata(entry, renderMetadata) {
   for (const dependency of dependencies) {
     const item = el("li");
     item.append(
-      link(
+      externalLink(
         dependency.repository,
         `https://github.com/${dependency.repository}/tree/${dependency.revision}`,
       ),
@@ -414,7 +447,7 @@ function solutionMetadata(entry, renderMetadata) {
   return section;
 }
 
-async function renderEntry(entry, content, canonicalUrl) {
+async function renderEntry(entry, content, canonicalUrl, renderBase) {
   document.title = `${entry.title} — Palomar`;
   const heading = el("header", "entry-heading");
   const top = el("div", "card-top");
@@ -447,11 +480,18 @@ async function renderEntry(entry, content, canonicalUrl) {
       entry.formalization.solution_path,
       pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
+    detailRow("Challenge SHA-256", entry.verification.challenge_sha256),
+    detailRow("Solution SHA-256", entry.verification.solution_sha256),
     detailRow("Lean version", entry.formalization.lean_toolchain),
     detailRow("Theorems checked", theoremNames(entry)),
     detailRow("Permitted axioms", entry.formalization.permitted_axioms.join(", ") || "none"),
     detailRow("Statement file size", `${entry.trust.challenge_lines} lines · ${entry.trust.challenge_bytes} bytes`),
-    externalDetailRow("Verification record", entry.verification.comparator_commit.slice(0, 12), entry.verification.workflow_url),
+    detailRow("Comparator commit", entry.verification.comparator_commit),
+    externalDetailRow(
+      "Verification workflow",
+      `Actions run ${workflowRunId(entry.verification.workflow_url)}`,
+      entry.verification.workflow_url,
+    ),
   );
   evidence.append(details);
 
@@ -509,18 +549,23 @@ async function renderEntry(entry, content, canonicalUrl) {
   } else {
     editorial.append(el("p", "no-warnings", "No permanent editorial warnings were recorded."));
   }
-  editorial.append(link("Read the public review", entry.review.report_url));
+  editorial.append(
+    externalLink(
+      `Read the review on submission #${reportIssueNumber(entry.review.report_url)}`,
+      entry.review.report_url,
+    ),
+  );
 
   const machine = el("section", "machine-record");
   machine.append(el("div", "eyebrow", "Full record"), el("h2", "", "Registry data"));
   const machineLinks = el("p");
-  machineLinks.append(link("Open the full data record (JSON)", canonicalUrl.href));
+  machineLinks.append(dataLink(`Open ${entry.id}-v${entry.version}.json`, canonicalUrl.href));
   machine.append(machineLinks);
   const pre = el("pre");
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
   machine.append(pre);
 
-  const challenge = await challengePresentation(entry);
+  const challenge = await challengePresentation(entry, renderBase);
   content.append(
     heading,
     challenge.section,
@@ -533,12 +578,13 @@ async function renderEntry(entry, content, canonicalUrl) {
 }
 
 async function loadEntry(id, version) {
-  const index = await fetchJson(databaseUrl);
+  const { databaseUrl, databaseBase, renderBase } = dataSource();
+  const index = validateIndex(await fetchJson(databaseUrl));
   const summary = index.entries.find((item) => item.id === id && item.version === version);
   if (!summary) throw new Error("entry not found");
-  const path = entryRecordPath(id, version, summary.path);
-  const canonicalUrl = new URL(path, databaseBase);
-  return { entry: await fetchJson(canonicalUrl), canonicalUrl };
+  const canonicalUrl = entryRecordUrl(summary, databaseBase);
+  const entry = validateEntry(await fetchJson(canonicalUrl), summary);
+  return { entry, canonicalUrl, renderBase };
 }
 
 async function renderEntryPage() {
@@ -552,10 +598,10 @@ async function renderEntryPage() {
     return;
   }
   try {
-    const { entry, canonicalUrl } = await loadEntry(id, version);
+    const { entry, canonicalUrl, renderBase } = await loadEntry(id, version);
     status.hidden = true;
     content.hidden = false;
-    await renderEntry(entry, content, canonicalUrl);
+    await renderEntry(entry, content, canonicalUrl, renderBase);
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -573,14 +619,14 @@ async function renderChallengePage() {
     return;
   }
   try {
-    const { entry } = await loadEntry(id, version);
+    const { entry, renderBase } = await loadEntry(id, version);
     document.title = `Statement — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
       el("div", "entry-id", `${entry.id} · version ${entry.version}`),
       el("h1", "", entry.title),
     );
-    const challenge = await challengePresentation(entry, { forceFrame: true });
+    const challenge = await challengePresentation(entry, renderBase, { forceFrame: true });
     content.append(heading, challenge.section);
     status.hidden = true;
     content.hidden = false;
