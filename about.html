@@ -33,23 +33,23 @@
         <ol>
           <li>
             <span>1.</span>
-            <div><h3>Immutable source</h3><p>A GitHub issue points to a public repository and full Git commit. Moving branches are never registry evidence.</p></div>
+            <div><h3>Fixed source files</h3><p>Each submission points to an exact version of a public repository, so the files that Palomar checked cannot later change.</p></div>
           </li>
           <li>
             <span>2.</span>
-            <div><h3>Small statement surface</h3><p><code>Challenge.lean</code> states the advertised result. Its transitive imports may come only from Lean core, Mathlib, Tau Ceti, or an already indexed Palomar project.</p></div>
+            <div><h3>Readable statement file</h3><p><code>Challenge.lean</code> states the advertised result. The definitions it uses may come only from Lean core, Mathlib, Tau Ceti, or another project already listed by Palomar.</p></div>
           </li>
           <li>
             <span>3.</span>
-            <div><h3>Sandboxed comparison</h3><p>Comparator rebuilds Challenge and Solution separately under landrun, checks exact declaration identity and permitted axioms, then replays the proof through the Lean kernel.</p></div>
+            <div><h3>Independent proof check</h3><p>Palomar checks the statement and proof separately, confirms that the theorem names match, and asks Lean to verify the proof using only the allowed axioms.</p></div>
           </li>
           <li>
             <span>4.</span>
-            <div><h3>Editorial review</h3><p>Versioned AI review checks metadata, informal-to-Lean alignment, definitions, prior literature, notability, and clarity. Failures, uncertainty, and permanent warnings stay visible.</p></div>
+            <div><h3>Documented review</h3><p>An AI-assisted review compares the written mathematical claim with the Lean statement and examines its definitions, prior literature, significance, and clarity. Problems and uncertainties remain visible.</p></div>
           </li>
           <li>
             <span>5.</span>
-            <div><h3>Append-only publication</h3><p>An accepted result becomes an immutable JSON record with a permanent identifier and version. Corrections add versions; history is not rewritten.</p></div>
+            <div><h3>Permanent record</h3><p>Each accepted result receives a permanent identifier and version. Corrections create new versions rather than replacing the history.</p></div>
           </li>
         </ol>
       </section>
@@ -57,18 +57,18 @@
       <section class="meaning-grid">
         <article>
           <div class="eyebrow">Palomar does say</div>
-          <h2>The pinned Solution proves the pinned Challenge.</h2>
-          <p>It also says that a recorded editorial process found the statement and metadata responsible enough to index under the policy version shown.</p>
+          <h2>The recorded proof proves the recorded statement.</h2>
+          <p>It also says that the documented review found the statement and its description suitable for listing under the policy version shown.</p>
         </article>
         <article>
           <div class="eyebrow">Palomar does not say</div>
           <h2>This is peer review, novelty certification, or endorsement.</h2>
-          <p>Readers still need mathematical judgment. The registry makes the exact object, checks, trust boundary, and warnings easier to locate and audit.</p>
+          <p>Readers still need mathematical judgment. The registry makes the exact statement, proof checks, dependencies, and warnings easier to find and inspect.</p>
         </article>
       </section>
 
       <section class="cta">
-        <div><h2>Have a result?</h2><p>Submit one immutable snapshot.</p></div>
+        <div><h2>Have a result?</h2><p>Submit one fixed version of it.</p></div>
         <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the submission form</a>
       </section>
     </main>

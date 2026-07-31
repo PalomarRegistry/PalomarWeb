@@ -134,7 +134,7 @@ class Handler(SimpleHTTPRequestHandler):
             metadata = {
                 "schema_version": 2,
                 "imports": ["Mathlib"],
-                "module_doc": "# Fixture module\n\nParsed outside the Verso surface.",
+                "module_doc": "# Fixture module\n\nParsed outside the Verso renderer.",
                 "declarations": ["Example.theorem"],
                 "solution_imports": ["ExampleDependency"],
             }
