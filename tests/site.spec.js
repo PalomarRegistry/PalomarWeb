@@ -55,6 +55,9 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".acceptance-callout")).toContainText("Accepted");
   await expect(page.locator(".acceptance-callout")).toContainText("29 July 2026");
   await expect(page.locator(".acceptance-callout")).toContainText("matched every advertised declaration");
+  await expect(page.locator(".acceptance-callout")).toContainText(
+    "Every required check passed; Palomar accepted the submission",
+  );
   await expect(page.getByRole("link", { name: "Open Solution.lean" }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Solution.lean`,
