@@ -10,14 +10,6 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
   await expect(page.locator(".entry-card")).toHaveCount(2);
 });
 
-test("legacy identifiers redirect to the dated permanent identifier", async ({ page }) => {
-  await page.goto(`/entry.html?id=PALOMAR-000123&version=1&database=${database}`);
-  await expect(page).toHaveURL(/id=PALOMAR-2026-07-29-000123/);
-  await expect(page.locator(".entry-heading .entry-id")).toContainText(
-    "PALOMAR-2026-07-29-000123",
-  );
-});
-
 test("eligible Challenge renders inline without origin privilege", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
 

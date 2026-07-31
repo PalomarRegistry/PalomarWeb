@@ -15,7 +15,7 @@ const databaseUrl = params.get("database") || DEFAULT_DATABASE;
 const databaseBase = new URL(".", databaseUrl);
 const renderBase = params.get("render-base") ||
   (params.has("database") ? databaseBase.href : DEFAULT_RENDER_BASE);
-const PALOMAR_ID = /^PALOMAR-(?:\d{4}-\d{2}-\d{2}-)?\d{6}$/;
+const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -66,10 +66,8 @@ function displayDate(value) {
 }
 
 function latestVersions(entries) {
-  const aliases = new Set(entries.flatMap((entry) => entry.aliases || []));
   const latest = new Map();
   for (const entry of entries) {
-    if (aliases.has(entry.id)) continue;
     const previous = latest.get(entry.id);
     if (!previous || entry.version > previous.version) latest.set(entry.id, entry);
   }
@@ -519,15 +517,11 @@ async function renderEntry(entry, content, canonicalUrl) {
 
 async function loadEntry(id, version) {
   const index = await fetchJson(databaseUrl);
-  const replacements = index.entries
-    .filter((item) => Array.isArray(item.aliases) && item.aliases.includes(id))
-    .sort((left, right) => right.version - left.version);
-  if (replacements.length) return { replacement: replacements[0] };
   const summary = index.entries.find((item) => item.id === id && item.version === version);
   if (!summary) throw new Error("entry not found");
   const path = entryRecordPath(id, version, summary.path);
   const canonicalUrl = new URL(path, databaseBase);
-  return { entry: await fetchJson(canonicalUrl), canonicalUrl, replacement: null };
+  return { entry: await fetchJson(canonicalUrl), canonicalUrl };
 }
 
 async function renderEntryPage() {
@@ -541,11 +535,7 @@ async function renderEntryPage() {
     return;
   }
   try {
-    const { entry, canonicalUrl, replacement } = await loadEntry(id, version);
-    if (replacement) {
-      window.location.replace(localPageUrl("entry.html", replacement));
-      return;
-    }
+    const { entry, canonicalUrl } = await loadEntry(id, version);
     status.hidden = true;
     content.hidden = false;
     await renderEntry(entry, content, canonicalUrl);
@@ -566,11 +556,7 @@ async function renderChallengePage() {
     return;
   }
   try {
-    const { entry, replacement } = await loadEntry(id, version);
-    if (replacement) {
-      window.location.replace(localPageUrl("render.html", replacement));
-      return;
-    }
+    const { entry } = await loadEntry(id, version);
     document.title = `Challenge — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(

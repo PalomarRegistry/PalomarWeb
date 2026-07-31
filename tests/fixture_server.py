@@ -18,7 +18,6 @@ def entry(identifier: str, lines: int) -> dict:
     return {
         "id": identifier,
         "accepted_at": "2026-07-29",
-        "aliases": [identifier.replace("PALOMAR-2026-07-29-", "PALOMAR-")],
         "version": 1,
         "title": f"Fixture {identifier}",
         "abstract": "A browser confinement fixture.",
@@ -100,7 +99,6 @@ class Handler(SimpleHTTPRequestHandler):
                         "id": item["id"],
                         "version": 1,
                         "path": f"entries/{item['id']}-v1.json",
-                        "aliases": item["aliases"],
                     }
                     for item in ENTRIES.values()
                 ]
@@ -108,14 +106,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_bytes(json.dumps(payload).encode(), "application/json")
             return
         match = re.fullmatch(
-            r"/database/entries/(PALOMAR-(?:[0-9]{4}-[0-9]{2}-[0-9]{2}-)?[0-9]{6})-v1\.json",
+            r"/database/entries/(PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})-v1\.json",
             path,
         )
         if match and match.group(1) in ENTRIES:
             self.send_bytes(json.dumps(ENTRIES[match.group(1)]).encode(), "application/json")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-(?:[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-)?[0-9]{{6}}-v1/{HASH}/Challenge/index\.html",
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/Challenge/index\.html",
             path,
         ):
             page = f"""<!doctype html>
@@ -130,7 +128,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_bytes(page.encode(), "text/html; charset=utf-8")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-(?:[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-)?[0-9]{{6}}-v1/{HASH}/challenge-metadata\.json",
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/challenge-metadata\.json",
             path,
         ):
             metadata = {
@@ -143,7 +141,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_bytes(json.dumps(metadata).encode(), "application/json")
             return
         if re.fullmatch(
-            rf"/database/renders/PALOMAR-(?:[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-)?[0-9]{{6}}-v1/{HASH}/attack\.js",
+            rf"/database/renders/PALOMAR-[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-[0-9]{{6}}-v1/{HASH}/attack\.js",
             path,
         ):
             script = """
