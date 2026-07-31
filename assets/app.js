@@ -1,5 +1,6 @@
 import {
   challengeArtifactUrl,
+  challengeMetadataUrl,
   challengeSourceUrl,
   entryRecordPath,
   isInlineChallenge,
@@ -30,7 +31,11 @@ function link(text, href, className) {
 
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-cache" });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  if (!response.ok) {
+    const error = new Error(`${response.status} ${response.statusText}`);
+    error.status = response.status;
+    throw error;
+  }
   return response.json();
 }
 
@@ -193,10 +198,52 @@ function challengeFrame(entry) {
   frame.loading = "lazy";
   frame.referrerPolicy = "no-referrer";
   frame.setAttribute("sandbox", "allow-scripts");
+  frame.setAttribute("scrolling", "auto");
   return frame;
 }
 
-function challengePresentation(entry, { forceFrame = false } = {}) {
+function validateChallengeMetadata(entry, metadata) {
+  const expectedDeclarations = [
+    ...entry.formalization.theorem_names,
+    ...entry.formalization.definition_names,
+  ];
+  const expectedImports = entry.trust.challenge_imports;
+  const sameArray = (left, right) =>
+    Array.isArray(left) && left.length === right.length &&
+      left.every((value, index) => value === right[index]);
+  if (
+    metadata?.schema_version !== 1 ||
+    !sameArray(metadata.declarations, expectedDeclarations) ||
+    !sameArray(metadata.imports, expectedImports) ||
+    !(metadata.module_doc === null ||
+      (typeof metadata.module_doc === "string" && metadata.module_doc.length <= 256 * 1024))
+  ) {
+    throw new Error("Challenge render metadata does not match the registry entry");
+  }
+  return metadata;
+}
+
+function challengeMetadata(metadata) {
+  const panel = el("div", "challenge-metadata");
+  panel.append(el("div", "eyebrow", "Parsed source metadata"));
+  const imports = el("div", "challenge-metadata-row");
+  imports.append(el("strong", "", "Direct imports"));
+  const tokens = el("span", "token-list");
+  for (const item of metadata.imports) tokens.append(el("code", "", item));
+  imports.append(tokens);
+  panel.append(imports);
+  if (metadata.module_doc) {
+    const moduleDoc = el("details", "challenge-module-doc");
+    moduleDoc.append(el("summary", "", "Module documentation"));
+    moduleDoc.append(el("pre", "", metadata.module_doc));
+    panel.append(moduleDoc);
+  } else {
+    panel.append(el("p", "challenge-no-module-doc", "No module documentation was found."));
+  }
+  return panel;
+}
+
+async function challengePresentation(entry, { forceFrame = false } = {}) {
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
   const titleBlock = el("div");
@@ -210,6 +257,25 @@ function challengePresentation(entry, { forceFrame = false } = {}) {
     links.append(" · ", link("Open rendered Challenge", localPageUrl("render.html", entry)));
   }
   section.append(links);
+
+  let metadata;
+  try {
+    metadata = validateChallengeMetadata(
+      entry,
+      await fetchJson(challengeMetadataUrl(entry, renderBase)),
+    );
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    section.append(
+      el(
+        "p",
+        "challenge-fallback",
+        "This historical rendering predates declaration-only presentation metadata; use the canonical Challenge.lean link above.",
+      ),
+    );
+    return section;
+  }
+  section.append(challengeMetadata(metadata));
 
   if (forceFrame || isInlineChallenge(entry)) {
     section.append(challengeFrame(entry));
@@ -225,7 +291,7 @@ function challengePresentation(entry, { forceFrame = false } = {}) {
   return section;
 }
 
-function renderEntry(entry, content, canonicalUrl) {
+async function renderEntry(entry, content, canonicalUrl) {
   document.title = `${entry.title} — Palomar`;
   const heading = el("header", "entry-heading");
   const top = el("div", "card-top");
@@ -311,7 +377,14 @@ function renderEntry(entry, content, canonicalUrl) {
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
   machine.append(pre);
 
-  content.append(heading, challengePresentation(entry), evidence, trust, editorial, machine);
+  content.append(
+    heading,
+    await challengePresentation(entry),
+    evidence,
+    trust,
+    editorial,
+    machine,
+  );
 }
 
 async function loadEntry(id, version) {
@@ -337,7 +410,7 @@ async function renderEntryPage() {
     const { entry, canonicalUrl } = await loadEntry(id, version);
     status.hidden = true;
     content.hidden = false;
-    renderEntry(entry, content, canonicalUrl);
+    await renderEntry(entry, content, canonicalUrl);
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -362,7 +435,7 @@ async function renderChallengePage() {
       el("div", "entry-id", `${entry.id} · version ${entry.version}`),
       el("h1", "", entry.title),
     );
-    content.append(heading, challengePresentation(entry, { forceFrame: true }));
+    content.append(heading, await challengePresentation(entry, { forceFrame: true }));
     status.hidden = true;
     content.hidden = false;
   } catch (error) {

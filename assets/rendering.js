@@ -63,6 +63,10 @@ export function challengeArtifactUrl(entry, renderBase) {
   return new URL(`${expectedPath}${render.entrypoint}`, base);
 }
 
+export function challengeMetadataUrl(entry, renderBase) {
+  return new URL("../challenge-metadata.json", challengeArtifactUrl(entry, renderBase));
+}
+
 export function entryRecordPath(id, version, path) {
   const expected = `entries/${id}-v${version}.json`;
   if (!ID.test(id || "") || !Number.isInteger(version) || version < 1 || path !== expected) {

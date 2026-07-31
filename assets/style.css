@@ -444,6 +444,45 @@ footer {
   font: .9rem/1.4 var(--sans);
 }
 
+.challenge-metadata {
+  margin-bottom: .75rem;
+  padding: .75rem;
+  border: 1px solid var(--line);
+  background: var(--shade);
+}
+
+.challenge-metadata-row {
+  display: flex;
+  align-items: baseline;
+  gap: .75rem;
+  margin-top: .45rem;
+}
+
+.challenge-module-doc {
+  margin-top: .7rem;
+  border-top: 1px dotted var(--line);
+  padding-top: .55rem;
+}
+
+.challenge-module-doc summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.challenge-module-doc pre {
+  margin: .6rem 0 0;
+  max-height: 24rem;
+  overflow: auto;
+  padding: .65rem;
+  background: var(--paper);
+  white-space: pre-wrap;
+}
+
+.challenge-no-module-doc {
+  margin: .6rem 0 0;
+  color: var(--muted);
+}
+
 .challenge-frame {
   display: block;
   width: 100%;
