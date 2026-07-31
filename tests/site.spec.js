@@ -18,7 +18,7 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
   await expect(first.locator(".entry-id")).toContainText("PALOMAR-2026-07-29-");
   await expect(first.locator(".entry-id")).toContainText("current version 2");
   await expect(first.locator(".entry-date")).toHaveText("Accepted 29 July 2026");
-  await expect(first.locator(".trust-badge")).toHaveText("Dependencies: Mathlib only");
+  await expect(first.locator(".trust-badge")).toHaveText("Statement dependencies: Mathlib only");
   await expect(first.getByRole("link", { name: "2 versions" })).toHaveAttribute(
     "href",
     /entry\.html\?.*version=2.*#version-history$/,
@@ -129,6 +129,9 @@ test("optional metric markup cannot take down the registry", async ({ page }) =>
 
 test("eligible Challenge renders inline without origin privilege", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+  await expect(page.locator(".entry-heading .trust-badge")).toHaveText(
+    "Statement dependencies: Mathlib only",
+  );
 
   const source = page.locator(".challenge-presentation .challenge-source");
   await expect(source).toHaveAttribute(
