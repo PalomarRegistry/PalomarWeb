@@ -134,10 +134,22 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   );
 
   const source = page.locator(".challenge-presentation .challenge-source");
+  await expect(
+    page.getByRole("heading", { name: "Named compared declarations" }),
+  ).toBeVisible();
+  await expect(page.locator(".challenge-surface-disclosure")).toContainText(
+    "only the declarations named in comparator.json",
+  );
+  await expect(page.locator(".challenge-surface-disclosure")).toContainText(
+    "complete certified and reviewed statement surface",
+  );
   await expect(source).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
+  await expect(
+    page.getByRole("link", { name: "Inspect statement dependencies" }),
+  ).toHaveAttribute("href", /#statement-dependencies$/);
   await expect(page.getByRole("link", { name: "Open formatted statement" })).toHaveCount(0);
   const iframe = page.locator(".challenge-presentation iframe");
   await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
@@ -166,10 +178,13 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   expect(box.height).toBe(672);
   await expect(page.locator(".acceptance-callout")).toContainText("Accepted");
   await expect(page.locator(".acceptance-callout")).toContainText("29 July 2026");
-  await expect(page.locator(".acceptance-callout")).toContainText("recorded proof against the recorded statement");
+  await expect(page.locator(".acceptance-callout")).toContainText("Mechanical assurance");
   await expect(page.locator(".acceptance-callout")).toContainText(
-    "Every required check passed, so Palomar accepted the submission",
+    "Editorial assurance",
   );
+  await expect(page.locator(".acceptance-callout")).toContainText("AI-mediated review");
+  await expect(page.getByRole("link", { name: "Mechanical evidence" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Editorial evidence" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Solution.lean" }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Solution.lean`,

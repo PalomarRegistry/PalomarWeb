@@ -359,7 +359,7 @@ function challengeFrame(entry, renderBase) {
     challengeArtifactUrl(entry, renderBase).href,
     window.location.href,
   ).href;
-  frame.title = `Formatted statement for ${entry.id} version ${entry.version}`;
+  frame.title = `Named compared declarations for ${entry.id} version ${entry.version}`;
   frame.loading = "lazy";
   frame.referrerPolicy = "no-referrer";
   frame.setAttribute("sandbox", "allow-scripts");
@@ -429,13 +429,27 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
   const titleBlock = el("div");
-  titleBlock.append(el("div", "eyebrow", "Formal statement"), el("h2", "", "Statement"));
+  titleBlock.append(
+    el("div", "eyebrow", "Formal comparison surface"),
+    el("h2", "", "Named compared declarations"),
+  );
   heading.append(titleBlock);
   section.append(heading);
 
   const links = el("p", "challenge-links");
+  const dependencyRecordUrl = localPageUrl("entry.html", entry);
+  dependencyRecordUrl.hash = "statement-dependencies";
   links.append(
-    externalLink("View statement file (Challenge.lean)", challengeSourceUrl(entry), "challenge-source"),
+    externalLink(
+      "View full pinned statement file (Challenge.lean)",
+      challengeSourceUrl(entry),
+      "challenge-source",
+    ),
+    " · ",
+    internalLink(
+      "Inspect statement dependencies",
+      dependencyRecordUrl,
+    ),
   );
   const inline = isInlineChallenge(entry);
   if (!forceFrame && !inline) {
@@ -445,6 +459,13 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
     );
   }
   section.append(links);
+  section.append(
+    el(
+      "p",
+      "challenge-surface-disclosure",
+      "This formatted view shows only the declarations named in comparator.json. Comparator also checks the declarations used by their types. The full pinned Challenge.lean and the dependency record define the complete certified and reviewed statement surface.",
+    ),
+  );
 
   let metadata;
   try {
@@ -484,13 +505,25 @@ function acceptanceCallout(entry) {
   const check = el("span", "acceptance-check", "✓");
   check.setAttribute("aria-hidden", "true");
   const copy = el("div");
+  const evidenceLinks = el("p", "certificate-evidence-links");
+  evidenceLinks.append(
+    externalLink("Mechanical evidence", entry.verification.workflow_url),
+    " · ",
+    externalLink("Editorial evidence", entry.review.report_url),
+  );
   copy.append(
     el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
     el(
       "p",
       "",
-      "Palomar used Lean to check the recorded proof against the recorded statement and confirmed that it uses only the allowed axioms. The documented review was also completed. Every required check passed, so Palomar accepted the submission.",
+      "Mechanical assurance: Lean and Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules.",
     ),
+    el(
+      "p",
+      "",
+      "Editorial assurance: an AI-mediated review judged whether that formal Challenge matches the informal mathematical claim under the recorded policy. This is not human peer review or a novelty certificate.",
+    ),
+    evidenceLinks,
   );
   callout.append(check, copy);
   return callout;
@@ -613,6 +646,7 @@ async function renderEntry(
   evidence.append(details);
 
   const trust = el("section", "entry-trust");
+  trust.id = "statement-dependencies";
   const trustTitle = el("div", "section-heading");
   const trustBlock = el("div");
   trustBlock.append(
@@ -634,7 +668,10 @@ async function renderEntry(
     trust.append(el("h3", "", "Source repositories"));
     const dependencies = el("ul", "plain-list");
     for (const dependency of entry.trust.challenge_dependencies) {
-      dependencies.append(el("li", "", dependency.repository));
+      const provenance = dependency.provenance === "palomar-indexed"
+        ? `Palomar-indexed: ${dependency.palomar_id}`
+        : "allowlisted";
+      dependencies.append(el("li", "", `${dependency.repository} (${provenance})`));
     }
     trust.append(dependencies);
   }
