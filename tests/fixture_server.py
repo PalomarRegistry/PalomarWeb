@@ -16,8 +16,13 @@ HASH = "a" * 64
 
 def entry(identifier: str, lines: int, version: int = 1) -> dict:
     issue = int(identifier.rsplit("-", 1)[-1])
+    classification = (
+        {"arxiv": ["math.CO", "cs.DM"], "msc2020": ["05C10"]}
+        if identifier.endswith("000123")
+        else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
+    )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "id": identifier,
         "accepted_at": "2026-07-29",
         "version": version,
@@ -25,6 +30,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "title": f"Fixture {identifier} version {version}",
         "abstract": "A browser confinement fixture.",
         "authors": [{"name": "Example"}],
+        "classification": classification,
         "submission": {
             "repository": "kim-em/PalomarSubmission",
             "issue": issue,
@@ -113,6 +119,23 @@ ENTRIES = {
         "PALOMAR-2026-07-29-000124", 101, 1
     ),
 }
+ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
+    {
+        "level": "qualified",
+        "challenge_dependencies": [
+            {
+                "repository": "leanprover-community/mathlib4",
+                "provenance": "allowlisted",
+            },
+            {
+                "repository": "example/dependency",
+                "provenance": "palomar-indexed",
+                "palomar_id": "PALOMAR-2026-07-29-000123",
+            },
+        ],
+        "reasons": ["An exact indexed source snapshot determines the statement."],
+    }
+)
 
 
 class Handler(SimpleHTTPRequestHandler):
