@@ -28,8 +28,29 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
     "2 versions of PALOMAR-2026-07-29-000123",
   );
   await expect(page.locator(".entry-card")).toHaveCount(2);
+  await expect(first.locator(".card-subjects")).toContainText("math.CO");
+  await expect(first.locator(".card-subjects")).toContainText("MSC 05C10");
   await expect(page.getByRole("button", { name: "Mathlib only" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
+});
+
+test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator("#arxiv-filter").selectOption("math.NT");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+
+  await page.locator("#arxiv-filter").selectOption("");
+  await page.locator("#msc-filter").selectOption("05C10");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000123");
+});
+
+test("classification filters apply from a deep link", async ({ page }) => {
+  await page.goto(`/?database=${database}&arxiv=math.NT`);
+  await expect(page.locator("#arxiv-filter")).toHaveValue("math.NT");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
 });
 
 test("an unversioned entry link resolves to the current immutable URL", async ({ page }) => {
@@ -40,6 +61,12 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   await expect(page.locator(".entry-heading h1")).toHaveText(
     "Fixture PALOMAR-2026-07-29-000123 version 2",
   );
+  await expect(page.locator(".entry-heading .trust-badge")).toHaveText(
+    "Statement dependencies: Mathlib only",
+  );
+  await expect(page.locator(".entry-classification")).toContainText("math.CO");
+  await expect(page.locator(".entry-classification")).toContainText("05C10");
+  await expect(page.locator(".entry-classification").getByRole("link", { name: "RSS" })).toHaveCount(3);
   await expect(page).toHaveURL(/entry\.html\?id=PALOMAR-2026-07-29-000123&version=2&database=/);
   await expect(page).toHaveURL(/#version-history$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -134,9 +161,27 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   );
 
   const source = page.locator(".challenge-presentation .challenge-source");
+  await expect(
+    page.getByRole("heading", { name: "Named compared declarations" }),
+  ).toBeVisible();
+  await expect(page.locator(".challenge-surface-disclosure")).toContainText(
+    "declarations named in this entry's comparator configuration",
+  );
+  await expect(page.locator(".challenge-surface-disclosure")).toContainText(
+    "statement and dependency surface for inspection",
+  );
   await expect(source).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
+  );
+  await expect(
+    page.getByRole("link", { name: "Inspect statement dependencies" }),
+  ).toHaveAttribute("href", /#statement-dependencies$/);
+  await expect(
+    page.getByRole("link", { name: "View comparator configuration (comparator.json)" }),
+  ).toHaveAttribute(
+    "href",
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/comparator.json`,
   );
   await expect(page.getByRole("link", { name: "Open formatted statement" })).toHaveCount(0);
   const iframe = page.locator(".challenge-presentation iframe");
@@ -166,13 +211,26 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   expect(box.height).toBe(672);
   await expect(page.locator(".acceptance-callout")).toContainText("Accepted");
   await expect(page.locator(".acceptance-callout")).toContainText("29 July 2026");
-  await expect(page.locator(".acceptance-callout")).toContainText("recorded proof against the recorded statement");
+  await expect(page.locator(".acceptance-callout")).toContainText("Mechanical assurance");
   await expect(page.locator(".acceptance-callout")).toContainText(
-    "Every required check passed, so Palomar accepted the submission",
+    "Editorial assurance",
   );
+  await expect(page.locator(".acceptance-callout")).toContainText("AI-mediated review");
+  await expect(page.getByRole("link", { name: "Mechanical evidence" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Editorial evidence" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Solution.lean" }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Solution.lean`,
+  );
+  const sourceFiles = page.locator('.entry-evidence .detail-row a[href*="/blob/"]');
+  await expect(sourceFiles).toHaveText([
+    "Challenge.lean",
+    "Solution.lean",
+    "formalization.yaml",
+  ]);
+  await expect(sourceFiles.nth(2)).toHaveAttribute(
+    "href",
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/formalization.yaml`,
   );
   await expect(page.locator(".entry-solution .token-list code")).toHaveText("ExampleDependency");
   await page.locator(".solution-dependencies summary").click();
@@ -185,6 +243,12 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
 
 test("larger Challenge falls back to the dedicated wrapper", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`);
+  await expect(page.locator("#statement-dependencies")).toContainText(
+    "leanprover-community/mathlib4 (allowlisted)",
+  );
+  await expect(page.locator("#statement-dependencies")).toContainText(
+    "example/dependency (Palomar-indexed: PALOMAR-2026-07-29-000123)",
+  );
   await expect(page.locator(".challenge-presentation iframe")).toHaveCount(0);
   await expect(page.locator(".challenge-fallback")).toBeVisible();
   await page.getByRole("link", { name: "Open formatted statement" }).click();
@@ -197,6 +261,9 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
+  await page.getByRole("link", { name: "Inspect statement dependencies" }).click();
+  await expect(page).toHaveURL(/entry\.html\?.*#statement-dependencies$/);
+  await expect(page.locator("#statement-dependencies")).toBeInViewport();
 });
 
 test("current HTML remains compatible with cached JavaScript from the previous deployment", async ({ page }) => {

@@ -21,6 +21,7 @@ import {
 } from "./security.mjs";
 
 const CANONICAL_WEB_BASE = "https://kim-em.github.io/PalomarWeb/";
+const FEED_BASE = "https://kim-em.github.io/PalomarDatabase/feeds/";
 
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
@@ -31,6 +32,11 @@ function dataSource() {
   const databaseBase = databaseBaseFor(databaseUrl);
   const renderBase = selectRenderBase(window.location.href, window.location.search, databaseBase);
   return { databaseUrl, databaseBase, renderBase };
+}
+
+function categoryFeedBase() {
+  if (!params.has("database")) return FEED_BASE;
+  return new URL("feeds/", dataSource().databaseBase);
 }
 
 function el(tag, className, text) {
@@ -81,6 +87,22 @@ function theoremNames(entry) {
   return entry.formalization.theorem_names.join(", ");
 }
 
+function classification(entry) {
+  return {
+    arxiv: Array.isArray(entry.classification?.arxiv) ? entry.classification.arxiv : [],
+    msc2020: Array.isArray(entry.classification?.msc2020) ? entry.classification.msc2020 : [],
+  };
+}
+
+function categoryTokens(entry) {
+  const categories = classification(entry);
+  const tokens = el("span", "category-tokens");
+  for (const code of categories.arxiv) tokens.append(el("code", "arxiv-category", code));
+  for (const code of categories.msc2020) tokens.append(el("code", "msc-category", `MSC ${code}`));
+  if (!tokens.children.length) tokens.append(el("span", "unclassified", "Not recorded"));
+  return tokens;
+}
+
 function acceptanceDate(entry) {
   const value = entry.accepted_at || entry.review?.reviewed_at?.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) {
@@ -117,8 +139,11 @@ function trustBadge(entry) {
 }
 
 function entryCard(entry, versionCount) {
+  const categories = classification(entry);
   const card = el("article", "entry-card");
   card.dataset.trust = entry.trust.level;
+  card.dataset.arxiv = categories.arxiv.join(" ");
+  card.dataset.msc = categories.msc2020.join(" ");
   card.dataset.search = [
     entry.title,
     entry.abstract,
@@ -126,6 +151,8 @@ function entryCard(entry, versionCount) {
     theoremNames(entry),
     entry.source.repository,
     entry.id,
+    ...categories.arxiv,
+    ...categories.msc2020,
   ].join(" ").toLowerCase();
 
   const top = el("div", "card-top");
@@ -143,7 +170,9 @@ function entryCard(entry, versionCount) {
   authors.append(el("small", "", "Authors"), el("span", "", authorNames(entry)));
   const theorems = el("div");
   theorems.append(el("small", "", "Theorems"), el("span", "", theoremNames(entry)));
-  meta.append(authors, theorems);
+  const subjects = el("div", "card-subjects");
+  subjects.append(el("small", "", "Subjects"), categoryTokens(entry));
+  meta.append(authors, theorems, subjects);
   const footer = el("div", "card-footer");
   const historyUrl = new URL(localPageUrl("entry.html", entry));
   historyUrl.hash = "version-history";
@@ -204,12 +233,34 @@ async function renderIndex() {
     }
     let trust = "all";
     const search = document.querySelector("#search");
+    const arxiv = document.querySelector("#arxiv-filter");
+    const msc = document.querySelector("#msc-filter");
+    const fillCategories = (select, values) => {
+      if (!select) return;
+      for (const value of [...values].sort()) {
+        const option = el("option", "", value);
+        option.value = value;
+        select.append(option);
+      }
+    };
+    fillCategories(arxiv, new Set(entries.flatMap((entry) => classification(entry).arxiv)));
+    fillCategories(msc, new Set(entries.flatMap((entry) => classification(entry).msc2020)));
+    if (arxiv && [...arxiv.options].some((option) => option.value === params.get("arxiv"))) {
+      arxiv.value = params.get("arxiv");
+    }
+    if (msc && [...msc.options].some((option) => option.value === params.get("msc"))) {
+      msc.value = params.get("msc");
+    }
     const update = () => {
       const query = search.value.trim().toLowerCase();
+      const arxivValue = arxiv?.value || "";
+      const mscValue = msc?.value || "";
       let shown = 0;
       for (const card of grid.children) {
         const visible =
           (trust === "all" || card.dataset.trust === trust) &&
+          (!arxivValue || card.dataset.arxiv.split(" ").includes(arxivValue)) &&
+          (!mscValue || card.dataset.msc.split(" ").includes(mscValue)) &&
           (!query || card.dataset.search.includes(query));
         card.hidden = !visible;
         if (visible) shown += 1;
@@ -218,6 +269,8 @@ async function renderIndex() {
       status.textContent = shown ? "" : "No registry entries match those filters.";
     };
     search.addEventListener("input", update);
+    arxiv?.addEventListener("change", update);
+    msc?.addEventListener("change", update);
     document.querySelectorAll(".filter").forEach((button) => {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;
@@ -229,6 +282,7 @@ async function renderIndex() {
         update();
       });
     });
+    update();
   } catch (error) {
     status.textContent = `The registry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -359,7 +413,7 @@ function challengeFrame(entry, renderBase) {
     challengeArtifactUrl(entry, renderBase).href,
     window.location.href,
   ).href;
-  frame.title = `Formatted statement for ${entry.id} version ${entry.version}`;
+  frame.title = `Named compared declarations for ${entry.id} version ${entry.version}`;
   frame.loading = "lazy";
   frame.referrerPolicy = "no-referrer";
   frame.setAttribute("sandbox", "allow-scripts");
@@ -429,13 +483,34 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
   const titleBlock = el("div");
-  titleBlock.append(el("div", "eyebrow", "Formal statement"), el("h2", "", "Statement"));
+  titleBlock.append(
+    el("div", "eyebrow", "Formal comparison surface"),
+    el("h2", "", "Named compared declarations"),
+  );
   heading.append(titleBlock);
   section.append(heading);
 
   const links = el("p", "challenge-links");
+  const dependencyRecordUrl = localPageUrl("entry.html", entry);
+  dependencyRecordUrl.hash = "statement-dependencies";
+  const comparatorPath = entry.formalization.comparator_config_path;
   links.append(
-    externalLink("View statement file (Challenge.lean)", challengeSourceUrl(entry), "challenge-source"),
+    externalLink(
+      "View full pinned statement file (Challenge.lean)",
+      challengeSourceUrl(entry),
+      "challenge-source",
+    ),
+    " · ",
+    internalLink(
+      "Inspect statement dependencies",
+      dependencyRecordUrl,
+    ),
+    " · ",
+    externalLink(
+      `View comparator configuration (${comparatorPath})`,
+      pinnedSourceFileUrl(entry, comparatorPath),
+      "comparator-source",
+    ),
   );
   const inline = isInlineChallenge(entry);
   if (!forceFrame && !inline) {
@@ -445,6 +520,13 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
     );
   }
   section.append(links);
+  section.append(
+    el(
+      "p",
+      "challenge-surface-disclosure",
+      "The formatted view shows only the declarations named in this entry's comparator configuration. Comparator also checks the declarations used by their types. The full pinned Challenge.lean and dependency record expose the statement and dependency surface for inspection.",
+    ),
+  );
 
   let metadata;
   try {
@@ -484,16 +566,65 @@ function acceptanceCallout(entry) {
   const check = el("span", "acceptance-check", "✓");
   check.setAttribute("aria-hidden", "true");
   const copy = el("div");
+  const evidenceLinks = el("p", "certificate-evidence-links");
+  evidenceLinks.append(
+    externalLink("Mechanical evidence", entry.verification.workflow_url),
+    " · ",
+    externalLink("Editorial evidence", entry.review.report_url),
+  );
   copy.append(
     el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
     el(
       "p",
       "",
-      "Palomar used Lean to check the recorded proof against the recorded statement and confirmed that it uses only the allowed axioms. The documented review was also completed. Every required check passed, so Palomar accepted the submission.",
+      "Mechanical assurance: Lean and Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules.",
     ),
+    el(
+      "p",
+      "",
+      "Editorial assurance: an AI-mediated review judged whether that formal Challenge matches the informal mathematical claim under the recorded policy. This is not human peer review or a novelty certificate.",
+    ),
+    evidenceLinks,
   );
   callout.append(check, copy);
   return callout;
+}
+
+function classificationSection(entry, currentVersion) {
+  const categories = classification(entry);
+  const section = el("section", "entry-classification");
+  const heading = el("div", "section-heading");
+  const title = el("div");
+  title.append(el("div", "eyebrow", "Discoverability"), el("h2", "", "Subject classification"));
+  heading.append(title);
+  section.append(heading);
+  const details = el("dl", "details classification-details");
+  const categoryRow = (label, values, feedType) => {
+    const row = el("div", "detail-row");
+    row.append(el("dt", "", label));
+    const value = el("dd", "category-feed-list");
+    for (const code of values) {
+      const item = el("span", "category-feed-item");
+      item.append(el("code", "", code));
+      if (entry.version === currentVersion) {
+        const feedUrl = new URL(
+          `${feedType}/${encodeURIComponent(code)}.xml`,
+          categoryFeedBase(),
+        );
+        item.append(" ", dataLink("RSS", feedUrl));
+      }
+      value.append(item);
+    }
+    if (!values.length) value.append(el("span", "unclassified", "Not recorded for this older entry"));
+    row.append(value);
+    return row;
+  };
+  details.append(
+    categoryRow("arXiv subjects", categories.arxiv, "arxiv"),
+    categoryRow("MSC2020", categories.msc2020, "msc"),
+  );
+  section.append(details);
+  return section;
 }
 
 function solutionMetadata(entry, renderMetadata) {
@@ -597,6 +728,11 @@ async function renderEntry(
       entry.formalization.solution_path,
       pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
+    externalDetailRow(
+      "Formalization metadata",
+      entry.formalization.formalization_metadata_path,
+      pinnedSourceFileUrl(entry, entry.formalization.formalization_metadata_path),
+    ),
     detailRow("Challenge SHA-256", entry.verification.challenge_sha256),
     detailRow("Solution SHA-256", entry.verification.solution_sha256),
     detailRow("Lean version", entry.formalization.lean_toolchain),
@@ -613,6 +749,7 @@ async function renderEntry(
   evidence.append(details);
 
   const trust = el("section", "entry-trust");
+  trust.id = "statement-dependencies";
   const trustTitle = el("div", "section-heading");
   const trustBlock = el("div");
   trustBlock.append(
@@ -634,7 +771,10 @@ async function renderEntry(
     trust.append(el("h3", "", "Source repositories"));
     const dependencies = el("ul", "plain-list");
     for (const dependency of entry.trust.challenge_dependencies) {
-      dependencies.append(el("li", "", dependency.repository));
+      const provenance = dependency.provenance === "palomar-indexed"
+        ? `Palomar-indexed: ${dependency.palomar_id}`
+        : "allowlisted";
+      dependencies.append(el("li", "", `${dependency.repository} (${provenance})`));
     }
     trust.append(dependencies);
   }
@@ -688,6 +828,7 @@ async function renderEntry(
   if (notice) content.append(notice);
   content.append(
     versionHistory(entry, versions, currentVersion),
+    classificationSection(entry, currentVersion),
     challenge.section,
     evidence,
     trust,
@@ -760,9 +901,10 @@ async function renderEntryPage() {
       versions,
       currentVersion,
     );
-    if (requestedHash === "#version-history") {
-      document.querySelector("#version-history").scrollIntoView();
-    }
+    const anchorTarget = requestedHash.startsWith("#")
+      ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
+      : null;
+    if (anchorTarget) anchorTarget.scrollIntoView();
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -786,7 +928,7 @@ async function renderChallengePage() {
   }
   try {
     const { entry, renderBase } = await loadEntry(id, version);
-    document.title = `Statement — ${entry.title} — Palomar`;
+    document.title = `Named compared declarations — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
       el("div", "entry-id", `${entry.id} · version ${entry.version}`),
@@ -797,7 +939,7 @@ async function renderChallengePage() {
     status.hidden = true;
     content.hidden = false;
   } catch (error) {
-    status.textContent = `The formatted statement could not be loaded: ${error.message}`;
+    status.textContent = `The named compared declarations could not be loaded: ${error.message}`;
     status.classList.add("error");
   }
 }
