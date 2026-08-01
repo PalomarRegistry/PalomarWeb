@@ -125,8 +125,9 @@
             still possible that the version of the Lean kernel, Mathlib cache,
             and other tooling used by Palomar contains bugs or exploits. In
             particular, Palomar’s certification does not completely remove the
-            need for independent verification of both the formal and informal
-            proofs.
+            need for
+            <a href="#check-it-yourself">independent verification</a> of both the
+            formal and informal proofs.
           </li>
           <li>
             <strong>Palomar does not guarantee complete alignment of the formal
@@ -192,6 +193,70 @@
             formal proofs, such as Mathlib.
           </li>
         </ol>
+      </section>
+
+      <section id="check-it-yourself">
+        <h2>How can I check this myself?</h2>
+        <p>
+          Every submission is pinned to a full 40-character commit, so the
+          artifact Palomar checked cannot drift. Every verification runs in
+          public GitHub Actions, so the complete record of what was done stays
+          visible. Each entry records the SHA-256 digests of the statement and
+          proof files, the exact Lean toolchain, and the exact Comparator,
+          <a href="https://github.com/leanprover/lean4export">lean4export</a>,
+          and Landrun revisions used, which together are enough to reproduce the
+          run from the published record. One caveat: Mathlib’s build cache is
+          fetched from a mutable store, so a later re-run may not retrieve
+          identical artifacts. Building Mathlib from source removes that
+          dependency.
+        </p>
+        <p>
+          <a href="https://github.com/leanprover/comparator">Comparator</a> does
+          not simply ask Lean’s elaborator whether the proof was accepted. It
+          compiles the statement and the proof in separate sandboxes, exports
+          both environments with <code>lean4export</code>, checks that the
+          declarations the statement depends on are identical in each, and then
+          replays the exported proof through Lean’s kernel from scratch. A proof
+          that survives that replay cannot have relied on a metaprogram
+          tampering with the elaborator’s state or misreporting its result.
+        </p>
+        <p>
+          Comparator also enforces that the compared theorems use no axioms
+          beyond those listed in the submission’s <code>comparator.json</code>.
+          Because that file is written by the submitter, Palomar separately
+          rejects any submission whose list extends beyond <code>propext</code>,
+          <code>Quot.sound</code>, and <code>Classical.choice</code>.
+        </p>
+        <p>
+          That replay uses Lean’s own kernel, so it is a second pass rather than
+          a second implementation: it guards against a proof that manipulated the
+          elaborator, not against a bug in the kernel itself. Comparator can
+          additionally run <code>nanoda</code>, described below, but Palomar’s
+          current runner does not enable it. We encourage readers who want
+          stronger assurance to run these tools themselves:
+        </p>
+        <ul class="checkers">
+          <li>
+            <strong><code>leanchecker</code></strong> replays every constant,
+            imported and local, into a fresh environment
+            (<code>lake env leanchecker --fresh <var>Module</var></code>). It
+            ships with every Lean toolchain Palomar supports, so it is already
+            present in the toolchain each entry names. Like Comparator’s replay,
+            it uses Lean’s own kernel.
+          </li>
+          <li>
+            <strong><a href="https://github.com/ammkrn/nanoda_lib">nanoda</a></strong>
+            is an independent kernel implementation written in Rust. It does not
+            share Lean’s kernel code, so it can catch a class of problem that
+            neither Comparator’s replay nor <code>leanchecker</code> can.
+          </li>
+        </ul>
+        <p>
+          The Lean reference manual’s
+          <a href="https://lean-lang.org/doc/reference/latest/ValidatingProofs/">guide to validating a Lean proof</a>
+          describes both, along with further checkers collected in the
+          <a href="https://arena.lean-lang.org/">Lean Kernel Arena</a>.
+        </p>
       </section>
 
       <section id="getting-ready">

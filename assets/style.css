@@ -413,12 +413,14 @@ footer {
 
 /* These two lists carry full paragraphs rather than short phrases. */
 .faq .assertions,
-.faq .not-list {
+.faq .not-list,
+.faq .checkers {
   margin-top: 1rem;
 }
 
 .faq .assertions li + li,
-.faq .not-list li + li {
+.faq .not-list li + li,
+.faq .checkers li + li {
   margin-top: .9rem;
 }
 
