@@ -411,6 +411,17 @@ footer {
   margin-top: .35rem;
 }
 
+/* These two lists carry full paragraphs rather than short phrases. */
+.faq .assertions,
+.faq .not-list {
+  margin-top: 1rem;
+}
+
+.faq .assertions li + li,
+.faq .not-list li + li {
+  margin-top: .9rem;
+}
+
 .faq li > ul {
   margin-top: .35rem;
 }

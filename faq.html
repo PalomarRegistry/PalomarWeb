@@ -28,20 +28,127 @@
       <section id="what-is-palomar">
         <h2>What is Palomar?</h2>
         <p>
-          Palomar is a public, searchable registry of formally verified
-          mathematical results. Each entry points to an immutable version of a
-          public repository and records the exact statement checked, its
-          dependencies, its proof-verification result, and the findings of a
-          documented editorial review.
+          Palomar is a public, searchable registry of Lean formalizations whose
+          proofs have been machine-checked. Each entry points to an immutable
+          version of a public repository and records the exact formal statement
+          that was checked, its dependencies, the result of the proof check, and
+          the findings of a documented editorial review.
+        </p>
+        <p>Acceptance of a repository version by Palomar asserts two things:</p>
+        <ol class="assertions">
+          <li>
+            <strong>(Mechanical check)</strong> Lean’s kernel verified that the
+            recorded formal proof proves the recorded formal statement using a
+            specified version of
+            <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
+            and that it depends on no axioms beyond <code>propext</code>,
+            <code>Quot.sound</code>, and <code>Classical.choice</code>. This
+            verification is performed using the
+            <a href="https://github.com/leanprover/comparator">Comparator</a>
+            tool.
+          </li>
+          <li>
+            <strong>(Non-mechanical check)</strong> A language model judged that
+            the recorded formal statement (in <code>Challenge.lean</code>) is a
+            fair rendering of the mathematical claim made in the recorded
+            informal statement (in <code>formalization.yaml</code>), and that the
+            submission clears Palomar’s
+            <a href="https://github.com/kim-em/PalomarPolicy/blob/main/CONTRIBUTING.md">published minimum standard</a>.
+          </li>
+        </ol>
+        <p>
+          In addition, a Palomar moderator inspects the review report before it
+          is published and approves the entry before it appears on the site.
+          That approval confirms the process ran correctly, but is not an expert
+          reading of the mathematics.
         </p>
         <p>
-          Palomar is not a journal, peer review, a novelty certificate, or an
-          endorsement of the authors or their work. Acceptance means that the
-          recorded proof proves the recorded statement and that the submission
-          cleared Palomar’s published minimum standard. The source, warnings,
-          and review evidence remain available so readers can make their own
-          judgments.
+          The source, warnings, and full review of the repository are publicly
+          visible to help readers reach their own judgment on the work and
+          perform independent verification.
         </p>
+      </section>
+
+      <section id="what-palomar-is-not">
+        <h2>What Palomar is <em>not</em></h2>
+        <ol class="not-list">
+          <li>
+            <strong>Palomar’s formal certification is not absolute.</strong> As
+            described in
+            <a href="https://github.com/kim-em/PalomarSubmission/blob/main/SECURITY.md">SECURITY.md</a>,
+            Palomar makes its best efforts to formally verify the claimed
+            results in Lean in a secure, sandboxed environment. However, it is
+            still possible that the version of the Lean kernel, Mathlib cache,
+            and other tooling used by Palomar contains bugs or exploits. In
+            particular, Palomar’s certification does not completely remove the
+            need for independent verification of both the formal and informal
+            proofs.
+          </li>
+          <li>
+            <strong>Palomar does not guarantee complete alignment of the formal
+            and informal results claimed.</strong> The language model checks for
+            any obvious discrepancies between the formal and informal versions
+            of the result, and generates a detailed report of its findings.
+            However, the model may make mistakes or have an incomplete analysis.
+            This report is intended to assist the reader’s verification that the
+            formal statement correctly captures the meaning of the informal one,
+            but should not be viewed as a substitute for that verification.
+          </li>
+          <li>
+            <strong>Palomar does not verify informal proofs.</strong> Optionally,
+            Palomar can check whether an informal account of a proof is
+            consistent with the architecture of the formal proof, in that it does
+            not describe an unrelated argument or conceal a decisive assumption.
+            However, it does not re-derive or confirm the informal proof itself,
+            and it makes no claim that an informal proof is correct.
+          </li>
+          <li>
+            <strong>Palomar does not assess code quality.</strong> While the
+            formal statement file is audited for brevity and readability, formal
+            proofs that are verified by Palomar are not assessed to be human
+            readable, or to conform to any best practices for formal writing.
+          </li>
+          <li>
+            <strong>Palomar is not a certificate of novelty.</strong> Palomar
+            does not check whether the results claimed are genuinely novel
+            compared to what already exists in the published or unpublished
+            literature.
+          </li>
+          <li>
+            <strong>Palomar is not a certificate of importance.</strong> Palomar
+            applies a minimum bar: a submission is rejected if the result could
+            not plausibly warrant a research note, or if no credible research
+            area and plausible interested reader can be named for it. However,
+            Palomar does not rank, grade, or otherwise assess how significant a
+            result is.
+          </li>
+          <li>
+            <strong>Palomar does not perform peer review.</strong> While a human
+            moderator is needed to approve an addition of a repository to the
+            registry, this process does not include any expert review of the
+            content of the repository itself.
+          </li>
+          <li>
+            <strong>Palomar is not a journal.</strong> Registration of a
+            repository on this site should not in any way be viewed as a
+            “publication” of that repository.
+          </li>
+          <li>
+            <strong>Palomar is not a green light for journal
+            submission.</strong> Mathematical journals require their submissions
+            adhere to professional standards of exposition, accuracy, and
+            citation, and be of genuine interest to their readers. None of these
+            criteria are directly addressed by this registry, which checks
+            informal descriptions of results only for fidelity to their formal
+            counterparts.
+          </li>
+          <li>
+            <strong>Palomar is not a green light for formalized library
+            submission.</strong> Palomar verification should not be viewed as an
+            endorsement of the code for the purposes of uploading to a library of
+            formal proofs, such as Mathlib.
+          </li>
+        </ol>
       </section>
 
       <section id="why-now">
