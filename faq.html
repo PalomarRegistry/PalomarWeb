@@ -424,29 +424,28 @@
       <section id="other-proof-assistants">
         <h2>What about other proof assistants?</h2>
         <p>
-          We would be open to adding support for other proof assistants. Please
-          be ready to:
+          Currently, Palomar is set up to verify only proofs formalized in Lean.
+          However, we are open to expanding the registry to other proof
+          assistants. If you are interested in such an expansion, please contact
+          the maintainer team early in the
+          <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
+          We envisage that such expansions will require the following:
         </p>
         <ul>
           <li>
-            prepare pull requests that add support for the language, including:
+            pull requests adding support for the language, covering:
             <ul>
               <li>running its verification pipeline;</li>
-              <li>requiring a separation between “the statement” and “the solution”;</li>
+              <li>enforcing a separation between “the statement” and “the solution”;</li>
               <li>rendering the main result to HTML; and</li>
               <li>parsing upstream dependencies for display;</li>
             </ul>
           </li>
-          <li>work with us to make sure the implementation is secure and performant;</li>
-          <li>bring a sample of 10–100 candidate projects that could be indexed for this proof assistant;</li>
-          <li>have someone ready to join its maintainer team; and</li>
-          <li>if we are still operating on a shoestring budget, be willing to fund the additional review and CI costs for the language.</li>
+          <li>a review, carried out with us, establishing that the implementation is secure and performant;</li>
+          <li>an assessment of the resources its verification pipeline would require to run in our continuous integration;</li>
+          <li>a sample of 10–100 candidate projects that could be indexed for that proof assistant; and</li>
+          <li>someone ready to join its maintainer team.</li>
         </ul>
-        <p>
-          Please contact the maintainer team early in the
-          <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>
-          if you intend to pursue this.
-        </p>
       </section>
 
       <section class="cta">
