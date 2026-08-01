@@ -16,6 +16,11 @@ HASH = "a" * 64
 
 def entry(identifier: str, lines: int, version: int = 1) -> dict:
     issue = int(identifier.rsplit("-", 1)[-1])
+    classification = (
+        {"arxiv": ["math.CO", "cs.DM"], "msc2020": ["05C10"]}
+        if identifier.endswith("000123")
+        else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
+    )
     return {
         "schema_version": 2,
         "id": identifier,
@@ -25,6 +30,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "title": f"Fixture {identifier} version {version}",
         "abstract": "A browser confinement fixture.",
         "authors": [{"name": "Example"}],
+        "classification": classification,
         "submission": {
             "repository": "kim-em/PalomarSubmission",
             "issue": issue,

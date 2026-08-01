@@ -21,6 +21,7 @@ import {
 } from "./security.mjs";
 
 const CANONICAL_WEB_BASE = "https://kim-em.github.io/PalomarWeb/";
+const FEED_BASE = "https://kim-em.github.io/PalomarDatabase/feeds/";
 
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
@@ -31,6 +32,11 @@ function dataSource() {
   const databaseBase = databaseBaseFor(databaseUrl);
   const renderBase = selectRenderBase(window.location.href, window.location.search, databaseBase);
   return { databaseUrl, databaseBase, renderBase };
+}
+
+function categoryFeedBase() {
+  if (!params.has("database")) return FEED_BASE;
+  return new URL("feeds/", dataSource().databaseBase);
 }
 
 function el(tag, className, text) {
@@ -81,6 +87,22 @@ function theoremNames(entry) {
   return entry.formalization.theorem_names.join(", ");
 }
 
+function classification(entry) {
+  return {
+    arxiv: Array.isArray(entry.classification?.arxiv) ? entry.classification.arxiv : [],
+    msc2020: Array.isArray(entry.classification?.msc2020) ? entry.classification.msc2020 : [],
+  };
+}
+
+function categoryTokens(entry) {
+  const categories = classification(entry);
+  const tokens = el("span", "category-tokens");
+  for (const code of categories.arxiv) tokens.append(el("code", "arxiv-category", code));
+  for (const code of categories.msc2020) tokens.append(el("code", "msc-category", `MSC ${code}`));
+  if (!tokens.children.length) tokens.append(el("span", "unclassified", "Not recorded"));
+  return tokens;
+}
+
 function acceptanceDate(entry) {
   const value = entry.accepted_at || entry.review?.reviewed_at?.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) {
@@ -117,8 +139,11 @@ function trustBadge(entry) {
 }
 
 function entryCard(entry, versionCount) {
+  const categories = classification(entry);
   const card = el("article", "entry-card");
   card.dataset.trust = entry.trust.level;
+  card.dataset.arxiv = categories.arxiv.join(" ");
+  card.dataset.msc = categories.msc2020.join(" ");
   card.dataset.search = [
     entry.title,
     entry.abstract,
@@ -126,6 +151,8 @@ function entryCard(entry, versionCount) {
     theoremNames(entry),
     entry.source.repository,
     entry.id,
+    ...categories.arxiv,
+    ...categories.msc2020,
   ].join(" ").toLowerCase();
 
   const top = el("div", "card-top");
@@ -143,7 +170,9 @@ function entryCard(entry, versionCount) {
   authors.append(el("small", "", "Authors"), el("span", "", authorNames(entry)));
   const theorems = el("div");
   theorems.append(el("small", "", "Theorems"), el("span", "", theoremNames(entry)));
-  meta.append(authors, theorems);
+  const subjects = el("div", "card-subjects");
+  subjects.append(el("small", "", "Subjects"), categoryTokens(entry));
+  meta.append(authors, theorems, subjects);
   const footer = el("div", "card-footer");
   const historyUrl = new URL(localPageUrl("entry.html", entry));
   historyUrl.hash = "version-history";
@@ -204,12 +233,34 @@ async function renderIndex() {
     }
     let trust = "all";
     const search = document.querySelector("#search");
+    const arxiv = document.querySelector("#arxiv-filter");
+    const msc = document.querySelector("#msc-filter");
+    const fillCategories = (select, values) => {
+      if (!select) return;
+      for (const value of [...values].sort()) {
+        const option = el("option", "", value);
+        option.value = value;
+        select.append(option);
+      }
+    };
+    fillCategories(arxiv, new Set(entries.flatMap((entry) => classification(entry).arxiv)));
+    fillCategories(msc, new Set(entries.flatMap((entry) => classification(entry).msc2020)));
+    if (arxiv && [...arxiv.options].some((option) => option.value === params.get("arxiv"))) {
+      arxiv.value = params.get("arxiv");
+    }
+    if (msc && [...msc.options].some((option) => option.value === params.get("msc"))) {
+      msc.value = params.get("msc");
+    }
     const update = () => {
       const query = search.value.trim().toLowerCase();
+      const arxivValue = arxiv?.value || "";
+      const mscValue = msc?.value || "";
       let shown = 0;
       for (const card of grid.children) {
         const visible =
           (trust === "all" || card.dataset.trust === trust) &&
+          (!arxivValue || card.dataset.arxiv.split(" ").includes(arxivValue)) &&
+          (!mscValue || card.dataset.msc.split(" ").includes(mscValue)) &&
           (!query || card.dataset.search.includes(query));
         card.hidden = !visible;
         if (visible) shown += 1;
@@ -218,6 +269,8 @@ async function renderIndex() {
       status.textContent = shown ? "" : "No registry entries match those filters.";
     };
     search.addEventListener("input", update);
+    arxiv?.addEventListener("change", update);
+    msc?.addEventListener("change", update);
     document.querySelectorAll(".filter").forEach((button) => {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;
@@ -229,6 +282,7 @@ async function renderIndex() {
         update();
       });
     });
+    update();
   } catch (error) {
     status.textContent = `The registry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -536,6 +590,43 @@ function acceptanceCallout(entry) {
   return callout;
 }
 
+function classificationSection(entry, currentVersion) {
+  const categories = classification(entry);
+  const section = el("section", "entry-classification");
+  const heading = el("div", "section-heading");
+  const title = el("div");
+  title.append(el("div", "eyebrow", "Discoverability"), el("h2", "", "Subject classification"));
+  heading.append(title);
+  section.append(heading);
+  const details = el("dl", "details classification-details");
+  const categoryRow = (label, values, feedType) => {
+    const row = el("div", "detail-row");
+    row.append(el("dt", "", label));
+    const value = el("dd", "category-feed-list");
+    for (const code of values) {
+      const item = el("span", "category-feed-item");
+      item.append(el("code", "", code));
+      if (entry.version === currentVersion) {
+        const feedUrl = new URL(
+          `${feedType}/${encodeURIComponent(code)}.xml`,
+          categoryFeedBase(),
+        );
+        item.append(" ", dataLink("RSS", feedUrl));
+      }
+      value.append(item);
+    }
+    if (!values.length) value.append(el("span", "unclassified", "Not recorded for this older entry"));
+    row.append(value);
+    return row;
+  };
+  details.append(
+    categoryRow("arXiv subjects", categories.arxiv, "arxiv"),
+    categoryRow("MSC2020", categories.msc2020, "msc"),
+  );
+  section.append(details);
+  return section;
+}
+
 function solutionMetadata(entry, renderMetadata) {
   const section = el("section", "entry-solution");
   const heading = el("div", "section-heading");
@@ -637,6 +728,11 @@ async function renderEntry(
       entry.formalization.solution_path,
       pinnedSourceFileUrl(entry, entry.formalization.solution_path),
     ),
+    externalDetailRow(
+      "Formalization metadata",
+      entry.formalization.formalization_metadata_path,
+      pinnedSourceFileUrl(entry, entry.formalization.formalization_metadata_path),
+    ),
     detailRow("Challenge SHA-256", entry.verification.challenge_sha256),
     detailRow("Solution SHA-256", entry.verification.solution_sha256),
     detailRow("Lean version", entry.formalization.lean_toolchain),
@@ -732,6 +828,7 @@ async function renderEntry(
   if (notice) content.append(notice);
   content.append(
     versionHistory(entry, versions, currentVersion),
+    classificationSection(entry, currentVersion),
     challenge.section,
     evidence,
     trust,
