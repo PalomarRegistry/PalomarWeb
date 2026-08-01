@@ -275,7 +275,7 @@ test("unsafe source paths and malformed displayed digests fail closed", () => {
 });
 
 test("every HTML entry point carries the restrictive CSP", async () => {
-  for (const name of ["index.html", "entry.html", "render.html", "about.html", "404.html"]) {
+  for (const name of ["index.html", "entry.html", "render.html", "about.html", "faq.html", "404.html"]) {
     const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
     assert.match(html, /Content-Security-Policy/);
     assert.match(html, /default-src 'none'/);
