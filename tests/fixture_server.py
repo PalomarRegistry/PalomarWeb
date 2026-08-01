@@ -22,7 +22,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
     )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "id": identifier,
         "accepted_at": "2026-07-29",
         "version": version,

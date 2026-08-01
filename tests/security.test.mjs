@@ -249,7 +249,7 @@ test("indexed dependency provenance requires a Palomar ID", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 3 }), summary()), /unsupported entry/);
+  assert.throws(() => validateEntry(entry({ schema_version: 4 }), summary()), /unsupported entry/);
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";
@@ -262,6 +262,24 @@ test("entry schema, acceptance state, verdict, and selected identity fail closed
     () => validateEntry(entry(), summary({ version: 2, path: "entries/PALOMAR-2026-07-29-000123-v2.json" })),
     /identity does not match/,
   );
+});
+
+test("schema v3 classification is required and strictly shaped", () => {
+  const valid = entry({
+    schema_version: 3,
+    classification: { arxiv: ["math.CO", "cs.DM"], msc2020: ["05C10"] },
+  });
+  assert.doesNotThrow(() => validateEntry(valid, summary()));
+
+  assert.throws(
+    () => validateEntry(entry({ schema_version: 3 }), summary()),
+    /classification must be an object/,
+  );
+  const malformed = entry({
+    schema_version: 3,
+    classification: { arxiv: ["math.NOT REAL"], msc2020: ["05C10"] },
+  });
+  assert.throws(() => validateEntry(malformed, summary()), /malformed code/);
 });
 
 test("record evidence links must agree with their canonical values", () => {
