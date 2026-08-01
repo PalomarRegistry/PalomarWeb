@@ -1,4 +1,5 @@
-export const SUPPORTED_SCHEMA_VERSION = 2;
+export const INDEX_SCHEMA_VERSION = 2;
+export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3]);
 export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
@@ -10,6 +11,8 @@ const COMMIT_RE = /^[0-9a-f]{40}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const POSITIVE_INTEGER_RE = /^[1-9][0-9]*$/;
 const DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+const ARXIV_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
+const MSC2020_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
@@ -128,7 +131,7 @@ export function safeInternalUrl(value, locationHref) {
 
 export function validateIndex(index) {
   object(index, "index");
-  if (index.schema_version !== SUPPORTED_SCHEMA_VERSION) {
+  if (index.schema_version !== INDEX_SCHEMA_VERSION) {
     fail(`unsupported index schema_version ${String(index.schema_version)}`);
   }
   const seen = new Set();
@@ -227,7 +230,7 @@ function validateCanonicalRecordLinks(entry) {
 export function validateEntry(entry, summary) {
   object(entry, "entry");
   object(summary, "entry summary");
-  if (entry.schema_version !== SUPPORTED_SCHEMA_VERSION) {
+  if (!ENTRY_SCHEMA_VERSIONS.has(entry.schema_version)) {
     fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
   }
   if (entry.status !== "accepted") fail("entry status is not accepted");
@@ -247,6 +250,27 @@ export function validateEntry(entry, summary) {
 
   for (const [position, value] of array(entry.authors, "entry.authors").entries()) {
     string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
+  }
+
+  if (entry.schema_version === 2 && entry.classification !== undefined) {
+    fail("entry.classification is not valid in schema version 2");
+  }
+  if (entry.schema_version === 3) {
+    const classification = object(entry.classification, "entry.classification");
+    const arxiv = stringArray(classification.arxiv, "entry.classification.arxiv");
+    const msc2020 = stringArray(classification.msc2020, "entry.classification.msc2020");
+    if (arxiv.length < 1 || arxiv.length > 2 || new Set(arxiv).size !== arxiv.length) {
+      fail("entry.classification.arxiv must contain one or two unique codes");
+    }
+    if (msc2020.length < 1 || msc2020.length > 8 || new Set(msc2020).size !== msc2020.length) {
+      fail("entry.classification.msc2020 must contain one to eight unique codes");
+    }
+    if (arxiv.some((code) => !ARXIV_RE.test(code))) {
+      fail("entry.classification.arxiv contains a malformed code");
+    }
+    if (msc2020.some((code) => !MSC2020_RE.test(code))) {
+      fail("entry.classification.msc2020 contains a malformed code");
+    }
   }
 
   const submission = object(entry.submission, "entry.submission");

@@ -9,6 +9,7 @@
     <title>Palomar — Lean-verified mathematics</title>
     <link rel="stylesheet" href="assets/style.css">
     <link rel="manifest" href="site.webmanifest">
+    <link rel="alternate" type="application/rss+xml" title="Palomar accepted results" href="https://kim-em.github.io/PalomarDatabase/feed.xml">
   </head>
   <body data-page="index">
     <a class="skip-link" href="#registry">Skip to registry</a>
@@ -48,6 +49,14 @@
             <span>Search:</span>
             <input id="search" type="search" placeholder="title, author, theorem, or repository" autocomplete="off">
           </label>
+          <div class="category-filters" aria-label="Subject filters">
+            <label>arXiv:
+              <select id="arxiv-filter"><option value="">All subjects</option></select>
+            </label>
+            <label>MSC:
+              <select id="msc-filter"><option value="">All codes</option></select>
+            </label>
+          </div>
           <div class="filters" role="group" aria-label="Statement dependency filters">
             <span>Show:</span>
             <button class="filter active" type="button" data-trust="all" aria-pressed="true">All</button>
@@ -75,6 +84,7 @@
         <span> — a registry of Lean-verified results</span>
       </div>
       <div class="footer-links">
+        <a href="https://kim-em.github.io/PalomarDatabase/feed.xml">RSS</a>
         <a href="https://github.com/kim-em/PalomarPolicy">Policy</a>
         <a href="https://github.com/kim-em/PalomarDatabase">Data</a>
         <a href="https://github.com/leanprover/comparator">Comparator</a>

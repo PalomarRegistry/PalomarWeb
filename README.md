@@ -6,6 +6,8 @@ The read-only human view of
 The site is static and deployed with GitHub Pages. It fetches `index.json` and
 entry records directly from the database repository at runtime, so publishing a
 database PR does not require a coordinated website deployment or a server.
+Registry cards display arXiv and MSC2020 classifications, and the toolbar can
+filter the current records by either taxonomy.
 
 Local preview:
 
@@ -32,6 +34,14 @@ PalomarDatabase; consumers should use that repository directly. A versioned ID
 such as `PALOMAR-2026-07-29-000001-v1` names one immutable record. An ID without
 a version means the latest record; later versions may change its theorem,
 source, authors, or subject, so stable citations must include the version.
+
+## RSS
+
+The static database deployment generates a main RSS feed and separate feeds for
+every arXiv and MSC2020 classification represented by a current entry. The web
+site advertises the main feed with RSS autodiscovery and links the relevant
+category feeds from each entry page. Static hosting is sufficient because feed
+XML is regenerated whenever the append-only database changes.
 
 ## Version presentation
 
