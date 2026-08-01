@@ -34,10 +34,34 @@
           that was checked, its dependencies, the result of the proof check, and
           the findings of a documented editorial review.
         </p>
-        <p>Acceptance of a repository version by Palomar asserts two things:</p>
+      </section>
+
+      <section id="why-now">
+        <h2>Why do we need this today?</h2>
+        <p>
+          Formalized mathematics is growing quickly, but much of it remains
+          scattered across repositories, announcements, and private links. A
+          theorem that cannot be found, searched, cited, or inspected is much
+          less useful than it could be. Palomar gives worthwhile formalizations
+          a durable, indexable record organized around the mathematical result,
+          not just the repository that happens to contain it.
+        </p>
+        <p>
+          Greater output—especially AI-assisted output—also makes a clear
+          minimum standard more important. What Palomar checks, and what it does
+          not, is set out below.
+        </p>
+      </section>
+
+      <section id="what-acceptance-means">
+        <h2>What does acceptance by Palomar mean?</h2>
+        <p>
+          In order for a repository version to be accepted into the Palomar
+          registry, four checks must pass:
+        </p>
         <ol class="assertions">
           <li>
-            <strong>(Mechanical check)</strong> Lean’s kernel verified that the
+            <strong>(Mechanical check)</strong> Lean’s kernel verifies that the
             recorded formal proof proves the recorded formal statement using a
             specified version of
             <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
@@ -45,22 +69,42 @@
             <code>Quot.sound</code>, and <code>Classical.choice</code>. This
             verification is performed using the
             <a href="https://github.com/leanprover/comparator">Comparator</a>
-            tool.
+            tool, which holds the advertised statement apart from its proof, so
+            that a proof cannot quietly weaken the statement it claims to
+            establish.
           </li>
-          <li>
-            <strong>(Non-mechanical check)</strong> A language model judged that
+          <li id="editorial-floor">
+            <strong>(Non-mechanical check)</strong> A language model judges that
             the recorded formal statement (in <code>Challenge.lean</code>) is a
             fair rendering of the mathematical claim made in the recorded
             informal statement (in <code>formalization.yaml</code>), and that the
             submission clears Palomar’s
             <a href="https://github.com/kim-em/PalomarPolicy/blob/main/CONTRIBUTING.md">published minimum standard</a>.
+            That standard includes a floor on research interest, which requires
+            the model to judge both of these to be answered yes:
+            <ol>
+              <li>Could this result plausibly warrant a research paper or a serious research note?</li>
+              <li>Can a credible research area, and a research mathematician who would find the result relevant, be named?</li>
+            </ol>
+          </li>
+          <li>
+            <strong>(Disclosure)</strong> The submission’s
+            <code>formalization.yaml</code> states the project’s authorship,
+            sources, automation methods, limitations, and review status
+            explicitly, rather than leaving them to be inferred. The editorial
+            review assesses whether that account is clear and adequately
+            sourced.
+          </li>
+          <li>
+            <strong>(Moderator approval)</strong> A Palomar moderator inspects
+            the review report before it is published and approves the entry
+            before it appears on the site. That approval confirms the process ran
+            correctly, but is not an expert reading of the mathematics.
           </li>
         </ol>
         <p>
-          In addition, a Palomar moderator inspects the review report before it
-          is published and approves the entry before it appears on the site.
-          That approval confirms the process ran correctly, but is not an expert
-          reading of the mathematics.
+          Acceptance records that these checks passed. It asserts nothing beyond
+          them.
         </p>
         <p>
           The source, warnings, and full review of the repository are publicly
@@ -116,11 +160,10 @@
           </li>
           <li>
             <strong>Palomar is not a certificate of importance.</strong> Palomar
-            applies a minimum bar: a submission is rejected if the result could
-            not plausibly warrant a research note, or if no credible research
-            area and plausible interested reader can be named for it. However,
-            Palomar does not rank, grade, or otherwise assess how significant a
-            result is.
+            applies a <a href="#editorial-floor">minimum editorial floor</a> and
+            rejects submissions that fall below it. Clearing that floor says only
+            that a plausible research audience exists; Palomar does not rank,
+            grade, or otherwise assess how significant a result is.
           </li>
           <li>
             <strong>Palomar does not perform peer review.</strong> While a human
@@ -149,30 +192,6 @@
             formal proofs, such as Mathlib.
           </li>
         </ol>
-      </section>
-
-      <section id="why-now">
-        <h2>Why do we need this today?</h2>
-        <p>
-          Formalized mathematics is growing quickly, but much of it remains
-          scattered across repositories, announcements, and private links. A
-          theorem that cannot be found, searched, cited, or inspected is much
-          less useful than it could be. Palomar gives worthwhile formalizations
-          a durable, indexable record organized around the mathematical result,
-          not just the repository that happens to contain it.
-        </p>
-        <p>
-          Greater output—especially AI-assisted output—also makes a clear
-          minimum standard more important. Palomar combines three lightweight
-          checks: <a href="https://github.com/leanprover/comparator">Comparator</a>
-          separates the advertised statement from its solution and checks that
-          they really match; <code>formalization.yaml</code> makes authorship,
-          sources, automation, limitations, and review status explicit; and a
-          quick, public AI-assisted review checks statement fidelity,
-          definitions, provenance, significance, and clarity. The aim is to
-          exclude low-substance “slop,” misleading claims, and crackpot-style
-          work without pretending that this fast screen is expert peer review.
-        </p>
       </section>
 
       <section id="getting-ready">

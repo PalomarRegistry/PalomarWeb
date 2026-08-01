@@ -422,8 +422,14 @@ footer {
   margin-top: .9rem;
 }
 
-.faq li > ul {
+.faq li > ul,
+.faq li > ol {
   margin-top: .35rem;
+}
+
+/* Distinguish the nested editorial-floor questions from the checks above. */
+.faq .assertions li > ol {
+  list-style-type: lower-alpha;
 }
 
 .process,
