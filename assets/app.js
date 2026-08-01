@@ -158,7 +158,7 @@ function entryCard(entry, versionCount) {
   const top = el("div", "card-top");
   const identity = el("div", "card-identity");
   identity.append(
-    el("span", "entry-id", `${entry.id} · current version ${entry.version}`),
+    el("span", "entry-id", `${entry.id} v${entry.version} · current`),
     el("span", "entry-date", `Accepted ${displayDate(acceptanceDate(entry))}`),
   );
   top.append(identity, trustBadge(entry));
@@ -699,7 +699,7 @@ async function renderEntry(
   setCanonicalEntryPage(entry);
   const heading = el("header", "entry-heading");
   const top = el("div", "card-top");
-  top.append(el("span", "entry-id", `${entry.id} · version ${entry.version}`), trustBadge(entry));
+  top.append(el("span", "entry-id", `${entry.id} v${entry.version}`), trustBadge(entry));
   heading.append(top, el("h1", "", entry.title), el("p", "lede", entry.abstract));
   const byline = el("p", "byline", `By ${authorNames(entry)}`);
   heading.append(byline);
@@ -931,7 +931,7 @@ async function renderChallengePage() {
     document.title = `Named compared declarations — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
-      el("div", "entry-id", `${entry.id} · version ${entry.version}`),
+      el("div", "entry-id", `${entry.id} v${entry.version}`),
       el("h1", "", entry.title),
     );
     const challenge = await challengePresentation(entry, renderBase, { forceFrame: true });
