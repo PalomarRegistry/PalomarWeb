@@ -76,6 +76,12 @@
           40-character SHA. Palomar checks that immutable snapshot; it does not
           follow a branch or tag as it changes.
         </p>
+        <p>
+          The <a href="https://github.com/kim-em/PalomarTemplate">Palomar starter repository</a>
+          provides this layout, pinned dependencies, documentation generation,
+          CI checks for Lean and Comparator, and a documented
+          <code>formalization.yaml</code> starting point.
+        </p>
         <p>The repository root must contain:</p>
         <ul>
           <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate;</li>
@@ -126,14 +132,18 @@
         <h2>How to submit</h2>
         <ol>
           <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
-          <li><a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA; for a correction to an existing entry, also enter its Palomar ID.</li>
+          <li><a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA, confirm the required acknowledgements, and, for a correction to an existing entry, enter its Palomar ID.</li>
           <li>Submit the issue and watch it for status labels and comments. The issue is the public home for verification and review.</li>
         </ol>
         <p>
-          Palomar first runs mechanical verification. A passing issue moves to
-          <code>status:awaiting-review</code>; a problem moves to
+          Palomar first labels the issue <code>status:verifying</code> while
+          mechanical verification runs. A passing issue moves to
+          <code>status:awaiting-review</code>; a failed check moves to
           <code>status:changes-requested</code> and the mechanical report explains
-          what failed. During editorial review, the issue moves through
+          what failed. If Palomar’s verification infrastructure itself fails,
+          the issue instead receives <code>status:verification-error</code>; no
+          submitter action is required until the maintainers respond. During
+          editorial review, the issue moves through
           <code>status:review-in-progress</code> and then to
           <code>status:accepted</code>, <code>status:changes-requested</code>,
           <code>status:rejected</code>, or <code>status:escalated</code>.
