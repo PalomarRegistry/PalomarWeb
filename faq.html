@@ -57,7 +57,8 @@
         <h2>What does acceptance by Palomar mean?</h2>
         <p>
           In order for a repository version to be accepted into the Palomar
-          registry, four checks must pass:
+          registry, four checks must pass. One is performed by Lean’s kernel,
+          two by a language model, and one by a human moderator.
         </p>
         <ol class="assertions">
           <li>
@@ -91,17 +92,22 @@
             <strong>(Disclosure)</strong> The submission’s
             <code>formalization.yaml</code> states the project’s authorship,
             sources, automation methods, limitations, and review status
-            explicitly, rather than leaving them to be inferred. The editorial
-            review assesses whether that account is clear and adequately
+            explicitly, rather than leaving them to be inferred. The same
+            language model assesses whether that account is clear and adequately
             sourced.
           </li>
           <li>
-            <strong>(Moderator approval)</strong> A Palomar moderator inspects
-            the review report before it is published and approves the entry
+            <strong>(Moderator approval)</strong> A human Palomar moderator
+            inspects the review report before it is published and approves the entry
             before it appears on the site. That approval confirms the process ran
             correctly, but is not an expert reading of the mathematics.
           </li>
         </ol>
+        <p>
+          The passes the language model runs, the prompts it is given, and the
+          report it must produce are published in
+          <a href="https://github.com/kim-em/PalomarPolicy">PalomarPolicy</a>.
+        </p>
         <p>
           Acceptance records that these checks passed. It asserts nothing beyond
           them.
@@ -257,6 +263,21 @@
           describes both, along with further checkers collected in the
           <a href="https://arena.lean-lang.org/">Lean Kernel Arena</a>.
         </p>
+        <p>
+          In addition to independently checking that the formal proof proves the
+          formal statement, readers are also encouraged to compare the formal
+          statement against the informal statement, and in particular to consider
+          whether the definitions the statement relies on capture their intended
+          informal meaning, for instance by handling degenerate cases correctly.
+        </p>
+        <p>
+          To assist with such comparisons, Palomar caps the size of the formal
+          statement at 1,000 lines and 100 KiB, with imports restricted to an
+          approved set of libraries, and the language model audits those
+          definitions as part of the approval process. Each registry entry
+          displays the compared declarations, with their types available on
+          hover, and links the exact statement file at the exact commit.
+        </p>
       </section>
 
       <section id="getting-ready">
@@ -276,7 +297,7 @@
         <p>The repository root must contain:</p>
         <ul>
           <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate;</li>
-          <li><code>lakefile.toml</code> and, preferably, a committed <code>lake-manifest.json</code>;</li>
+          <li><code>lakefile.toml</code> and a committed <code>lake-manifest.json</code> (required in practice: without it, anything importing Mathlib will fail to build);</li>
           <li><code>Challenge.lean</code>, containing the small, readable statement a mathematician should audit;</li>
           <li><code>Solution.lean</code>, connecting that statement to the completed proof;</li>
           <li><code>comparator.json</code>, naming every theorem and definition Comparator should compare; and</li>
@@ -295,11 +316,22 @@
         </p>
         <p>
           Keep <code>Challenge.lean</code> short and mathematically ordinary.
-          Its transitive imports must come from Lean core, Mathlib, Tau Ceti, or
-          a project already indexed by Palomar. A Palomar-indexed dependency is
-          accepted but displayed with a prominent warning because it enlarges
-          the statement’s trust surface. Dependencies used only by the solution
-          may be arbitrary pinned Git dependencies. Local/path dependencies and
+          1,000 lines and 100 KiB are hard limits; 300 lines and 32 KiB is the
+          surface we would rather review. Its transitive imports must resolve to
+          Lean core, Mathlib, or Tau Ceti. Importing Tau Ceti is accepted, and
+          records a wider statement dependency surface on the entry.
+        </p>
+        <p>
+          Imports from projects already indexed by Palomar are <strong>not</strong>
+          accepted in the current protocol. An earlier entry certifies one theorem
+          in a repository, not the rest of that repository’s definitions, and
+          until Palomar can reconstruct that earlier statement surface
+          independently it will not treat it as vocabulary a new statement may be
+          written in.
+        </p>
+        <p>
+          Dependencies used only by <code>Solution.lean</code> may be arbitrary
+          pinned Git dependencies. Local/path dependencies and
           <code>lakefile.lean</code> are not accepted by the current prototype.
         </p>
 
