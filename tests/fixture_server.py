@@ -113,6 +113,23 @@ ENTRIES = {
         "PALOMAR-2026-07-29-000124", 101, 1
     ),
 }
+ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
+    {
+        "level": "qualified",
+        "challenge_dependencies": [
+            {
+                "repository": "leanprover-community/mathlib4",
+                "provenance": "allowlisted",
+            },
+            {
+                "repository": "example/dependency",
+                "provenance": "palomar-indexed",
+                "palomar_id": "PALOMAR-2026-07-29-000123",
+            },
+        ],
+        "reasons": ["An exact indexed source snapshot determines the statement."],
+    }
+)
 
 
 class Handler(SimpleHTTPRequestHandler):

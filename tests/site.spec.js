@@ -138,10 +138,10 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
     page.getByRole("heading", { name: "Named compared declarations" }),
   ).toBeVisible();
   await expect(page.locator(".challenge-surface-disclosure")).toContainText(
-    "only the declarations named in comparator.json",
+    "declarations named in this entry's comparator configuration",
   );
   await expect(page.locator(".challenge-surface-disclosure")).toContainText(
-    "complete certified and reviewed statement surface",
+    "statement and dependency surface for inspection",
   );
   await expect(source).toHaveAttribute(
     "href",
@@ -150,6 +150,12 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(
     page.getByRole("link", { name: "Inspect statement dependencies" }),
   ).toHaveAttribute("href", /#statement-dependencies$/);
+  await expect(
+    page.getByRole("link", { name: "View comparator configuration (comparator.json)" }),
+  ).toHaveAttribute(
+    "href",
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/comparator.json`,
+  );
   await expect(page.getByRole("link", { name: "Open formatted statement" })).toHaveCount(0);
   const iframe = page.locator(".challenge-presentation iframe");
   await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
@@ -200,6 +206,12 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
 
 test("larger Challenge falls back to the dedicated wrapper", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`);
+  await expect(page.locator("#statement-dependencies")).toContainText(
+    "leanprover-community/mathlib4 (allowlisted)",
+  );
+  await expect(page.locator("#statement-dependencies")).toContainText(
+    "example/dependency (Palomar-indexed: PALOMAR-2026-07-29-000123)",
+  );
   await expect(page.locator(".challenge-presentation iframe")).toHaveCount(0);
   await expect(page.locator(".challenge-fallback")).toBeVisible();
   await page.getByRole("link", { name: "Open formatted statement" }).click();
@@ -212,6 +224,9 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
+  await page.getByRole("link", { name: "Inspect statement dependencies" }).click();
+  await expect(page).toHaveURL(/entry\.html\?.*#statement-dependencies$/);
+  await expect(page.locator("#statement-dependencies")).toBeInViewport();
 });
 
 test("current HTML remains compatible with cached JavaScript from the previous deployment", async ({ page }) => {

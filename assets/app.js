@@ -439,6 +439,7 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
   const links = el("p", "challenge-links");
   const dependencyRecordUrl = localPageUrl("entry.html", entry);
   dependencyRecordUrl.hash = "statement-dependencies";
+  const comparatorPath = entry.formalization.comparator_config_path;
   links.append(
     externalLink(
       "View full pinned statement file (Challenge.lean)",
@@ -449,6 +450,12 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
     internalLink(
       "Inspect statement dependencies",
       dependencyRecordUrl,
+    ),
+    " · ",
+    externalLink(
+      `View comparator configuration (${comparatorPath})`,
+      pinnedSourceFileUrl(entry, comparatorPath),
+      "comparator-source",
     ),
   );
   const inline = isInlineChallenge(entry);
@@ -463,7 +470,7 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
     el(
       "p",
       "challenge-surface-disclosure",
-      "This formatted view shows only the declarations named in comparator.json. Comparator also checks the declarations used by their types. The full pinned Challenge.lean and the dependency record define the complete certified and reviewed statement surface.",
+      "The formatted view shows only the declarations named in this entry's comparator configuration. Comparator also checks the declarations used by their types. The full pinned Challenge.lean and dependency record expose the statement and dependency surface for inspection.",
     ),
   );
 
@@ -797,9 +804,10 @@ async function renderEntryPage() {
       versions,
       currentVersion,
     );
-    if (requestedHash === "#version-history") {
-      document.querySelector("#version-history").scrollIntoView();
-    }
+    const anchorTarget = requestedHash.startsWith("#")
+      ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
+      : null;
+    if (anchorTarget) anchorTarget.scrollIntoView();
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
@@ -823,7 +831,7 @@ async function renderChallengePage() {
   }
   try {
     const { entry, renderBase } = await loadEntry(id, version);
-    document.title = `Statement — ${entry.title} — Palomar`;
+    document.title = `Named compared declarations — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
       el("div", "entry-id", `${entry.id} · version ${entry.version}`),
@@ -834,7 +842,7 @@ async function renderChallengePage() {
     status.hidden = true;
     content.hidden = false;
   } catch (error) {
-    status.textContent = `The formatted statement could not be loaded: ${error.message}`;
+    status.textContent = `The named compared declarations could not be loaded: ${error.message}`;
     status.classList.add("error");
   }
 }

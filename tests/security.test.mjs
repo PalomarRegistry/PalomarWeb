@@ -222,6 +222,32 @@ test("a canonical accepted record validates", () => {
   );
 });
 
+test("indexed dependency provenance requires a Palomar ID", () => {
+  const trust = {
+    ...entry().trust,
+    level: "qualified",
+    challenge_dependencies: [
+      { repository: "example/dependency", provenance: "palomar-indexed" },
+    ],
+  };
+  assert.throws(
+    () => validateEntry(entry({ trust }), summary()),
+    /palomar_id is required/,
+  );
+
+  trust.challenge_dependencies = [
+    {
+      repository: "example/dependency",
+      provenance: "allowlisted",
+      palomar_id: "PALOMAR-2026-07-29-000123",
+    },
+  ];
+  assert.throws(
+    () => validateEntry(entry({ trust }), summary()),
+    /palomar_id is forbidden/,
+  );
+});
+
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
   assert.throws(() => validateEntry(entry({ schema_version: 3 }), summary()), /unsupported entry/);
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
