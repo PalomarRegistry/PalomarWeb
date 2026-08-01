@@ -14,9 +14,11 @@ test("deployment build versions coupled browser assets", async () => {
   try {
     await buildSite({ output, version: "0123456789abcdef" });
     const index = await readFile(path.join(destination, "index.html"), "utf8");
+    const faq = await readFile(path.join(destination, "faq.html"), "utf8");
     const app = await readFile(path.join(destination, "assets", "app.js"), "utf8");
     assert.match(index, /assets\/style\.css\?v=0123456789abcdef/);
     assert.match(index, /assets\/app\.js\?v=0123456789abcdef/);
+    assert.match(faq, /assets\/style\.css\?v=0123456789abcdef/);
     assert.match(app, /\.\/rendering\.js\?v=0123456789abcdef/);
     assert.match(app, /\.\/security\.mjs\?v=0123456789abcdef/);
     await readFile(path.join(destination, "assets", "security.mjs"), "utf8");
