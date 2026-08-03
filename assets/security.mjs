@@ -13,6 +13,7 @@ const POSITIVE_INTEGER_RE = /^[1-9][0-9]*$/;
 const DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const ARXIV_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
+const LICENSE_PATH_RE = /^(?:licen[cs]e|copying|unlicense|ofl)(?:\.(?:md|markdown|txt))?$/i;
 
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
@@ -347,6 +348,25 @@ export function validateEntry(entry, summary) {
   string(source.repository_url, "entry.source.repository_url");
   string(source.commit, "entry.source.commit");
   string(source.tree_url, "entry.source.tree_url");
+  if (entry.schema_version >= 5) {
+    const license = object(source.license, "entry.source.license");
+    const licensePath = string(license.path, "entry.source.license.path");
+    if (!LICENSE_PATH_RE.test(licensePath)) {
+      fail("entry.source.license.path is not a conventional root licence filename");
+    }
+    digest(license.sha256, "entry.source.license.sha256");
+    const declared = string(
+      license.declared_identifier,
+      "entry.source.license.declared_identifier",
+    );
+    const detected = string(
+      license.detected_identifier,
+      "entry.source.license.detected_identifier",
+    );
+    if (declared !== detected) {
+      fail("entry.source.license declared and detected identifiers disagree");
+    }
+  }
 
   const formalization = object(entry.formalization, "entry.formalization");
   safeRepositoryPath(formalization.challenge_path, "entry.formalization.challenge_path");
@@ -384,7 +404,9 @@ export function validateEntry(entry, summary) {
   commit(verification.comparator_commit, "entry.verification.comparator_commit");
   commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
   commit(verification.landrun_commit, "entry.verification.landrun_commit");
-  commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  if (entry.schema_version >= 4) {
+    commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  }
   digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
   digest(verification.solution_sha256, "entry.verification.solution_sha256");
   if (entry.schema_version >= 5) {

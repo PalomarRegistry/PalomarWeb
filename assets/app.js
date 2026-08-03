@@ -897,7 +897,9 @@ async function renderEntry(
       entry.verification.workflow_url,
     ),
   );
-  details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
+  if (entry.schema_version >= 4) {
+    details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
+  }
   if (entry.schema_version >= 5) {
     details.append(
       externalDetailRow(
@@ -907,9 +909,26 @@ async function renderEntry(
       ),
       detailRow("Verification workflow commit", entry.verification.workflow_commit),
       detailRow("Workflow run attempt", String(entry.verification.workflow_run_attempt)),
+      externalDetailRow(
+        "Repository licence file",
+        entry.source.license.path,
+        pinnedSourceFileUrl(entry, entry.source.license.path),
+      ),
+      detailRow("Declared repository licence", entry.source.license.declared_identifier),
+      detailRow("Detected SPDX licence", entry.source.license.detected_identifier),
+      detailRow("Licence file SHA-256", entry.source.license.sha256),
     );
   }
   evidence.append(details);
+  if (entry.schema_version >= 5) {
+    evidence.append(
+      el(
+        "p",
+        "licence-boundary",
+        "This licence evidence covers the submitted repository snapshot only. Cited papers, reused formalizations, and dependencies retain their own licences.",
+      ),
+    );
+  }
 
   const trust = el("section", "entry-trust");
   trust.id = "statement-dependencies";

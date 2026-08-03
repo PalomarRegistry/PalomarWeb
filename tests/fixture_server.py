@@ -50,6 +50,12 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "repository_url": "https://github.com/example/challenge",
             "commit": "1" * 40,
             "tree_url": f"https://github.com/example/challenge/tree/{'1' * 40}",
+            "license": {
+                "path": "LICENSE.md",
+                "sha256": "d" * 64,
+                "declared_identifier": "Apache-2.0",
+                "detected_identifier": "Apache-2.0",
+            },
         },
         "formalization": {
             "challenge_path": "Challenge.lean",
@@ -150,8 +156,6 @@ ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
         "reasons": ["An exact indexed source snapshot determines the statement."],
     }
 )
-
-
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
