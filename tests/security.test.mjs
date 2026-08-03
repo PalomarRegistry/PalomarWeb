@@ -251,7 +251,7 @@ test("indexed dependency provenance requires a Palomar ID", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 5 }), summary()), /unsupported entry/);
+  assert.throws(() => validateEntry(entry({ schema_version: 6 }), summary()), /unsupported entry/);
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";
@@ -312,6 +312,39 @@ test("schema v4 requires explicit provenance and submission authorization", () =
     () => validateEntry(wrapperWithoutTarget, summary()),
     /substantive_formalization must be an object/,
   );
+});
+
+test("schema v5 requires content-addressed durable verification evidence", () => {
+  const evidenceTree = "c".repeat(64);
+  const valid = entry({
+    schema_version: 5,
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+    provenance: {
+      result_origin: "original",
+      repository_role: "substantive-development",
+      responsible_maintainers: [{ name: "Example" }],
+      mathematical_sources: [],
+      related_formalizations: [],
+    },
+  });
+  valid.submission.authorization = { relationship: "maintainer" };
+  Object.assign(valid.verification, {
+    workflow_commit: "8".repeat(40),
+    workflow_run_attempt: 1,
+    evidence_tree_sha256: evidenceTree,
+    mechanical_report_sha256: "d".repeat(64),
+    evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
+  });
+  assert.doesNotThrow(() => validateEntry(valid, summary()));
+
+  const traversal = structuredClone(valid);
+  traversal.verification.evidence_path = "../mechanical-report.json/";
+  assert.throws(() => validateEntry(traversal, summary()), /not a safe relative path/);
+
+  const wrongAddress = structuredClone(valid);
+  wrongAddress.verification.evidence_path =
+    `evidence/${valid.id}-v${valid.version}/${"e".repeat(64)}/`;
+  assert.throws(() => validateEntry(wrongAddress, summary()), /evidence_path must be/);
 });
 
 test("record evidence links must agree with their canonical values", () => {

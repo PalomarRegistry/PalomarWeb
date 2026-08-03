@@ -254,13 +254,16 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
     "Editorial assurance",
   );
   await expect(page.locator(".acceptance-callout")).toContainText("AI-mediated review");
-  await expect(page.getByRole("link", { name: "Mechanical evidence" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
+  await expect(page.getByText("Verification workflow commit")).toBeVisible();
   await expect(page.getByRole("link", { name: "Editorial evidence" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Solution.lean" }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Solution.lean`,
   );
-  const sourceFiles = page.locator('.entry-evidence .detail-row a[href*="/blob/"]');
+  const sourceFiles = page.locator(
+    '.entry-evidence .detail-row a[href*="github.com/example/challenge/blob/"]',
+  );
   await expect(sourceFiles).toHaveText([
     "Challenge.lean",
     "Solution.lean",
