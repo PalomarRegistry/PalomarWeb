@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="How the Palomar registry verifies and reviews Lean formalizations.">
+    <meta name="description" content="About Palomar and submitting machine-checked formal mathematics.">
     <meta name="theme-color" content="#ffffff">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; frame-src 'self' https://kim-em.github.io; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
     <title>About — Palomar</title>
@@ -16,19 +16,41 @@
       <nav aria-label="Main navigation">
         <a href="./">Registry</a>
         <a class="active" href="about.html" aria-current="page">About</a>
-        <a href="faq.html">FAQ</a>
         <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Submit</a>
       </nav>
     </header>
 
-    <main id="content" class="about">
+    <main id="content" class="about faq">
       <h1>About Palomar</h1>
-      <p class="subtitle">What the registry means</p>
-      <p class="lede">
-        Palomar gives a stable, searchable home to formal results that clear a
-        published minimum standard. It separates machine verification,
-        mathematical description, and presentation so each can be inspected.
-      </p>
+      <p class="subtitle">What the registry does, what it means, and how to submit</p>
+
+      <section id="what-is-palomar">
+        <h2>What is Palomar?</h2>
+        <p>
+          Palomar is a public, searchable registry of Lean formalizations whose
+          proofs have been machine-checked. Each entry points to an immutable
+          version of a public repository and records the exact formal statement
+          that was checked, its dependencies, the result of the proof check, and
+          the findings of a documented editorial review.
+        </p>
+      </section>
+
+      <section id="why-now">
+        <h2>Why do we need this today?</h2>
+        <p>
+          Formalized mathematics is growing quickly, but much of it remains
+          scattered across repositories, announcements, and private links. A
+          theorem that cannot be found, searched, cited, or inspected is much
+          less useful than it could be. Palomar gives worthwhile formalizations
+          a durable, indexable record organized around the mathematical result,
+          not just the repository that happens to contain it.
+        </p>
+        <p>
+          Greater output—especially AI-assisted output—also makes a clear
+          minimum standard more important. What Palomar checks, and what it does
+          not, is set out below.
+        </p>
+      </section>
 
       <section class="process" aria-labelledby="process-heading">
         <h2 id="process-heading">From snapshot to record</h2>
@@ -39,7 +61,7 @@
           </li>
           <li>
             <span>2.</span>
-            <div><h3>Readable statement file</h3><p><code>Challenge.lean</code> states the advertised result. The definitions it uses may come only from Lean core, Mathlib, Tau Ceti, or another project already listed by Palomar.</p></div>
+            <div><h3>Readable statement file</h3><p><code>Challenge.lean</code> states the advertised result. Its transitive imports may come only from Lean core, pinned allowlisted libraries, or exact source snapshots represented by accepted Palomar record versions.</p></div>
           </li>
           <li>
             <span>3.</span>
@@ -47,30 +69,427 @@
           </li>
           <li>
             <span>4.</span>
-            <div><h3>Documented review</h3><p>A separate AI-mediated editorial review judges whether the formal Challenge matches the written mathematical claim and examines its definitions, prior literature, significance, and clarity. It is not human peer review or a novelty certificate; problems and uncertainties remain visible.</p></div>
+            <div><h3>Documented review</h3><p>A separate AI-mediated editorial review judges whether the formal Challenge matches the written mathematical claim and examines its definitions, prior literature, significance, and clarity.</p></div>
           </li>
           <li>
             <span>5.</span>
-            <div><h3>Permanent, append-only record</h3><p>An accepted result becomes an immutable JSON record identified by both its Palomar ID and version. Later versions may change the theorem, source, authors, or subject radically. Cite an explicit version for stable meaning; an ID without a version means the latest record and may change meaning.</p></div>
+            <div><h3>Permanent record</h3><p>An accepted result becomes an immutable, versioned JSON record. Later versions are appended rather than changing what an earlier version means.</p></div>
           </li>
         </ol>
       </section>
 
-      <section class="meaning-grid">
-        <article>
-          <div class="eyebrow">Palomar does say</div>
-          <h2>Mechanical proof checking and editorial judgment are separate.</h2>
-          <p>Lean and Comparator check the exact formal proof claim. The documented AI-mediated review separately judges the link from that formal statement to the informal mathematical claim under the policy version shown.</p>
-        </article>
-        <article>
-          <div class="eyebrow">Palomar does not say</div>
-          <h2>This is peer review, novelty certification, or endorsement.</h2>
-          <p>Readers still need mathematical judgment. The registry makes the exact statement, proof checks, dependencies, and warnings easier to find and inspect.</p>
-        </article>
+      <section id="what-acceptance-means">
+        <h2>What does acceptance by Palomar mean?</h2>
+        <p>
+          In order for a repository version to be accepted into the Palomar
+          registry, four checks must pass. One is performed by Lean’s kernel,
+          two by a language model, and one by a human moderator.
+        </p>
+        <ol class="assertions">
+          <li>
+            <strong>(Mechanical check)</strong> Lean’s kernel verifies that the
+            recorded formal proof proves the recorded formal statement using a
+            specified version of
+            <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
+            and that it depends on no axioms beyond <code>propext</code>,
+            <code>Quot.sound</code>, and <code>Classical.choice</code>. This
+            verification is performed using the
+            <a href="https://github.com/leanprover/comparator">Comparator</a>
+            tool, which holds the advertised statement apart from its proof, so
+            that a proof cannot quietly weaken the statement it claims to
+            establish.
+          </li>
+          <li id="editorial-floor">
+            <strong>(Non-mechanical check)</strong> A language model judges that
+            the recorded formal statement (in <code>Challenge.lean</code>) is a
+            fair rendering of the mathematical claim made in the recorded
+            informal statement (in <code>formalization.yaml</code>), and that the
+            submission clears Palomar’s
+            <a href="https://github.com/kim-em/PalomarPolicy/blob/main/CONTRIBUTING.md">published minimum standard</a>.
+            That standard includes a floor on research interest, which requires
+            the model to judge both of these to be answered yes:
+            <ol>
+              <li>Could this result plausibly warrant a research paper or a serious research note?</li>
+              <li>Can a credible research area, and a research mathematician who would find the result relevant, be named?</li>
+            </ol>
+          </li>
+          <li>
+            <strong>(Disclosure)</strong> The submission’s
+            <code>formalization.yaml</code> states the project’s authorship,
+            sources, automation methods, limitations, and review status
+            explicitly, rather than leaving them to be inferred. The same
+            language model assesses whether that account is clear and adequately
+            sourced.
+          </li>
+          <li>
+            <strong>(Moderator approval)</strong> A human Palomar moderator
+            inspects the review report before it is published and approves the entry
+            before it appears on the site. That approval confirms the process ran
+            correctly, but is not an expert reading of the mathematics.
+          </li>
+        </ol>
+        <p>
+          The passes the language model runs, the prompts it is given, and the
+          report it must produce are published in
+          <a href="https://github.com/kim-em/PalomarPolicy">PalomarPolicy</a>.
+        </p>
+        <p>
+          Palomar asserts nothing beyond these four checks.
+        </p>
+        <p>
+          The source, warnings, and full review of the repository are publicly
+          visible to help readers reach their own judgment on the work and
+          perform independent verification.
+        </p>
+      </section>
+
+      <section id="what-palomar-is-not">
+        <h2>What Palomar is <em>not</em></h2>
+        <ol class="not-list">
+          <li>
+            <strong>Palomar’s formal certification is not absolute.</strong> As
+            described in
+            <a href="https://github.com/kim-em/PalomarSubmission/blob/main/SECURITY.md">SECURITY.md</a>,
+            Palomar makes its best efforts to formally verify the claimed
+            results in Lean in a secure, sandboxed environment. However, it is
+            still possible that the version of the Lean kernel, Mathlib cache,
+            and other tooling used by Palomar contains bugs or exploits. In
+            particular, Palomar’s certification does not completely remove the
+            need for
+            <a href="#check-it-yourself">independent verification</a> of both the
+            formal and informal proofs.
+          </li>
+          <li>
+            <strong>Palomar does not guarantee complete alignment of the formal
+            and informal results claimed.</strong> The language model checks for
+            any obvious discrepancies between the formal and informal versions
+            of the result, and generates a detailed report of its findings.
+            However, the model may make mistakes or have an incomplete analysis.
+            This report is intended to assist the reader’s verification that the
+            formal statement correctly captures the meaning of the informal one,
+            but should not be viewed as a substitute for that verification.
+          </li>
+          <li>
+            <strong>Palomar does not verify informal proofs.</strong> Optionally,
+            Palomar can check whether an informal account of a proof is
+            consistent with the architecture of the formal proof, in that it does
+            not describe an unrelated argument or conceal a decisive assumption.
+            However, it does not re-derive or confirm the informal proof itself,
+            and it makes no claim that an informal proof is correct.
+          </li>
+          <li>
+            <strong>Palomar does not assess code quality.</strong> While the
+            formal statement file is audited for brevity and readability, formal
+            proofs that are verified by Palomar are not assessed to be human
+            readable, or to conform to any best practices for formal writing.
+          </li>
+          <li>
+            <strong>Palomar is not a certificate of novelty.</strong> Palomar
+            does not check whether the results claimed are genuinely novel
+            compared to what already exists in the published or unpublished
+            literature.
+          </li>
+          <li>
+            <strong>Palomar is not a certificate of importance.</strong> Palomar
+            applies a <a href="#editorial-floor">minimum editorial floor</a> and
+            rejects submissions that fall below it. Clearing that floor says only
+            that a plausible research audience exists; Palomar does not rank,
+            grade, or otherwise assess how significant a result is.
+          </li>
+          <li>
+            <strong>Palomar does not perform peer review.</strong> While a human
+            moderator is needed to approve an addition of a repository to the
+            registry, this process does not include any expert review of the
+            content of the repository itself.
+          </li>
+          <li>
+            <strong>Palomar is not a journal.</strong> Registration of a
+            repository on this site should not in any way be viewed as a
+            “publication” of that repository.
+          </li>
+          <li>
+            <strong>Palomar is not a green light for journal
+            submission.</strong> Mathematical journals require their submissions
+            adhere to professional standards of exposition, accuracy, and
+            citation, and be of genuine interest to their readers. None of these
+            criteria are directly addressed by this registry, which checks
+            informal descriptions of results only for fidelity to their formal
+            counterparts.
+          </li>
+          <li>
+            <strong>Palomar is not a green light for formalized library
+            submission.</strong> Palomar verification should not be viewed as an
+            endorsement of the code for the purposes of uploading to a library of
+            formal proofs, such as Mathlib.
+          </li>
+        </ol>
+      </section>
+
+      <section id="check-it-yourself">
+        <h2>How can I check this myself?</h2>
+        <p>
+          Every submission is pinned to a full 40-character commit, so the
+          artifact Palomar checked cannot drift. Every verification runs in
+          public GitHub Actions, so the complete record of what was done stays
+          visible. Each entry records the SHA-256 digests of the statement and
+          proof files, the exact Lean toolchain, and the exact Comparator,
+          <a href="https://github.com/leanprover/lean4export">lean4export</a>,
+          and Landrun revisions used, which together are enough to reproduce the
+          run from the published record. One caveat: Mathlib’s build cache is
+          fetched from a mutable store, so a later re-run may not retrieve
+          identical artifacts. Building Mathlib from source removes that
+          dependency.
+        </p>
+        <p>
+          <a href="https://github.com/leanprover/comparator">Comparator</a> does
+          not simply ask Lean’s elaborator whether the proof was accepted. It
+          compiles the statement and the proof in separate sandboxes, exports
+          both environments with <code>lean4export</code>, checks that the
+          declarations the statement depends on are identical in each, and then
+          replays the exported proof through Lean’s kernel from scratch. A proof
+          that survives that replay cannot have relied on a metaprogram
+          tampering with the elaborator’s state or misreporting its result.
+        </p>
+        <p>
+          Comparator also enforces that the compared theorems use no axioms
+          beyond those listed in the submission’s <code>comparator.json</code>.
+          Because that file is written by the submitter, Palomar separately
+          rejects any submission whose list extends beyond <code>propext</code>,
+          <code>Quot.sound</code>, and <code>Classical.choice</code>.
+        </p>
+        <p>
+          That replay uses Lean’s own kernel, so it is a second pass rather than
+          a second implementation: it guards against a proof that manipulated the
+          elaborator, not against a bug in the kernel itself. Comparator can
+          additionally run <code>nanoda</code>, described below, but Palomar’s
+          current runner does not enable it. We encourage readers who want
+          stronger assurance to run these tools themselves:
+        </p>
+        <ul class="checkers">
+          <li>
+            <strong><code>leanchecker</code></strong> replays every constant,
+            imported and local, into a fresh environment
+            (<code>lake env leanchecker --fresh <var>Module</var></code>). It
+            ships with every Lean toolchain Palomar supports, so it is already
+            present in the toolchain each entry names. Like Comparator’s replay,
+            it uses Lean’s own kernel.
+          </li>
+          <li>
+            <strong><a href="https://github.com/ammkrn/nanoda_lib">nanoda</a></strong>
+            is an independent kernel implementation written in Rust. It does not
+            share Lean’s kernel code, so it can catch a class of problem that
+            neither Comparator’s replay nor <code>leanchecker</code> can.
+          </li>
+        </ul>
+        <p>
+          The Lean reference manual’s
+          <a href="https://lean-lang.org/doc/reference/latest/ValidatingProofs/">guide to validating a Lean proof</a>
+          describes both, along with further checkers collected in the
+          <a href="https://arena.lean-lang.org/">Lean Kernel Arena</a>.
+        </p>
+        <p>
+          In addition to independently checking that the formal proof proves the
+          formal statement, readers are also encouraged to compare the formal
+          statement against the informal statement, and in particular to consider
+          whether the definitions the statement relies on capture their intended
+          informal meaning, for instance by handling degenerate cases correctly.
+        </p>
+        <p>
+          To assist with such comparisons, Palomar caps the size of the formal
+          statement at 1,000 lines and 100 KiB. Imports are restricted to Lean
+          core, pinned allowlisted libraries, and exact source snapshots from
+          accepted Palomar record versions; the language model audits the
+          definitions actually reached from those sources. Each registry entry
+          displays the compared declarations, with their types available on
+          hover, and links the exact statement file at the exact commit.
+        </p>
+      </section>
+
+      <section id="getting-ready">
+        <h2>Getting ready to submit</h2>
+        <p>
+          Start with a public GitHub repository and choose the exact
+          <a href="https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits">commit</a>
+          you want Palomar to review. The commit must be identified by its full
+          40-character SHA (the unique hash Git assigns to it). Palomar checks
+          that immutable snapshot; it does not follow a branch or tag as it
+          changes.
+        </p>
+        <p>
+          The <a href="https://github.com/kim-em/PalomarTemplate">Palomar starter repository</a>
+          provides this layout, pinned dependencies, documentation generation,
+          CI checks for Lean and Comparator, and a documented
+          <code>formalization.yaml</code> starting point.
+        </p>
+        <p>
+          For a complete public example, see the
+          <a href="https://github.com/kim-em/erdos-unit-distance-comparator">source repository</a>
+          for Palomar’s
+          <a href="https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&amp;version=2">first registered result</a>.
+        </p>
+        <p>The repository root must contain:</p>
+        <ul>
+          <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate;</li>
+          <li><code>lakefile.toml</code> and a committed <code>lake-manifest.json</code> (required in practice: without it, anything importing Mathlib will fail to build);</li>
+          <li><code>Challenge.lean</code>, containing the small, readable statement a mathematician should audit;</li>
+          <li><code>Solution.lean</code>, connecting that statement to the completed proof;</li>
+          <li><code>comparator.json</code>, naming every theorem and definition Comparator should compare; and</li>
+          <li><code>formalization.yaml</code>, describing the project, result, sources, authorship, automation, review, and known limitations.</li>
+        </ul>
+
+        <h3>What does Comparator require?</h3>
+        <p>
+          <code>Challenge.lean</code> states the result independently, normally
+          with <code>sorry</code>; <code>Solution.lean</code> supplies the proved
+          version. Their compared declarations must have the same names and
+          types. Comparator rebuilds and compares them, checks the permitted
+          axioms, and verifies the proof. Palomar currently permits only
+          <code>propext</code>, <code>Quot.sound</code>, and
+          <code>Classical.choice</code>.
+        </p>
+        <p>
+          Keep <code>Challenge.lean</code> short and mathematically ordinary.
+          1,000 lines and 100 KiB are hard limits; 300 lines and 32 KiB is the
+          surface we would rather review. Its transitive imports must resolve
+          to Lean core; the pinned, allowlisted Mathlib or Tau Ceti closure; or
+          an exact source snapshot represented by a specific accepted Palomar
+          record version. Importing Tau Ceti or an indexed Palomar source is
+          accepted and records a wider statement dependency surface on the
+          entry.
+        </p>
+        <p>
+          For an indexed import, Palomar independently checks out the recorded
+          repository and commit, verifies every imported source file, and
+          compiles the reached source directly with trusted Lean. This makes the
+          imported statement surface fixed and reviewable; it does not certify
+          every definition in that repository or promote the project to
+          Mathlib-level trust. The resulting entry is therefore marked as having
+          qualified statement dependencies.
+        </p>
+        <p>
+          Dependencies used only by <code>Solution.lean</code> may be arbitrary
+          pinned Git dependencies. Local/path dependencies and
+          <code>lakefile.lean</code> are not accepted by the current prototype.
+        </p>
+
+        <h3>What belongs in <code>formalization.yaml</code>?</h3>
+        <p>
+          At minimum, include the project name, authors, and license; one or two
+          classifications from the
+          <a href="https://arxiv.org/category_taxonomy">arXiv category taxonomy</a>
+          and one to eight codes from
+          <a href="https://msc2020.org/">MSC2020</a>; at least one identifiable
+          source; the automation methods used (including <code>manual</code>,
+          when appropriate); and the review status. For editorial review, also
+          give a plain-language account of every compared theorem, precise
+          bibliographic references, what is original or adapted, the role of AI
+          and human review, and any fidelity gaps, extra assumptions, or scope
+          limitations. Follow the
+          <a href="https://github.com/mathlib-initiative/formalization.yaml">formalization.yaml standard</a>
+          and Palomar’s
+          <a href="https://github.com/kim-em/PalomarPolicy/blob/main/CONTRIBUTING.md">submission policy</a>.
+        </p>
+      </section>
+
+      <section id="how-to-submit">
+        <h2>How to submit</h2>
+        <ol>
+          <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
+          <li><a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA, confirm the required acknowledgements, and, for a correction to an existing entry, enter its Palomar ID.</li>
+          <li>Submit the issue and watch it for status labels and comments. The issue is the public home for verification and review.</li>
+        </ol>
+        <p>
+          Palomar first labels the issue <code>status:verifying</code> while
+          mechanical verification runs. A passing issue moves to
+          <code>status:awaiting-review</code>; a failed check moves to
+          <code>status:changes-requested</code> and the mechanical report explains
+          what failed. If Palomar’s verification infrastructure itself fails,
+          the issue instead receives <code>status:verification-error</code>; no
+          submitter action is required until the maintainers respond. During
+          editorial review, the issue moves through
+          <code>status:review-in-progress</code> and then to
+          <code>status:accepted</code>, <code>status:changes-requested</code>,
+          <code>status:rejected</code>, or <code>status:escalated</code>.
+        </p>
+        <p>
+          Once mechanical verification has passed, we aim to complete the
+          editorial review within one hour. This is a target rather than a
+          guarantee, especially when a submission needs specialist judgment.
+        </p>
+        <p>
+          The review comment gives the reasons, warnings, and any requested
+          changes—not just a label. A request for changes means the issue may be
+          reconsidered after specific correctable problems are addressed; a
+          rejection means the submission failed a fundamental mechanical or
+          editorial requirement. An escalation means specialist or human
+          judgment is needed. Because every review is tied to an immutable
+          commit, any revised source must be submitted at a new full commit SHA
+          following the moderator’s instructions on the issue.
+        </p>
+        <p>
+          Acceptance is not the final step. An accepted submission appears in the
+          registry once the corresponding database pull request is merged. The
+          issue is then labelled <code>status:published</code>, given a comment
+          linking its registry entry, and closed.
+        </p>
+        <p>
+          Corrections are published as new versions of the same Palomar ID, and
+          every earlier version remains resolvable. A Palomar ID on its own
+          resolves to the newest version of that record, and a later version may
+          change the theorem, source, authors, or subject radically. For a stable
+          citation, name the version (e.g., PALOMAR-2026-07-29-000001 v1 instead
+          of PALOMAR-2026-07-29-000001). The entry page URL always names the
+          version you are viewing, so copying it from the address bar gives a
+          citable link.
+        </p>
+      </section>
+
+      <section id="who-we-are">
+        <h2>Who are we?</h2>
+        <p>
+          Palomar was initially incubated by the
+          <a href="https://lean-fro.org/">Lean FRO</a> and
+          <a href="https://icarm.math.brown.edu/">ICARM</a>. The initial
+          Scientific Advisory Board is Kim Morrison, Nestor Guillen, Terence Tao, Akshay
+          Venkatesh, Jeremy Avigad, Bryna Kra, Ravi Vakil, Jaume de Dios, and
+          Matthew Ballard. The board advises on policy and standards; it does not
+          review, approve, or endorse individual submissions. The board,
+          maintainer team, and project governance are expected to change as
+          the project develops. Kim Morrison is the initial point of contact.
+          Questions and proposals are welcome in the
+          <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
+        </p>
+      </section>
+
+      <section id="other-proof-assistants">
+        <h2>What about other proof assistants?</h2>
+        <p>
+          Currently, Palomar is set up to verify only proofs formalized in Lean.
+          However, we are open to expanding the registry to other proof
+          assistants. If you are interested in such an expansion, please contact
+          the maintainer team early in the
+          <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
+          We envisage that such expansions will require the following:
+        </p>
+        <ul>
+          <li>
+            pull requests adding support for the language, covering:
+            <ul>
+              <li>running its verification pipeline;</li>
+              <li>enforcing a separation between “the statement” and “the solution”;</li>
+              <li>rendering the main result to HTML; and</li>
+              <li>parsing upstream dependencies for display;</li>
+            </ul>
+          </li>
+          <li>a review, carried out with us, establishing that the implementation is secure and performant;</li>
+          <li>an assessment of the resources its verification pipeline would require to run in our continuous integration;</li>
+          <li>a sample of 10–100 candidate projects that could be indexed for that proof assistant; and</li>
+          <li>someone ready to join its maintainer team.</li>
+        </ul>
       </section>
 
       <section class="cta">
-        <div><h2>Have a result?</h2><p>Submit one fixed version of it.</p></div>
+        <div><h2>Ready to submit?</h2><p>The form asks for a repository and one fixed commit.</p></div>
         <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the submission form</a>
       </section>
     </main>

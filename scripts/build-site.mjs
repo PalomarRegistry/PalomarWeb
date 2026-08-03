@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-export const htmlFiles = ["404.html", "about.html", "entry.html", "faq.html", "index.html", "render.html"];
+export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest"];
 const assetFiles = ["app.js", "rendering.js", "security.mjs", "style.css"];
 
