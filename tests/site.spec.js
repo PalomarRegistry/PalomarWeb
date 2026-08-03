@@ -36,21 +36,59 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
-  await page.locator("#arxiv-filter").selectOption("math.NT");
+  await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
+  await expect(page.locator('#msc-options option[value="05C10"]')).toHaveCount(1);
+
+  await page.locator("#arxiv-query").fill("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
 
-  await page.locator("#arxiv-filter").selectOption("");
-  await page.locator("#msc-filter").selectOption("05C10");
+  await page.locator("#arxiv-query").fill("");
+  await page.locator("#msc-query").fill("05C10");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000123");
+
+  await page.locator("#arxiv-query").fill("  math.CO  ");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000123");
 });
 
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
-  await expect(page.locator("#arxiv-filter")).toHaveValue("math.NT");
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
+});
+
+test("absent classifications produce a useful empty result", async ({ page }) => {
+  await page.goto(`/?database=${database}&arxiv=math.AG`);
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.AG");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Classification query: arXiv math.AG.",
+  );
+
+  await page.locator("#arxiv-query").fill("");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator("#status")).toBeHidden();
+
+  await page.locator("#msc-query").fill("14Q05");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toContainText("Classification query: MSC2020 14Q05.");
+
+  await page.locator("#arxiv-query").fill("math.AG");
+  await expect(page.locator("#status")).toContainText(
+    "Classification query: arXiv math.AG, MSC2020 14Q05.",
+  );
+});
+
+test("malformed classification parameters are bounded and identified", async ({ page }) => {
+  await page.goto(`/?database=${database}&arxiv=${encodeURIComponent("not a code".repeat(20))}`);
+  await expect(page.locator("#arxiv-query")).toHaveValue("not a codenot a codenot a codeno");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Invalid classification code format: arXiv.",
+  );
 });
 
 test("an unversioned entry link resolves to the current immutable URL", async ({ page }) => {
@@ -144,7 +182,7 @@ test("optional metric markup cannot take down the registry", async ({ page }) =>
     "",
   );
   expect(withoutProjectMetric).not.toEqual(currentIndex);
-  await page.route("http://127.0.0.1:4173/", (route) => route.fulfill({
+  await page.route(/^http:\/\/127\.0\.0\.1:4173\/(?:\?.*)?$/, (route) => route.fulfill({
     body: withoutProjectMetric,
     contentType: "text/html; charset=utf-8",
   }));
@@ -282,14 +320,23 @@ test("current HTML remains compatible with cached JavaScript from the previous d
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
 
-test("current JavaScript remains compatible with cached HTML from the previous deployment", async ({ page }) => {
+test("current JavaScript preserves represented deep links with cached HTML", async ({ page }) => {
   test.skip(!previousRef, "PALOMAR_PREVIOUS_REF is only set in deployment and pull-request CI");
-  await page.route("http://127.0.0.1:4173/", (route) => route.fulfill({
-    body: fileAtPreviousDeployment("index.html"),
-    contentType: "text/html; charset=utf-8",
-  }));
+  await page.route("**/*", (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.resourceType() === "document" && url.pathname === "/") {
+      return route.fulfill({
+        body: fileAtPreviousDeployment("index.html"),
+        contentType: "text/html; charset=utf-8",
+      });
+    }
+    return route.continue();
+  });
 
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator(".entry-card")).toHaveCount(2);
+  await page.goto(`/?database=${database}&arxiv=math.NT`);
+  await expect(page.locator("#arxiv-filter")).toHaveValue("math.NT");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
