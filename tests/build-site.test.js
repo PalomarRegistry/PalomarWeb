@@ -19,6 +19,8 @@ test("deployment build versions coupled browser assets", async () => {
     assert.match(index, /assets\/style\.css\?v=0123456789abcdef/);
     assert.match(index, /assets\/app\.js\?v=0123456789abcdef/);
     assert.match(about, /assets\/style\.css\?v=0123456789abcdef/);
+    assert.match(about, /assets\/about\.js\?v=0123456789abcdef/);
+    await readFile(path.join(destination, "assets", "about.js"), "utf8");
     assert.match(app, /\.\/rendering\.js\?v=0123456789abcdef/);
     assert.match(app, /\.\/security\.mjs\?v=0123456789abcdef/);
     await readFile(path.join(destination, "assets", "security.mjs"), "utf8");

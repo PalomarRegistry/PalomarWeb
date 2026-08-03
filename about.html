@@ -325,7 +325,7 @@
           <li><code>formalization.yaml</code>, describing the project, result, sources, authorship, automation, review, and known limitations.</li>
         </ul>
 
-        <h3>What does Comparator require?</h3>
+        <h3 id="comparator-requirements">What does Comparator require?</h3>
         <p>
           <code>Challenge.lean</code> states the result independently, normally
           with <code>sorry</code>; <code>Solution.lean</code> supplies the proved
@@ -360,7 +360,7 @@
           <code>lakefile.lean</code> are not accepted by the current prototype.
         </p>
 
-        <h3>What belongs in <code>formalization.yaml</code>?</h3>
+        <h3 id="formalization-yaml">What belongs in <code>formalization.yaml</code>?</h3>
         <p>
           At minimum, include the project name, authors, license, and responsible
           maintainers; say whether the result is original or source-based and
@@ -495,15 +495,17 @@
         </ul>
       </section>
 
-      <section class="cta">
+      <section id="ready-to-submit" class="cta">
         <div><h2>Ready to submit?</h2><p>The form asks for a repository and one fixed commit.</p></div>
         <a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the submission form</a>
       </section>
+      <span id="anchor-status" class="visually-hidden" role="status"></span>
     </main>
 
     <footer>
       <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
       <div class="footer-links"><a href="https://github.com/kim-em/PalomarPolicy">Policy</a><a href="https://github.com/kim-em/PalomarDatabase">Data</a><a href="https://github.com/kim-em/PalomarWeb">Source</a></div>
     </footer>
+    <script type="module" src="assets/about.js"></script>
   </body>
 </html>

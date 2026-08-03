@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest"];
-const assetFiles = ["app.js", "rendering.js", "security.mjs", "style.css"];
+const assetFiles = ["about.js", "app.js", "rendering.js", "security.mjs", "style.css"];
 
 function options(args) {
   const result = {
@@ -51,6 +51,7 @@ export async function buildSite({ output, version }) {
     const source = await readFile(target, "utf8");
     const versioned = source
       .replaceAll('href="assets/style.css"', `href="assets/style.css?v=${version}"`)
+      .replaceAll('src="assets/about.js"', `src="assets/about.js?v=${version}"`)
       .replaceAll('src="assets/app.js"', `src="assets/app.js?v=${version}"`);
     await writeFile(target, versioned);
   }
