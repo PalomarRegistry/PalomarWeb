@@ -623,7 +623,7 @@ function acceptanceCallout(entry) {
     el(
       "p",
       "",
-      "Mechanical assurance: Lean and Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules.",
+      "Mechanical assurance: Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",
     ),
     el(
       "p",
@@ -886,6 +886,7 @@ async function renderEntry(
       entry.verification.workflow_url,
     ),
   );
+  details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
   evidence.append(details);
 
   const trust = el("section", "entry-trust");

@@ -56,18 +56,20 @@
         <h2>What does acceptance by Palomar mean?</h2>
         <p>
           In order for a repository version to be accepted into the Palomar
-          registry, four checks must pass. One is performed by Lean’s kernel,
-          two by a language model, and one by a human moderator.
+          registry, four checks must pass. One is mechanical and requires both
+          Lean’s kernel and the independent NanoDa kernel, two are performed by
+          a language model, and one by a human moderator.
         </p>
         <ol class="assertions">
           <li>
-            <strong>(Mechanical check)</strong> Lean’s kernel verifies that the
+            <strong>(Mechanical check)</strong> Comparator verifies that the
             recorded formal proof proves the recorded formal statement using a
             specified version of
             <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
             and that it depends on no axioms beyond <code>propext</code>,
             <code>Quot.sound</code>, and <code>Classical.choice</code>. This
-            verification is performed using the
+            exported proof is replayed through both Lean’s kernel and the
+            independent NanoDa kernel. The comparison is performed using the
             <a href="https://github.com/leanprover/comparator">Comparator</a>
             tool, which holds the advertised statement apart from its proof, so
             that a proof cannot quietly weaken the statement it claims to

@@ -64,6 +64,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "comparator_commit": "2" * 40,
             "lean4export_commit": "3" * 40,
             "landrun_commit": "4" * 40,
+            "nanoda_commit": "9" * 40,
             "workflow_url": "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
             "challenge_sha256": "b" * 64,
             "solution_sha256": "c" * 64,
