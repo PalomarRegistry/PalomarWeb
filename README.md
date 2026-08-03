@@ -7,7 +7,10 @@ The site is static and deployed with GitHub Pages. It fetches `index.json` and
 entry records directly from the database repository at runtime, so publishing a
 database PR does not require a coordinated website deployment or a server.
 Registry cards display arXiv and MSC2020 classifications, and the toolbar can
-filter the current records by either taxonomy.
+filter the current records by either taxonomy. The classification fields suggest
+codes represented by current entries but also accept any exact code, so a deep
+link such as `?arxiv=math.AG` produces a useful empty result even before that
+classification has an entry.
 
 Local preview:
 

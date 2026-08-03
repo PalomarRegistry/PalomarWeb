@@ -51,11 +51,13 @@
           </label>
           <div class="category-filters" aria-label="Subject filters">
             <label>arXiv:
-              <select id="arxiv-filter"><option value="">All subjects</option></select>
+              <input id="arxiv-query" type="search" list="arxiv-options" placeholder="e.g. math.CO" autocomplete="off" spellcheck="false">
             </label>
+            <datalist id="arxiv-options"></datalist>
             <label>MSC:
-              <select id="msc-filter"><option value="">All codes</option></select>
+              <input id="msc-query" type="search" list="msc-options" placeholder="e.g. 05C10" autocomplete="off" spellcheck="false">
             </label>
+            <datalist id="msc-options"></datalist>
           </div>
           <div class="filters" role="group" aria-label="Statement dependency filters">
             <span>Show:</span>
@@ -65,7 +67,7 @@
           </div>
         </div>
 
-        <div id="status" class="status">
+        <div id="status" class="status" role="status">
           Reading the Palomar database…
           <noscript>
             <br>

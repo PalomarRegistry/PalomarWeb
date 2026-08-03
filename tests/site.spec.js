@@ -36,21 +36,41 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
-  await page.locator("#arxiv-filter").selectOption("math.NT");
+  await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
+  await expect(page.locator('#msc-options option[value="05C10"]')).toHaveCount(1);
+
+  await page.locator("#arxiv-query").fill("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
 
-  await page.locator("#arxiv-filter").selectOption("");
-  await page.locator("#msc-filter").selectOption("05C10");
+  await page.locator("#arxiv-query").fill("");
+  await page.locator("#msc-query").fill("05C10");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000123");
 });
 
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
-  await expect(page.locator("#arxiv-filter")).toHaveValue("math.NT");
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
+});
+
+test("absent classifications produce a useful empty result", async ({ page }) => {
+  await page.goto(`/?database=${database}&arxiv=math.AG`);
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.AG");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Classification query: arXiv math.AG.",
+  );
+
+  await page.locator("#arxiv-query").fill("");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator("#status")).toBeHidden();
+
+  await page.locator("#msc-query").fill("14Q05");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toContainText("Classification query: MSC2020 14Q05.");
 });
 
 test("an unversioned entry link resolves to the current immutable URL", async ({ page }) => {

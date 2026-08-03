@@ -233,28 +233,36 @@ async function renderIndex() {
     }
     let trust = "all";
     const search = document.querySelector("#search");
-    const arxiv = document.querySelector("#arxiv-filter");
-    const msc = document.querySelector("#msc-filter");
-    const fillCategories = (select, values) => {
-      if (!select) return;
+    // The fallback selectors keep new JavaScript compatible with cached HTML
+    // from the previous GitHub Pages deployment.
+    const arxiv = document.querySelector("#arxiv-query, #arxiv-filter");
+    const msc = document.querySelector("#msc-query, #msc-filter");
+    const fillCategories = (list, values) => {
+      if (!list) return;
       for (const value of [...values].sort()) {
         const option = el("option", "", value);
         option.value = value;
-        select.append(option);
+        list.append(option);
       }
     };
-    fillCategories(arxiv, new Set(entries.flatMap((entry) => classification(entry).arxiv)));
-    fillCategories(msc, new Set(entries.flatMap((entry) => classification(entry).msc2020)));
-    if (arxiv && [...arxiv.options].some((option) => option.value === params.get("arxiv"))) {
+    fillCategories(
+      document.querySelector("#arxiv-options"),
+      new Set(entries.flatMap((entry) => classification(entry).arxiv)),
+    );
+    fillCategories(
+      document.querySelector("#msc-options"),
+      new Set(entries.flatMap((entry) => classification(entry).msc2020)),
+    );
+    if (arxiv && params.has("arxiv")) {
       arxiv.value = params.get("arxiv");
     }
-    if (msc && [...msc.options].some((option) => option.value === params.get("msc"))) {
+    if (msc && params.has("msc")) {
       msc.value = params.get("msc");
     }
     const update = () => {
       const query = search.value.trim().toLowerCase();
-      const arxivValue = arxiv?.value || "";
-      const mscValue = msc?.value || "";
+      const arxivValue = arxiv?.value.trim() || "";
+      const mscValue = msc?.value.trim() || "";
       let shown = 0;
       for (const card of grid.children) {
         const visible =
@@ -266,11 +274,19 @@ async function renderIndex() {
         if (visible) shown += 1;
       }
       status.hidden = shown !== 0;
-      status.textContent = shown ? "" : "No registry entries match those filters.";
+      const classificationQuery = [
+        arxivValue && `arXiv ${arxivValue}`,
+        mscValue && `MSC2020 ${mscValue}`,
+      ].filter(Boolean);
+      status.textContent = shown
+        ? ""
+        : classificationQuery.length
+          ? `No registry entries match the current filters. Classification query: ${classificationQuery.join(", ")}.`
+          : "No registry entries match those filters.";
     };
     search.addEventListener("input", update);
-    arxiv?.addEventListener("change", update);
-    msc?.addEventListener("change", update);
+    arxiv?.addEventListener("input", update);
+    msc?.addEventListener("input", update);
     document.querySelectorAll(".filter").forEach((button) => {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;
