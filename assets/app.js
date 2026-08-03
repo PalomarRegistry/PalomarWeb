@@ -26,6 +26,9 @@ const FEED_BASE = "https://kim-em.github.io/PalomarDatabase/feeds/";
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
 const VERSION_PARAMETER = /^[1-9][0-9]*$/;
+const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
+const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
+const FILTER_UPDATE_DELAY_MS = 200;
 
 function dataSource() {
   const databaseUrl = selectDatabaseUrl(window.location.href, window.location.search);
@@ -245,30 +248,43 @@ async function renderIndex() {
         list.append(option);
       }
     };
+    const arxivOptions = document.querySelector("#arxiv-options") ||
+      (arxiv?.tagName === "SELECT" ? arxiv : null);
+    const mscOptions = document.querySelector("#msc-options") ||
+      (msc?.tagName === "SELECT" ? msc : null);
     fillCategories(
-      document.querySelector("#arxiv-options"),
+      arxivOptions,
       new Set(entries.flatMap((entry) => classification(entry).arxiv)),
     );
     fillCategories(
-      document.querySelector("#msc-options"),
+      mscOptions,
       new Set(entries.flatMap((entry) => classification(entry).msc2020)),
     );
-    if (arxiv && params.has("arxiv")) {
-      arxiv.value = params.get("arxiv");
-    }
-    if (msc && params.has("msc")) {
-      msc.value = params.get("msc");
-    }
+    const applyCategoryParameter = (control, name, maximumLength) => {
+      if (!control || !params.has(name)) return;
+      const value = params.get(name).slice(0, maximumLength);
+      if (control.tagName === "SELECT" &&
+          ![...control.options].some((option) => option.value === value)) {
+        const option = el("option", "", value);
+        option.value = value;
+        control.append(option);
+      }
+      control.value = value;
+    };
+    applyCategoryParameter(arxiv, "arxiv", 32);
+    applyCategoryParameter(msc, "msc", 5);
     const update = () => {
       const query = search.value.trim().toLowerCase();
       const arxivValue = arxiv?.value.trim() || "";
       const mscValue = msc?.value.trim() || "";
+      const arxivInvalid = Boolean(arxivValue && !ARXIV_FILTER_RE.test(arxivValue));
+      const mscInvalid = Boolean(mscValue && !MSC2020_FILTER_RE.test(mscValue));
       let shown = 0;
       for (const card of grid.children) {
         const visible =
           (trust === "all" || card.dataset.trust === trust) &&
-          (!arxivValue || card.dataset.arxiv.split(" ").includes(arxivValue)) &&
-          (!mscValue || card.dataset.msc.split(" ").includes(mscValue)) &&
+          (!arxivValue || (!arxivInvalid && card.dataset.arxiv.split(" ").includes(arxivValue))) &&
+          (!mscValue || (!mscInvalid && card.dataset.msc.split(" ").includes(mscValue))) &&
           (!query || card.dataset.search.includes(query));
         card.hidden = !visible;
         if (visible) shown += 1;
@@ -278,15 +294,29 @@ async function renderIndex() {
         arxivValue && `arXiv ${arxivValue}`,
         mscValue && `MSC2020 ${mscValue}`,
       ].filter(Boolean);
+      const invalidClassifications = [
+        arxivInvalid && "arXiv",
+        mscInvalid && "MSC2020",
+      ].filter(Boolean);
       status.textContent = shown
         ? ""
-        : classificationQuery.length
+        : invalidClassifications.length
+          ? `No registry entries match the current filters. Invalid classification code format: ${invalidClassifications.join(", ")}.`
+          : classificationQuery.length
           ? `No registry entries match the current filters. Classification query: ${classificationQuery.join(", ")}.`
           : "No registry entries match those filters.";
     };
-    search.addEventListener("input", update);
-    arxiv?.addEventListener("input", update);
-    msc?.addEventListener("input", update);
+    let updateTimer;
+    const scheduleUpdate = () => {
+      window.clearTimeout(updateTimer);
+      updateTimer = window.setTimeout(update, FILTER_UPDATE_DELAY_MS);
+    };
+    search.addEventListener("input", scheduleUpdate);
+    for (const control of [arxiv, msc]) {
+      for (const eventName of ["input", "change", "search"]) {
+        control?.addEventListener(eventName, scheduleUpdate);
+      }
+    }
     document.querySelectorAll(".filter").forEach((button) => {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;

@@ -49,13 +49,13 @@
             <span>Search:</span>
             <input id="search" type="search" placeholder="title, author, theorem, or repository" autocomplete="off">
           </label>
-          <div class="category-filters" aria-label="Subject filters">
+          <div class="category-filters" role="group" aria-label="Subject filters">
             <label>arXiv:
-              <input id="arxiv-query" type="search" list="arxiv-options" placeholder="e.g. math.CO" autocomplete="off" spellcheck="false">
+              <input id="arxiv-query" type="search" list="arxiv-options" maxlength="32" placeholder="e.g. math.CO" autocomplete="off" spellcheck="false">
             </label>
             <datalist id="arxiv-options"></datalist>
             <label>MSC:
-              <input id="msc-query" type="search" list="msc-options" placeholder="e.g. 05C10" autocomplete="off" spellcheck="false">
+              <input id="msc-query" type="search" list="msc-options" maxlength="5" placeholder="e.g. 05C10" autocomplete="off" spellcheck="false">
             </label>
             <datalist id="msc-options"></datalist>
           </div>
