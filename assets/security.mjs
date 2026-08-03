@@ -404,9 +404,7 @@ export function validateEntry(entry, summary) {
   commit(verification.comparator_commit, "entry.verification.comparator_commit");
   commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
   commit(verification.landrun_commit, "entry.verification.landrun_commit");
-  if (entry.schema_version >= 4) {
-    commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
-  }
+  commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
   digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
   digest(verification.solution_sha256, "entry.verification.solution_sha256");
   if (entry.schema_version >= 5) {

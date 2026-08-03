@@ -897,9 +897,7 @@ async function renderEntry(
       entry.verification.workflow_url,
     ),
   );
-  if (entry.schema_version >= 4) {
-    details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
-  }
+  details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
   if (entry.schema_version >= 5) {
     details.append(
       externalDetailRow(

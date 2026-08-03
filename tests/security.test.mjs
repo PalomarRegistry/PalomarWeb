@@ -77,6 +77,7 @@ function entry(overrides = {}) {
       comparator_commit: "2".repeat(40),
       lean4export_commit: "3".repeat(40),
       landrun_commit: "4".repeat(40),
+      nanoda_commit: "9".repeat(40),
       verified_at: "2026-07-29T08:46:32Z",
       workflow_url: "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
       challenge_sha256: DIGEST,
@@ -404,16 +405,6 @@ test("unsafe source paths and malformed displayed digests fail closed", () => {
   assert.throws(() => validateEntry(badDigest, summary()), /challenge_sha256 is not a SHA-256/);
 
   const badNanodaPin = entry();
-  badNanodaPin.schema_version = 4;
-  badNanodaPin.classification = { arxiv: ["math.CO"], msc2020: ["05C10"] };
-  badNanodaPin.provenance = {
-    result_origin: "original",
-    repository_role: "substantive-development",
-    responsible_maintainers: [{ name: "Example" }],
-    mathematical_sources: [],
-    related_formalizations: [],
-  };
-  badNanodaPin.submission.authorization = { relationship: "maintainer" };
   badNanodaPin.verification.nanoda_commit = "not a commit";
   assert.throws(
     () => validateEntry(badNanodaPin, summary()),
