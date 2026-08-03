@@ -411,8 +411,27 @@ footer {
   margin-top: .35rem;
 }
 
-.faq li > ul {
+/* These two lists carry full paragraphs rather than short phrases. */
+.faq .assertions,
+.faq .not-list,
+.faq .checkers {
+  margin-top: 1rem;
+}
+
+.faq .assertions li + li,
+.faq .not-list li + li,
+.faq .checkers li + li {
+  margin-top: .9rem;
+}
+
+.faq li > ul,
+.faq li > ol {
   margin-top: .35rem;
+}
+
+/* Distinguish the nested editorial-floor questions from the checks above. */
+.faq .assertions li > ol {
+  list-style-type: lower-alpha;
 }
 
 .process,

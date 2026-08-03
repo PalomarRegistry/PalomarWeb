@@ -16,7 +16,7 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
   await page.goto(`/?database=${database}`);
   const first = page.locator(".entry-card").first();
   await expect(first.locator(".entry-id")).toContainText("PALOMAR-2026-07-29-");
-  await expect(first.locator(".entry-id")).toContainText("current version 2");
+  await expect(first.locator(".entry-id")).toContainText("v2 · current");
   await expect(first.locator(".entry-date")).toHaveText("Accepted 29 July 2026");
   await expect(first.locator(".trust-badge")).toHaveText("Statement dependencies: Mathlib only");
   await expect(first.getByRole("link", { name: "2 versions" })).toHaveAttribute(
