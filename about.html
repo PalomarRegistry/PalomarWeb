@@ -52,32 +52,6 @@
         </p>
       </section>
 
-      <section class="process" aria-labelledby="process-heading">
-        <h2 id="process-heading">From snapshot to record</h2>
-        <ol>
-          <li>
-            <span>1.</span>
-            <div><h3>Fixed source files</h3><p>Each submission points to an exact version of a public repository, so the files that Palomar checked cannot later change.</p></div>
-          </li>
-          <li>
-            <span>2.</span>
-            <div><h3>Readable statement file</h3><p><code>Challenge.lean</code> states the advertised result. Its transitive imports may come only from Lean core, pinned allowlisted libraries, or exact source snapshots represented by accepted Palomar record versions.</p></div>
-          </li>
-          <li>
-            <span>3.</span>
-            <div><h3>Independent proof check</h3><p>Lean and Comparator mechanically check that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules.</p></div>
-          </li>
-          <li>
-            <span>4.</span>
-            <div><h3>Documented review</h3><p>A separate AI-mediated editorial review judges whether the formal Challenge matches the written mathematical claim and examines its definitions, prior literature, significance, and clarity.</p></div>
-          </li>
-          <li>
-            <span>5.</span>
-            <div><h3>Permanent record</h3><p>An accepted result becomes an immutable, versioned JSON record. Later versions are appended rather than changing what an earlier version means.</p></div>
-          </li>
-        </ol>
-      </section>
-
       <section id="what-acceptance-means">
         <h2>What does acceptance by Palomar mean?</h2>
         <p>

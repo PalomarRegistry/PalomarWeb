@@ -434,37 +434,11 @@ footer {
   list-style-type: lower-alpha;
 }
 
-.process,
 .meaning-grid,
 .cta {
   margin-top: 2.5rem;
   padding-top: 1.5rem;
   border-top: 1px solid var(--line);
-}
-
-.process ol {
-  margin: 1rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.process li {
-  display: grid;
-  grid-template-columns: 2rem 1fr;
-  padding: .9rem 0;
-  border-top: 1px dotted var(--line);
-}
-
-.process li > span {
-  font-weight: bold;
-}
-
-.process h3 {
-  margin-bottom: .2rem;
-}
-
-.process p {
-  margin-bottom: 0;
 }
 
 .meaning-grid article + article {
