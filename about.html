@@ -285,13 +285,21 @@
           Start with a public GitHub repository and choose the exact
           <a href="https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits">commit</a>
           you want Palomar to review. The commit must be identified by its full
-          40-character SHA (the unique hash Git assigns to it). To find it with
-          Git, check out the version you want to submit and run
-          <code>git rev-parse HEAD</code> in the repository; copy the entire
-          40-character result. On GitHub, open the repository’s commit history,
-          select the commit you want, and use the “Copy full SHA” button next to
-          its hash. Palomar checks that immutable snapshot; it does not follow a
-          branch or tag as it changes.
+          40-character SHA (the unique hash Git assigns to it).
+        </p>
+        <p>
+          If you use Git on your computer, first commit every change you want
+          included and push that commit to GitHub. Then open a terminal in the
+          repository folder, run <code>git rev-parse HEAD</code>, and copy the
+          entire 40-character result. Uncommitted changes are not included.
+        </p>
+        <p>
+          If you use the GitHub website, open the repository’s main page and
+          click the commits link above the file list. Find the commit you want,
+          then click the clipboard icon beside its shortened hash; the icon is
+          labelled “Copy the full SHA.” Palomar can fetch only commits that have
+          been pushed to the public repository. It checks that immutable
+          snapshot and does not follow a branch or tag as it changes.
         </p>
         <p>
           The <a href="https://github.com/kim-em/PalomarTemplate">Palomar starter repository</a>
