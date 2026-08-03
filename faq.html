@@ -271,9 +271,10 @@
         </p>
         <p>
           To assist with such comparisons, Palomar caps the size of the formal
-          statement at 1,000 lines and 100 KiB, with imports restricted to an
-          approved set of libraries, and the language model audits those
-          definitions as part of the approval process. Each registry entry
+          statement at 1,000 lines and 100 KiB. Imports are restricted to Lean
+          core, pinned allowlisted libraries, and exact source snapshots from
+          accepted Palomar record versions; the language model audits the
+          definitions actually reached from those sources. Each registry entry
           displays the compared declarations, with their types available on
           hover, and links the exact statement file at the exact commit.
         </p>
@@ -282,16 +283,24 @@
       <section id="getting-ready">
         <h2>Getting ready to submit</h2>
         <p>
-          Start with a public GitHub repository and choose the exact commit you
-          want Palomar to review. The commit must be identified by its full
-          40-character SHA. Palomar checks that immutable snapshot; it does not
-          follow a branch or tag as it changes.
+          Start with a public GitHub repository and choose the exact
+          <a href="https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits">commit</a>
+          you want Palomar to review. The commit must be identified by its full
+          40-character SHA (the unique hash Git assigns to it). Palomar checks
+          that immutable snapshot; it does not follow a branch or tag as it
+          changes.
         </p>
         <p>
           The <a href="https://github.com/kim-em/PalomarTemplate">Palomar starter repository</a>
           provides this layout, pinned dependencies, documentation generation,
           CI checks for Lean and Comparator, and a documented
           <code>formalization.yaml</code> starting point.
+        </p>
+        <p>
+          For a complete public example, see the
+          <a href="https://github.com/kim-em/erdos-unit-distance-comparator">source repository</a>
+          for Palomar’s
+          <a href="https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&amp;version=2">first registered result</a>.
         </p>
         <p>The repository root must contain:</p>
         <ul>
@@ -316,17 +325,21 @@
         <p>
           Keep <code>Challenge.lean</code> short and mathematically ordinary.
           1,000 lines and 100 KiB are hard limits; 300 lines and 32 KiB is the
-          surface we would rather review. Its transitive imports must resolve to
-          Lean core, Mathlib, or Tau Ceti. Importing Tau Ceti is accepted, and
-          records a wider statement dependency surface on the entry.
+          surface we would rather review. Its transitive imports must resolve
+          to Lean core; the pinned, allowlisted Mathlib or Tau Ceti closure; or
+          an exact source snapshot represented by a specific accepted Palomar
+          record version. Importing Tau Ceti or an indexed Palomar source is
+          accepted and records a wider statement dependency surface on the
+          entry.
         </p>
         <p>
-          Imports from projects already indexed by Palomar are <strong>not</strong>
-          accepted in the current protocol. An earlier entry certifies one theorem
-          in a repository, not the rest of that repository’s definitions, and
-          until Palomar can reconstruct that earlier statement surface
-          independently it will not treat it as vocabulary a new statement may be
-          written in.
+          For an indexed import, Palomar independently checks out the recorded
+          repository and commit, verifies every imported source file, and
+          compiles the reached source directly with trusted Lean. This makes the
+          imported statement surface fixed and reviewable; it does not certify
+          every definition in that repository or promote the project to
+          Mathlib-level trust. The resulting entry is therefore marked as having
+          qualified statement dependencies.
         </p>
         <p>
           Dependencies used only by <code>Solution.lean</code> may be arbitrary
@@ -337,13 +350,16 @@
         <h3>What belongs in <code>formalization.yaml</code>?</h3>
         <p>
           At minimum, include the project name, authors, and license; one or two
-          arXiv classifications and one to eight MSC 2020 classifications; at
-          least one identifiable source; the automation methods used (including
-          <code>manual</code>, when appropriate); and the review status. For
-          editorial review, also give a plain-language account of every compared
-          theorem, precise bibliographic references, what is original or
-          adapted, the role of AI and human review, and any fidelity gaps, extra
-          assumptions, or scope limitations. Follow the
+          classifications from the
+          <a href="https://arxiv.org/category_taxonomy">arXiv category taxonomy</a>
+          and one to eight codes from
+          <a href="https://msc2020.org/">MSC2020</a>; at least one identifiable
+          source; the automation methods used (including <code>manual</code>,
+          when appropriate); and the review status. For editorial review, also
+          give a plain-language account of every compared theorem, precise
+          bibliographic references, what is original or adapted, the role of AI
+          and human review, and any fidelity gaps, extra assumptions, or scope
+          limitations. Follow the
           <a href="https://github.com/mathlib-initiative/formalization.yaml">formalization.yaml standard</a>
           and Palomar’s
           <a href="https://github.com/kim-em/PalomarPolicy/blob/main/CONTRIBUTING.md">submission policy</a>.
