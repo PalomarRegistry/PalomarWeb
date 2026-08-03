@@ -47,6 +47,26 @@ test("about headings expose hoverable links that copy their section URL", async 
   );
 });
 
+test("every formalization.yaml mention on the About page links to its standard", async ({ page }) => {
+  await page.goto("/about.html");
+  const standard = "https://github.com/mathlib-initiative/formalization.yaml";
+  const result = await page.locator("main").evaluate((main, expected) => {
+    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+    const unlinked = [];
+    let mentions = 0;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const count = node.textContent.split("formalization.yaml").length - 1;
+      mentions += count;
+      if (count && node.parentElement.closest("a")?.href !== expected) {
+        unlinked.push(node.textContent.trim());
+      }
+    }
+    return { mentions, unlinked };
+  }, standard);
+  expect(result.mentions).toBeGreaterThan(0);
+  expect(result.unlinked).toEqual([]);
+});
+
 test("landing cards show the acceptance date and dated identifier", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) => route.abort());
   await page.goto(`/?database=${database}`);
