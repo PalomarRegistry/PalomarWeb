@@ -335,7 +335,7 @@ test("current JavaScript preserves represented deep links with cached HTML", asy
   });
 
   await page.goto(`/?database=${database}&arxiv=math.NT`);
-  await expect(page.locator("#arxiv-filter")).toHaveValue("math.NT");
+  await expect(page.locator("#arxiv-query, #arxiv-filter")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
   await expect(page.locator("#status")).not.toContainText("could not be loaded");

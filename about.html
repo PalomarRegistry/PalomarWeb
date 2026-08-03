@@ -288,18 +288,17 @@
           40-character SHA (the unique hash Git assigns to it).
         </p>
         <p>
-          If you use Git on your computer, first commit every change you want
-          included and push that commit to GitHub. Then open a terminal in the
-          repository folder, run <code>git rev-parse HEAD</code>, and copy the
-          entire 40-character result. Uncommitted changes are not included.
+          Using Git, commit and push every change you want included. In a
+          terminal in the repository folder, run <code>git rev-parse HEAD</code>
+          and copy the entire 40-character result. Uncommitted changes are
+          excluded.
         </p>
         <p>
-          If you use the GitHub website, open the repository’s main page and
-          click the commits link above the file list. Find the commit you want,
-          then click the clipboard icon beside its shortened hash; the icon is
-          labelled “Copy the full SHA.” Palomar can fetch only commits that have
-          been pushed to the public repository. It checks that immutable
-          snapshot and does not follow a branch or tag as it changes.
+          Using GitHub, click the commits link above the repository’s file list.
+          Find the commit and click the clipboard icon beside its shortened hash
+          (“Copy the full SHA”). Palomar can fetch only commits pushed to the
+          public repository. It checks that immutable snapshot, not a branch or
+          tag that can change.
         </p>
         <p>
           The <a href="https://github.com/kim-em/PalomarTemplate">Palomar starter repository</a>
