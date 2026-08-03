@@ -11,6 +11,42 @@ function fileAtPreviousDeployment(path) {
   return execFileSync("git", ["show", `${previousRef}:${path}`], { encoding: "utf8" });
 }
 
+test("about headings expose hoverable links that copy their section URL", async ({ context, page }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/about.html");
+
+  const sectionHeading = page.locator("#what-is-palomar h2");
+  const sectionAnchor = sectionHeading.getByRole("link", { name: "Copy link to What is Palomar?" });
+  await expect(sectionAnchor).toHaveCSS("opacity", "0");
+  await sectionAnchor.focus();
+  await expect(sectionAnchor).toHaveCSS("opacity", "1");
+  await page.locator("body").click({ position: { x: 0, y: 0 } });
+  await expect(sectionAnchor).toHaveCSS("opacity", "0");
+  await sectionHeading.hover();
+  await expect(sectionAnchor).toHaveCSS("opacity", "1");
+
+  await sectionAnchor.click();
+  await expect(page).toHaveURL(/about\.html#what-is-palomar$/);
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toMatch(
+    /about\.html#what-is-palomar$/,
+  );
+  await expect(page.getByRole("status")).toHaveText("Copied link to What is Palomar?");
+  await expect(sectionAnchor).toHaveClass(/copied/);
+  await expect(sectionAnchor.locator("path")).toHaveCSS("fill", "rgb(23, 111, 44)");
+
+  const headings = page.locator("main.about h2, main.about h3");
+  await expect(page.locator("main.about .heading-anchor")).toHaveCount(await headings.count());
+
+  await expect(page.locator("#formalization-yaml .heading-anchor")).toHaveAttribute(
+    "href",
+    "#formalization-yaml",
+  );
+  await expect(page.locator("#ready-to-submit .heading-anchor")).toHaveAttribute(
+    "href",
+    "#ready-to-submit",
+  );
+});
+
 test("landing cards show the acceptance date and dated identifier", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) => route.abort());
   await page.goto(`/?database=${database}`);

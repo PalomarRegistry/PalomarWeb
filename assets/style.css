@@ -410,6 +410,73 @@ footer {
   margin-bottom: .35rem;
 }
 
+.faq .anchored-heading {
+  width: fit-content;
+}
+
+.heading-anchor {
+  display: inline-flex;
+  margin-left: .4rem;
+  color: var(--muted);
+  opacity: 0;
+  text-decoration: none;
+  vertical-align: -.1em;
+  transition: opacity .12s ease-in-out;
+}
+
+.heading-anchor svg {
+  fill: currentColor;
+}
+
+.heading-anchor:visited {
+  color: var(--muted);
+}
+
+.faq h2:hover .heading-anchor,
+.faq h3:hover .heading-anchor,
+.heading-anchor:focus,
+.heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+.heading-anchor:hover,
+.heading-anchor:focus-visible {
+  color: var(--link);
+}
+
+.heading-anchor.copied {
+  color: #176f2c;
+  opacity: 1;
+}
+
+.visually-hidden {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.clipboard-fallback {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+
+@media (hover: none) {
+  .heading-anchor {
+    opacity: 1;
+  }
+}
+
 .faq li + li {
   margin-top: .35rem;
 }
