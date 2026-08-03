@@ -216,6 +216,23 @@ test("a single current version has no supersession treatment", async ({ page }) 
   await expect(page.locator("#version-history li")).toHaveCount(1);
 });
 
+test("schema v5 entries display repository licence evidence and its boundary", async ({ page }) => {
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`,
+  );
+
+  const evidence = page.locator(".entry-evidence");
+  await expect(evidence).toContainText("Repository licence file");
+  await expect(evidence.getByRole("link", { name: "LICENSE.md" })).toHaveAttribute(
+    "href",
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/LICENSE.md`,
+  );
+  await expect(evidence).toContainText("Declared repository licence");
+  await expect(evidence).toContainText("Detected SPDX licence");
+  await expect(evidence).toContainText("Apache-2.0");
+  await expect(evidence).toContainText("Cited papers, reused formalizations, and dependencies retain their own licences");
+});
+
 test("entry version parameters use canonical positive-integer spelling", async ({ page }) => {
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000123&version=2.0&database=${database}`,
@@ -324,6 +341,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
     "Challenge.lean",
     "Solution.lean",
     "formalization.yaml",
+    "LICENSE.md",
   ]);
   await expect(sourceFiles.nth(2)).toHaveAttribute(
     "href",

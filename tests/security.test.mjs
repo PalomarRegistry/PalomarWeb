@@ -297,6 +297,7 @@ test("schema v4 requires explicit provenance and submission authorization", () =
     },
   });
   valid.submission.authorization = { relationship: "maintainer" };
+  valid.verification.nanoda_commit = "9".repeat(40);
   assert.doesNotThrow(() => validateEntry(valid, summary()));
 
   const sourceBasedWithoutSource = structuredClone(valid);
@@ -312,6 +313,7 @@ test("schema v4 requires explicit provenance and submission authorization", () =
     () => validateEntry(wrapperWithoutTarget, summary()),
     /substantive_formalization must be an object/,
   );
+
 });
 
 test("schema v5 requires content-addressed durable verification evidence", () => {
@@ -328,6 +330,13 @@ test("schema v5 requires content-addressed durable verification evidence", () =>
     },
   });
   valid.submission.authorization = { relationship: "maintainer" };
+  valid.verification.nanoda_commit = "9".repeat(40);
+  valid.source.license = {
+    path: "LICENSE",
+    sha256: DIGEST,
+    declared_identifier: "Apache-2.0",
+    detected_identifier: "Apache-2.0",
+  };
   Object.assign(valid.verification, {
     workflow_commit: "8".repeat(40),
     workflow_run_attempt: 1,
@@ -336,6 +345,18 @@ test("schema v5 requires content-addressed durable verification evidence", () =>
     evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
   });
   assert.doesNotThrow(() => validateEntry(valid, summary()));
+
+  const disagreement = structuredClone(valid);
+  disagreement.source.license.detected_identifier = "MIT";
+  assert.throws(() => validateEntry(disagreement, summary()), /identifiers disagree/);
+
+  const nestedLicense = structuredClone(valid);
+  nestedLicense.source.license.path = "licenses/LICENSE";
+  assert.throws(() => validateEntry(nestedLicense, summary()), /conventional root/);
+
+  const badLicenseDigest = structuredClone(valid);
+  badLicenseDigest.source.license.sha256 = "not a digest";
+  assert.throws(() => validateEntry(badLicenseDigest, summary()), /not a SHA-256/);
 
   const traversal = structuredClone(valid);
   traversal.verification.evidence_path = "../mechanical-report.json/";
@@ -381,6 +402,30 @@ test("unsafe source paths and malformed displayed digests fail closed", () => {
   const badDigest = entry();
   badDigest.verification.challenge_sha256 = "not a digest";
   assert.throws(() => validateEntry(badDigest, summary()), /challenge_sha256 is not a SHA-256/);
+
+  const badNanodaPin = entry();
+  badNanodaPin.schema_version = 4;
+  badNanodaPin.classification = { arxiv: ["math.CO"], msc2020: ["05C10"] };
+  badNanodaPin.provenance = {
+    result_origin: "original",
+    repository_role: "substantive-development",
+    responsible_maintainers: [{ name: "Example" }],
+    mathematical_sources: [],
+    related_formalizations: [],
+  };
+  badNanodaPin.submission.authorization = { relationship: "maintainer" };
+  badNanodaPin.verification.nanoda_commit = "not a commit";
+  assert.throws(
+    () => validateEntry(badNanodaPin, summary()),
+    /nanoda_commit is not a full lowercase commit/,
+  );
+
+  const missingNanodaPin = structuredClone(badNanodaPin);
+  delete missingNanodaPin.verification.nanoda_commit;
+  assert.throws(
+    () => validateEntry(missingNanodaPin, summary()),
+    /nanoda_commit is not a full lowercase commit/,
+  );
 });
 
 test("every HTML entry point carries the restrictive CSP", async () => {
@@ -392,4 +437,10 @@ test("every HTML entry point carries the restrictive CSP", async () => {
     assert.match(html, /frame-src 'self' https:\/\/kim-em\.github\.io/);
     assert.match(html, /object-src 'none'/);
   }
+});
+
+test("About states the repository licence boundary", async () => {
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  assert.match(about, /root licence file, SPDX identifier, and checksum/);
+  assert.match(about, /reused formalizations, and\s+dependencies retain their own licences/);
 });

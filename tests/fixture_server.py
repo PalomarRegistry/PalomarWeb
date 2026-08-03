@@ -50,6 +50,12 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "repository_url": "https://github.com/example/challenge",
             "commit": "1" * 40,
             "tree_url": f"https://github.com/example/challenge/tree/{'1' * 40}",
+            "license": {
+                "path": "LICENSE.md",
+                "sha256": "d" * 64,
+                "declared_identifier": "Apache-2.0",
+                "detected_identifier": "Apache-2.0",
+            },
         },
         "formalization": {
             "challenge_path": "Challenge.lean",
@@ -72,6 +78,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "comparator_commit": "2" * 40,
             "lean4export_commit": "3" * 40,
             "landrun_commit": "4" * 40,
+            "nanoda_commit": "9" * 40,
             "workflow_url": "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
             "challenge_sha256": "b" * 64,
             "solution_sha256": "c" * 64,
@@ -149,8 +156,6 @@ ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
         "reasons": ["An exact indexed source snapshot determines the statement."],
     }
 )
-
-
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
