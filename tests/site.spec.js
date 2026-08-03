@@ -47,6 +47,17 @@ test("about headings expose hoverable links that copy their section URL", async 
   );
 });
 
+test("every formalization.yaml mention on the About page links to its standard", async ({ page }) => {
+  await page.goto("/about.html");
+  const standard = "https://github.com/mathlib-initiative/formalization.yaml";
+  const codeMentions = page.locator("main code", { hasText: /^formalization\.yaml$/ });
+  await expect(codeMentions).toHaveCount(5);
+  for (const mention of await codeMentions.all()) {
+    await expect(mention.locator("xpath=parent::a")).toHaveAttribute("href", standard);
+  }
+  await expect(page.locator(`main a[href="${standard}"]`)).toHaveCount(6);
+});
+
 test("landing cards show the acceptance date and dated identifier", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) => route.abort());
   await page.goto(`/?database=${database}`);
