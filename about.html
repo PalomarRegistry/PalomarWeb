@@ -234,10 +234,12 @@
           not simply ask Lean’s elaborator whether the proof was accepted. It
           compiles the statement and the proof in separate sandboxes, exports
           both environments with <code>lean4export</code>, checks that the
-          declarations the statement depends on are identical in each, and then
-          replays the exported proof through Lean’s kernel from scratch. A proof
-          that survives that replay cannot have relied on a metaprogram
-          tampering with the elaborator’s state or misreporting its result.
+          declarations the statement depends on are identical in each. Palomar
+          then requires the exported proof to be accepted from scratch by both
+          Lean’s kernel and <code>nanoda</code>, an independent kernel
+          implementation. A proof that survives those checks cannot have relied
+          on a metaprogram tampering with the elaborator’s state or misreporting
+          its result.
         </p>
         <p>
           Comparator also enforces that the compared theorems use no axioms
@@ -247,12 +249,12 @@
           <code>Quot.sound</code>, and <code>Classical.choice</code>.
         </p>
         <p>
-          That replay uses Lean’s own kernel, so it is a second pass rather than
-          a second implementation: it guards against a proof that manipulated the
-          elaborator, not against a bug in the kernel itself. Comparator can
-          additionally run <code>nanoda</code>, described below, but Palomar’s
-          current runner does not enable it. We encourage readers who want
-          stronger assurance to run these tools themselves:
+          Lean’s replay is a second pass rather than a second implementation: it
+          guards against a proof that manipulated the elaborator, not against a
+          bug in Lean’s kernel itself. Palomar therefore always enables
+          <code>nanoda</code> as a genuinely independent check and publishes the
+          exact NanoDa commit with every registry entry. We encourage readers to
+          reproduce either check themselves:
         </p>
         <ul class="checkers">
           <li>
