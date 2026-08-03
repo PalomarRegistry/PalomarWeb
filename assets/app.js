@@ -22,6 +22,7 @@ import {
 
 const CANONICAL_WEB_BASE = "https://kim-em.github.io/PalomarWeb/";
 const FEED_BASE = "https://kim-em.github.io/PalomarDatabase/feeds/";
+const DATABASE_SOURCE_BASE = "https://github.com/kim-em/PalomarDatabase/blob/main/";
 
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
@@ -613,11 +614,21 @@ function acceptanceCallout(entry) {
   check.setAttribute("aria-hidden", "true");
   const copy = el("div");
   const evidenceLinks = el("p", "certificate-evidence-links");
-  evidenceLinks.append(
-    externalLink("Mechanical evidence", entry.verification.workflow_url),
-    " · ",
-    externalLink("Editorial evidence", entry.review.report_url),
-  );
+  if (entry.schema_version >= 5) {
+    evidenceLinks.append(
+      externalLink(
+        "Archived mechanical report",
+        `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}mechanical-report.json`,
+      ),
+      " · ",
+    );
+  } else {
+    evidenceLinks.append(
+      externalLink("Mechanical evidence", entry.verification.workflow_url),
+      " · ",
+    );
+  }
+  evidenceLinks.append(externalLink("Editorial evidence", entry.review.report_url));
   copy.append(
     el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
     el(
@@ -886,6 +897,17 @@ async function renderEntry(
       entry.verification.workflow_url,
     ),
   );
+  if (entry.schema_version >= 5) {
+    details.append(
+      externalDetailRow(
+        "Durable verification report",
+        entry.verification.mechanical_report_sha256,
+        `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}mechanical-report.json`,
+      ),
+      detailRow("Verification workflow commit", entry.verification.workflow_commit),
+      detailRow("Workflow run attempt", String(entry.verification.workflow_run_attempt)),
+    );
+  }
   evidence.append(details);
 
   const trust = el("section", "entry-trust");
@@ -970,7 +992,7 @@ async function renderEntry(
     versionHistory(entry, versions, currentVersion),
     classificationSection(entry, currentVersion),
   );
-  if (entry.schema_version === 4) content.append(provenanceSection(entry));
+  if (entry.schema_version >= 4) content.append(provenanceSection(entry));
   content.append(
     challenge.section,
     evidence,

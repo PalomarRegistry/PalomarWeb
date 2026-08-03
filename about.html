@@ -204,9 +204,12 @@
         <p>
           Every submission is pinned to a full 40-character commit, so the
           artifact Palomar checked cannot drift. Every verification runs in
-          public GitHub Actions, so the complete record of what was done stays
-          visible. Each entry records the SHA-256 digests of the statement and
-          proof files, the exact Lean toolchain, and the exact Comparator,
+          public GitHub Actions. Entries published under the durable-evidence
+          schema (version 5) preserve the resulting mechanical report and
+          workflow provenance with the append-only registry record. Those
+          entries record the SHA-256 digest of the report and the exact workflow
+          revision, alongside the statement and proof digests, Lean toolchain,
+          and exact Comparator,
           <a href="https://github.com/leanprover/lean4export">lean4export</a>,
           and Landrun revisions used, which together are enough to reproduce the
           run from the published record. One caveat: Mathlib’s build cache is

@@ -22,7 +22,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
     )
     return {
-        "schema_version": 3,
+        "schema_version": 5,
         "id": identifier,
         "accepted_at": "2026-07-29",
         "version": version,
@@ -31,11 +31,19 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "abstract": "A browser confinement fixture.",
         "authors": [{"name": "Example"}],
         "classification": classification,
+        "provenance": {
+            "result_origin": "original",
+            "repository_role": "substantive-development",
+            "responsible_maintainers": [{"name": "Example"}],
+            "mathematical_sources": [],
+            "related_formalizations": [],
+        },
         "submission": {
             "repository": "kim-em/PalomarSubmission",
             "issue": issue,
             "url": f"https://github.com/kim-em/PalomarSubmission/issues/{issue}",
             "submitter": "example",
+            "authorization": {"relationship": "maintainer"},
         },
         "source": {
             "repository": "example/challenge",
@@ -68,6 +76,11 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "challenge_sha256": "b" * 64,
             "solution_sha256": "c" * 64,
             "verified_at": "2026-07-29T08:46:32Z",
+            "workflow_commit": "9" * 40,
+            "workflow_run_attempt": 1,
+            "evidence_path": f"evidence/{identifier}-v{version}/{HASH}/",
+            "evidence_tree_sha256": HASH,
+            "mechanical_report_sha256": "d" * 64,
         },
         "trust": {
             "level": "high",

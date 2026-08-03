@@ -1,5 +1,5 @@
 export const INDEX_SCHEMA_VERSION = 2;
-export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4]);
+export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4, 5]);
 export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
@@ -279,7 +279,7 @@ export function validateEntry(entry, summary) {
   string(submission.url, "entry.submission.url");
   string(submission.submitter, "entry.submission.submitter");
 
-  if (entry.schema_version === 4) {
+  if (entry.schema_version >= 4) {
     const authorization = object(submission.authorization, "entry.submission.authorization");
     if (!["maintainer", "approved", "legacy-unspecified"].includes(authorization.relationship)) {
       fail("entry.submission.authorization.relationship is not recognized");
@@ -386,6 +386,28 @@ export function validateEntry(entry, summary) {
   commit(verification.landrun_commit, "entry.verification.landrun_commit");
   digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
   digest(verification.solution_sha256, "entry.verification.solution_sha256");
+  if (entry.schema_version >= 5) {
+    commit(verification.workflow_commit, "entry.verification.workflow_commit");
+    integer(verification.workflow_run_attempt, "entry.verification.workflow_run_attempt");
+    digest(verification.evidence_tree_sha256, "entry.verification.evidence_tree_sha256");
+    digest(verification.mechanical_report_sha256, "entry.verification.mechanical_report_sha256");
+    const evidencePath = string(
+      verification.evidence_path,
+      "entry.verification.evidence_path",
+    );
+    if (!evidencePath.endsWith("/")) {
+      fail("entry.verification.evidence_path must end with a slash");
+    }
+    safeRepositoryPath(
+      evidencePath.slice(0, -1),
+      "entry.verification.evidence_path",
+    );
+    const expectedEvidencePath =
+      `evidence/${entry.id}-v${entry.version}/${verification.evidence_tree_sha256}/`;
+    if (evidencePath !== expectedEvidencePath) {
+      fail(`entry.verification.evidence_path must be ${expectedEvidencePath}`);
+    }
+  }
 
   const trust = object(entry.trust, "entry.trust");
   if (!['high', 'qualified'].includes(trust.level)) fail("entry.trust.level is unsupported");
