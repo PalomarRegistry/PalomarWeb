@@ -1,5 +1,5 @@
 export const INDEX_SCHEMA_VERSION = 2;
-export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3]);
+export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4]);
 export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
@@ -255,7 +255,7 @@ export function validateEntry(entry, summary) {
   if (entry.schema_version === 2 && entry.classification !== undefined) {
     fail("entry.classification is not valid in schema version 2");
   }
-  if (entry.schema_version === 3) {
+  if (entry.schema_version >= 3) {
     const classification = object(entry.classification, "entry.classification");
     const arxiv = stringArray(classification.arxiv, "entry.classification.arxiv");
     const msc2020 = stringArray(classification.msc2020, "entry.classification.msc2020");
@@ -278,6 +278,69 @@ export function validateEntry(entry, summary) {
   integer(submission.issue, "entry.submission.issue");
   string(submission.url, "entry.submission.url");
   string(submission.submitter, "entry.submission.submitter");
+
+  if (entry.schema_version === 4) {
+    const authorization = object(submission.authorization, "entry.submission.authorization");
+    if (!["maintainer", "approved", "legacy-unspecified"].includes(authorization.relationship)) {
+      fail("entry.submission.authorization.relationship is not recognized");
+    }
+    if (authorization.evidence !== undefined) {
+      string(authorization.evidence, "entry.submission.authorization.evidence");
+    }
+
+    const provenance = object(entry.provenance, "entry.provenance");
+    if (!["original", "source-based"].includes(provenance.result_origin)) {
+      fail("entry.provenance.result_origin is not recognized");
+    }
+    if (!["substantive-development", "thin-wrapper"].includes(provenance.repository_role)) {
+      fail("entry.provenance.repository_role is not recognized");
+    }
+    const maintainers = array(
+      provenance.responsible_maintainers,
+      "entry.provenance.responsible_maintainers",
+    );
+    if (!maintainers.length) fail("entry.provenance.responsible_maintainers must not be empty");
+    for (const [position, maintainer] of maintainers.entries()) {
+      string(
+        object(maintainer, `entry.provenance.responsible_maintainers[${position}]`).name,
+        `entry.provenance.responsible_maintainers[${position}].name`,
+      );
+    }
+    const substantiveRelationships = new Set(["formalizes", "adapts", "independently-proves"]);
+    const sources = array(provenance.mathematical_sources, "entry.provenance.mathematical_sources");
+    for (const [position, sourceRecord] of sources.entries()) {
+      const item = object(sourceRecord, `entry.provenance.mathematical_sources[${position}]`);
+      string(item.title, `entry.provenance.mathematical_sources[${position}].title`);
+      array(item.authors, `entry.provenance.mathematical_sources[${position}].authors`);
+      if (![...substantiveRelationships, "background", "other"].includes(item.relationship)) {
+        fail(`entry.provenance.mathematical_sources[${position}].relationship is not recognized`);
+      }
+    }
+    if (provenance.result_origin === "source-based" &&
+        !sources.some((item) => substantiveRelationships.has(item.relationship))) {
+      fail("source-based provenance lacks a substantive mathematical source");
+    }
+    if (provenance.result_origin === "original" &&
+        sources.some((item) => substantiveRelationships.has(item.relationship))) {
+      fail("original provenance claims a substantive source relationship");
+    }
+    array(provenance.related_formalizations, "entry.provenance.related_formalizations");
+    if (provenance.repository_role === "thin-wrapper") {
+      const substantive = object(
+        provenance.substantive_formalization,
+        "entry.provenance.substantive_formalization",
+      );
+      if (!REPOSITORY_RE.test(substantive.repository) || !COMMIT_RE.test(substantive.commit)) {
+        fail("entry.provenance.substantive_formalization is malformed");
+      }
+      const repositoryUrl = `https://github.com/${substantive.repository}`;
+      if (substantive.repository_url !== repositoryUrl ||
+          substantive.tree_url !== `${repositoryUrl}/tree/${substantive.commit}`) {
+        fail("entry.provenance.substantive_formalization is not canonical");
+      }
+      safeExternalUrl(substantive.tree_url);
+    }
+  }
 
   const source = object(entry.source, "entry.source");
   string(source.repository, "entry.source.repository");

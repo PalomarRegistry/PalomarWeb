@@ -627,6 +627,100 @@ function classificationSection(entry, currentVersion) {
   return section;
 }
 
+function provenanceSection(entry) {
+  const provenance = entry.provenance;
+  const section = el("section", "entry-provenance");
+  const heading = el("div", "section-heading");
+  const title = el("div");
+  title.append(el("div", "eyebrow", "Provenance"), el("h2", "", "Mathematical origin"));
+  heading.append(title);
+  section.append(heading);
+
+  const details = el("dl", "details provenance-details");
+  details.append(
+    detailRow(
+      "Result origin",
+      provenance.result_origin === "original"
+        ? "Original result first presented by this formalization"
+        : "Formalization of or response to existing mathematical work",
+    ),
+    detailRow(
+      "Repository role",
+      provenance.repository_role === "thin-wrapper"
+        ? "Thin Comparator wrapper around another formalization repository"
+        : "Substantive formalization development",
+    ),
+    detailRow(
+      "Responsible maintainers",
+      provenance.responsible_maintainers.map((person) => person.name).join(", "),
+    ),
+    detailRow(
+      "Submission basis",
+      {
+        maintainer: "Submitted by a responsible author or maintainer",
+        approved: "Submitted with approval from a responsible author or maintainer",
+        "legacy-unspecified": "Not recorded by the earlier submission form",
+      }[entry.submission.authorization.relationship],
+    ),
+  );
+  if (provenance.repository_role === "thin-wrapper") {
+    const substantive = provenance.substantive_formalization;
+    details.append(
+      externalDetailRow(
+        "Substantive formalization",
+        `${substantive.repository}@${substantive.commit.slice(0, 12)}`,
+        substantive.tree_url,
+      ),
+    );
+  }
+  if (entry.submission.authorization.evidence) {
+    details.append(detailRow("Authorization evidence", entry.submission.authorization.evidence));
+  }
+  section.append(details);
+
+  if (provenance.mathematical_sources.length) {
+    section.append(el("h3", "", "Mathematical sources"));
+    const sources = el("ul", "plain-list provenance-sources");
+    for (const source of provenance.mathematical_sources) {
+      const item = el("li");
+      const label = source.authors.length
+        ? `${source.authors.map((author) => author.name).join(", ")}: ${source.title}`
+        : source.title;
+      if (source.identifier?.startsWith("https://")) {
+        item.append(externalLink(label, source.identifier));
+      } else {
+        item.append(el("span", "", label));
+      }
+      item.append(el("span", "source-relationship", ` — ${source.relationship}`));
+      if (source.identifier && !source.identifier.startsWith("https://")) {
+        item.append(el("code", "", source.identifier));
+      }
+      sources.append(item);
+    }
+    section.append(sources);
+  } else {
+    section.append(el("p", "no-sources", "No prior mathematical source is recorded."));
+  }
+
+  if (provenance.related_formalizations.length) {
+    section.append(el("h3", "", "Related formalizations"));
+    const related = el("ul", "plain-list related-formalizations");
+    for (const formalization of provenance.related_formalizations) {
+      const item = el("li");
+      if (formalization.identifier.startsWith("https://")) {
+        item.append(externalLink(formalization.identifier, formalization.identifier));
+      } else {
+        item.append(el("code", "", formalization.identifier));
+      }
+      item.append(` — ${formalization.relationship}`);
+      if (formalization.note) item.append(`: ${formalization.note}`);
+      related.append(item);
+    }
+    section.append(related);
+  }
+  return section;
+}
+
 function solutionMetadata(entry, renderMetadata) {
   const section = el("section", "entry-solution");
   const heading = el("div", "section-heading");
@@ -829,6 +923,9 @@ async function renderEntry(
   content.append(
     versionHistory(entry, versions, currentVersion),
     classificationSection(entry, currentVersion),
+  );
+  if (entry.schema_version === 4) content.append(provenanceSection(entry));
+  content.append(
     challenge.section,
     evidence,
     trust,

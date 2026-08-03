@@ -251,7 +251,7 @@ test("indexed dependency provenance requires a Palomar ID", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 4 }), summary()), /unsupported entry/);
+  assert.throws(() => validateEntry(entry({ schema_version: 5 }), summary()), /unsupported entry/);
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";
@@ -282,6 +282,36 @@ test("schema v3 classification is required and strictly shaped", () => {
     classification: { arxiv: ["math.NOT REAL"], msc2020: ["05C10"] },
   });
   assert.throws(() => validateEntry(malformed, summary()), /malformed code/);
+});
+
+test("schema v4 requires explicit provenance and submission authorization", () => {
+  const valid = entry({
+    schema_version: 4,
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+    provenance: {
+      result_origin: "original",
+      repository_role: "substantive-development",
+      responsible_maintainers: [{ name: "Example" }],
+      mathematical_sources: [],
+      related_formalizations: [],
+    },
+  });
+  valid.submission.authorization = { relationship: "maintainer" };
+  assert.doesNotThrow(() => validateEntry(valid, summary()));
+
+  const sourceBasedWithoutSource = structuredClone(valid);
+  sourceBasedWithoutSource.provenance.result_origin = "source-based";
+  assert.throws(
+    () => validateEntry(sourceBasedWithoutSource, summary()),
+    /lacks a substantive mathematical source/,
+  );
+
+  const wrapperWithoutTarget = structuredClone(valid);
+  wrapperWithoutTarget.provenance.repository_role = "thin-wrapper";
+  assert.throws(
+    () => validateEntry(wrapperWithoutTarget, summary()),
+    /substantive_formalization must be an object/,
+  );
 });
 
 test("record evidence links must agree with their canonical values", () => {

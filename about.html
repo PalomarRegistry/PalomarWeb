@@ -90,10 +90,10 @@
           <li>
             <strong>(Disclosure)</strong> The submission’s
             <code>formalization.yaml</code> states the project’s authorship,
-            sources, automation methods, limitations, and review status
-            explicitly, rather than leaving them to be inferred. The same
-            language model assesses whether that account is clear and adequately
-            sourced.
+            mathematical origin, any sources or prior formalizations, automation
+            methods, limitations, and review status explicitly, rather than
+            leaving them to be inferred. The same language model assesses
+            whether that account is clear and adequately supported.
           </li>
           <li>
             <strong>(Moderator approval)</strong> A human Palomar moderator
@@ -348,12 +348,14 @@
 
         <h3>What belongs in <code>formalization.yaml</code>?</h3>
         <p>
-          At minimum, include the project name, authors, and license; one or two
+          At minimum, include the project name, authors, license, and responsible
+          maintainers; say whether the result is original or source-based and
+          whether the repository is the substantive development or a thin
+          Comparator wrapper; include one or two
           classifications from the
           <a href="https://arxiv.org/category_taxonomy">arXiv category taxonomy</a>
           and one to eight codes from
-          <a href="https://msc2020.org/">MSC2020</a>; at least one identifiable
-          source; the automation methods used (including <code>manual</code>,
+          <a href="https://msc2020.org/">MSC2020</a>; the automation methods used (including <code>manual</code>,
           when appropriate); and the review status. For editorial review, also
           give a plain-language account of every compared theorem, precise
           bibliographic references, what is original or adapted, the role of AI
@@ -363,13 +365,30 @@
           and Palomar’s
           <a href="https://github.com/kim-em/PalomarPolicy/blob/main/CONTRIBUTING.md">submission policy</a>.
         </p>
+        <p>
+          A source may be a book, journal article, non-arXiv preprint, web
+          discussion, private communication, or folklore; give the most stable
+          reference available. A formalization that first presents a new result
+          may have no source at all. If sources exist, state whether the project
+          formalizes, adapts, independently proves, or merely uses each as
+          background. Record prior formalizations separately. A thin wrapper must
+          identify the substantive formalization repository at an immutable
+          commit.
+        </p>
+        <p>
+          Submit only if you are a responsible author or maintainer of the
+          substantive formalization, or have approval from one. For a thin
+          wrapper this means the people responsible for the underlying
+          formalization, not merely the wrapper repository. The submission form
+          asks which applies; a link or note documenting approval is optional.
+        </p>
       </section>
 
       <section id="how-to-submit">
         <h2>How to submit</h2>
         <ol>
           <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
-          <li><a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA, confirm the required acknowledgements, and, for a correction to an existing entry, enter its Palomar ID.</li>
+          <li><a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA, record whether you maintain the substantive formalization or have approval from someone who does, confirm the required acknowledgements, and, for a correction to an existing entry, enter its Palomar ID.</li>
           <li>Submit the issue and watch it for status labels and comments. The issue is the public home for verification and review.</li>
         </ol>
         <p>
