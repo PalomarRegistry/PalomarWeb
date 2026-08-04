@@ -6,26 +6,6 @@ const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
-function safeSourcePath(value) {
-  if (typeof value !== "string" || !value) return null;
-  const segments = value.split("/");
-  if (
-    value.startsWith("/") ||
-    value.includes("\\") ||
-    value.includes("?") ||
-    value.includes("#") ||
-    /[\u0000-\u001f\u007f]/u.test(value) ||
-    segments.some((segment) => !segment || segment === "." || segment === "..") ||
-    segments[0].includes(":")
-  ) return null;
-  return segments
-    .map((segment) => encodeURIComponent(segment).replace(
-      /[!'()*]/g,
-      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-    ))
-    .join("/");
-}
-
 export function isInlineChallenge(entry) {
   const formalization = entry?.formalization;
   const trust = entry?.trust;
@@ -48,13 +28,16 @@ export function challengeSourceUrl(entry) {
   const repositoryUrl = entry?.source?.repository_url?.replace(/\/+$/, "");
   const commit = entry?.source?.commit;
   const challengePath = entry?.formalization?.challenge_path;
-  const encodedPath = safeSourcePath(challengePath);
-  if (
-    !REPOSITORY.test(repository || "") ||
-    repositoryUrl !== `https://github.com/${repository}` ||
-    !SHA.test(commit || "") ||
-    !encodedPath
-  ) {
+  let encodedPath;
+  try {
+    safeRepositoryPath(challengePath, "Challenge source path");
+    encodedPath = encodedRepositoryPath(challengePath);
+  } catch {
+    throw new Error("entry has invalid canonical Challenge source metadata");
+  }
+  if (!REPOSITORY.test(repository || "") ||
+      repositoryUrl !== `https://github.com/${repository}` ||
+      !SHA.test(commit || "")) {
     throw new Error("entry has invalid canonical Challenge source metadata");
   }
   return `${repositoryUrl}/blob/${commit}/${encodedPath}`;
@@ -95,3 +78,4 @@ export function entryRecordPath(id, version, path) {
   }
   return expected;
 }
+import { encodedRepositoryPath, safeRepositoryPath } from "./security.mjs";

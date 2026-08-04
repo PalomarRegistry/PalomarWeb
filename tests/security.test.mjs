@@ -435,6 +435,45 @@ test("schema v6 accepts and canonically links a nested project and path dependen
   assert.throws(() => validateEntry(misplacedLakefile, summary()), /selected project's Lakefile/);
 });
 
+test("schema v6 keeps the repository-root layout as the natural default", () => {
+  const evidenceTree = "c".repeat(64);
+  const valid = entry({
+    schema_version: 6,
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+    provenance: {
+      result_origin: "original",
+      repository_role: "substantive-development",
+      responsible_maintainers: [{ name: "Example" }],
+      mathematical_sources: [],
+      related_formalizations: [],
+    },
+  });
+  valid.submission.authorization = { relationship: "maintainer" };
+  valid.source.license = {
+    path: "LICENSE",
+    sha256: DIGEST,
+    declared_identifier: "Apache-2.0",
+    detected_identifier: "Apache-2.0",
+  };
+  valid.formalization.lakefile_path = "lakefile.toml";
+  Object.assign(valid.verification, {
+    workflow_commit: "8".repeat(40),
+    workflow_run_attempt: 1,
+    evidence_tree_sha256: evidenceTree,
+    mechanical_report_sha256: "d".repeat(64),
+    evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
+  });
+  assert.doesNotThrow(() => validateEntry(valid, summary()));
+
+  const misplacedLakefile = structuredClone(valid);
+  misplacedLakefile.formalization.lakefile_path = "src/lakefile.toml";
+  assert.throws(() => validateEntry(misplacedLakefile, summary()), /selected project's Lakefile/);
+
+  const legacyWithProjectPath = entry();
+  legacyWithProjectPath.source.project_path = "project";
+  assert.throws(() => validateEntry(legacyWithProjectPath, summary()), /not supported/);
+});
+
 test("record evidence links must agree with their canonical values", () => {
   const wrongDate = entry({ accepted_at: "2026-07-30" });
   assert.throws(() => validateEntry(wrongDate, summary()), /ID date does not match/);

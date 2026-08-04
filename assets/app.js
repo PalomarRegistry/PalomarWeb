@@ -16,6 +16,7 @@ import {
   safeInternalUrl,
   selectDatabaseUrl,
   selectRenderBase,
+  supportsProjectPaths,
   validateEntry,
   validateIndex,
   workflowRunId,
@@ -159,7 +160,7 @@ function entryCard(entry, versionCount) {
     authorNames(entry),
     theoremNames(entry),
     entry.source.repository,
-    entry.source.project_path || "",
+    supportsProjectPaths(entry) ? entry.source.project_path || "" : "",
     entry.id,
     ...categories.arxiv,
     ...categories.msc2020,
@@ -183,7 +184,7 @@ function entryCard(entry, versionCount) {
   const subjects = el("div", "card-subjects");
   subjects.append(el("small", "", "Subjects"), categoryTokens(entry));
   meta.append(authors, theorems, subjects);
-  if (entry.source.project_path) {
+  if (supportsProjectPaths(entry) && entry.source.project_path) {
     const project = el("div", "card-project");
     project.append(
       el("small", "", "Project directory"),
@@ -195,7 +196,11 @@ function entryCard(entry, versionCount) {
   const historyUrl = new URL(localPageUrl("entry.html", entry));
   historyUrl.hash = "version-history";
   footer.append(
-    externalLink(entry.source.repository, entry.source.tree_url, "repo-link"),
+    externalLink(
+      entry.source.repository,
+      `${entry.source.repository_url}/tree/${entry.source.commit}`,
+      "repo-link",
+    ),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
   if (versionCount > 1) {
@@ -840,7 +845,7 @@ function solutionMetadata(entry, renderMetadata) {
   const list = el("ul", "dependency-list");
   for (const dependency of dependencies) {
     const item = el("li");
-    if (dependency.path !== undefined) {
+    if (supportsProjectPaths(entry) && dependency.path !== undefined) {
       item.append(
         externalLink(
           dependency.name,
@@ -894,10 +899,14 @@ async function renderEntry(
       "Lean verification date",
       displayDate(entry.verification.verified_at.slice(0, 10)),
     ),
-    externalDetailRow("Fixed source version", `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`, entry.source.tree_url),
+    externalDetailRow(
+      "Fixed source version",
+      `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`,
+      `${entry.source.repository_url}/tree/${entry.source.commit}`,
+    ),
     externalDetailRow(
       "Project directory",
-      entry.source.project_path || "Repository root",
+      supportsProjectPaths(entry) ? entry.source.project_path || "Repository root" : "Repository root",
       entry.source.tree_url,
     ),
     externalDetailRow(
@@ -928,7 +937,7 @@ async function renderEntry(
       entry.verification.workflow_url,
     ),
   );
-  if (entry.schema_version >= 6) {
+  if (supportsProjectPaths(entry)) {
     details.append(
       externalDetailRow(
         "Lakefile",

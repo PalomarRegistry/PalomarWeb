@@ -26,7 +26,7 @@ honored only when the site itself runs on localhost or another loopback address.
 The deployed site always reads the canonical database and render origins.
 
 Entry pages embed a rendered Challenge when the comparator names exactly one
-declaration and `Challenge.lean` is at most 100 lines and 32 KiB. Larger
+declaration and the recorded Challenge source is at most 100 lines and 32 KiB. Larger
 Challenges link to a dedicated rendered view. The pinned GitHub source link is
 always present. Rendered HTML is loaded in a fixed-height iframe with
 `sandbox="allow-scripts"` (deliberately without `allow-same-origin`) and no

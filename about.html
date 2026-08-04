@@ -243,7 +243,7 @@
         </p>
         <p>
           Comparator also enforces that the compared theorems use no axioms
-          beyond those listed in the submission’s <code>comparator.json</code>.
+          beyond those listed in the configured Comparator JSON file.
           Because that file is written by the submitter, Palomar separately
           rejects any submission whose list extends beyond <code>propext</code>,
           <code>Quot.sound</code>, and <code>Classical.choice</code>.
@@ -340,17 +340,23 @@
         <p>The selected project directory must contain:</p>
         <ul>
           <li>exactly one of <code>lakefile.toml</code> or <code>lakefile.lean</code>, with a committed <code>lake-manifest.json</code> required for <code>lakefile.lean</code> projects;</li>
-          <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate (a repository-root file may be shared by a nested project);</li>
+          <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate (a repository-root file may be shared by a nested project, but a project-local file takes precedence);</li>
           <li>a small, readable Challenge module a mathematician should audit, conventionally <code>Challenge.lean</code>;</li>
           <li>a proved Solution module, conventionally <code>Solution.lean</code>;</li>
-          <li>a Comparator JSON configuration, conventionally <code>comparator.json</code>, naming every theorem and definition Comparator should compare; and</li>
-          <li><a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>, describing the project, result, sources, authorship, automation, review, and known limitations.</li>
+          <li>a Comparator JSON configuration, conventionally <code>comparator.json</code>, naming every theorem and definition Comparator should compare.</li>
         </ul>
+        <p>
+          The required <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>
+          describes the project, result, sources, authorship, automation, review,
+          and known limitations. An explicit repository-relative path may keep it
+          outside a selected nested Comparator project.
+        </p>
         <p>
           A committed manifest is strongly recommended. For a
           <code>lakefile.toml</code> project without one, Palomar can construct
           a trusted manifest only from contained path dependencies whose targets
-          have committed manifests; other layouts must commit the selected
+          have committed manifests and no further path dependencies; other
+          layouts must commit the selected
           project's <code>lake-manifest.json</code>.
         </p>
         <p>

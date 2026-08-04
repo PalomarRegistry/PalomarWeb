@@ -4,6 +4,10 @@ export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
 
+export function supportsProjectPaths(entry) {
+  return entry?.schema_version === 6;
+}
+
 const SUBMISSION_REPOSITORY = "kim-em/PalomarSubmission";
 const ID_RE = /^PALOMAR-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{6})$/;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -179,6 +183,7 @@ export function safeRepositoryPath(value, field = "repository path") {
     value.includes("#") ||
     segments.some((segment) => !segment || segment === "." || segment === "..") ||
     segments[0].includes(":") ||
+    /[\uD800-\uDFFF]/u.test(value) ||
     [...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
   ) {
     fail(`${field} is not a safe relative path`);
@@ -186,7 +191,7 @@ export function safeRepositoryPath(value, field = "repository path") {
   return value;
 }
 
-function encodedRepositoryPath(path) {
+export function encodedRepositoryPath(path) {
   return path
     .split("/")
     .map((segment) => encodeURIComponent(segment).replace(
@@ -221,7 +226,10 @@ function validateCanonicalRecordLinks(entry) {
   const repositoryUrl = `https://github.com/${source.repository}`;
   if (source.repository_url !== repositoryUrl) fail("source.repository_url is not canonical");
   let expectedTreeUrl = `${repositoryUrl}/tree/${source.commit}`;
-  if (entry.schema_version === 6 && source.project_path !== undefined) {
+  if (!supportsProjectPaths(entry) && source.project_path !== undefined) {
+    fail("source.project_path is not supported by this entry schema");
+  }
+  if (supportsProjectPaths(entry) && source.project_path !== undefined) {
     safeRepositoryPath(source.project_path, "entry.source.project_path");
     expectedTreeUrl += `/${encodedRepositoryPath(source.project_path)}`;
   }
@@ -400,7 +408,10 @@ export function validateEntry(entry, summary) {
     formalization.formalization_metadata_path,
     "entry.formalization.formalization_metadata_path",
   );
-  if (entry.schema_version === 6) {
+  if (!supportsProjectPaths(entry) && formalization.lakefile_path !== undefined) {
+    fail("entry.formalization.lakefile_path is not supported by this entry schema");
+  }
+  if (supportsProjectPaths(entry)) {
     safeRepositoryPath(formalization.lakefile_path, "entry.formalization.lakefile_path");
     const prefix = source.project_path ? `${source.project_path}/` : "";
     for (const [field, value] of [
@@ -432,11 +443,14 @@ export function validateEntry(entry, summary) {
       dependency.name,
       `entry.formalization.project_dependencies[${position}].name`,
     );
-    if (entry.schema_version === 6 && dependencyNames.has(dependencyName)) {
+    if (supportsProjectPaths(entry) && dependencyNames.has(dependencyName)) {
       fail(`entry.formalization.project_dependencies[${position}].name is duplicated`);
     }
     dependencyNames.add(dependencyName);
-    if (entry.schema_version === 6 && dependency.path !== undefined) {
+    if (!supportsProjectPaths(entry) && dependency.path !== undefined) {
+      fail(`entry.formalization.project_dependencies[${position}].path is not supported`);
+    }
+    if (supportsProjectPaths(entry) && dependency.path !== undefined) {
       const path = safeDependencyPath(
         dependency.path,
         `entry.formalization.project_dependencies[${position}].path`,
@@ -554,6 +568,7 @@ export function pinnedSourceFileUrl(entry, path) {
   safeRepositoryPath(path, "source file path");
   const expectedRepository = `https://github.com/${entry.source.repository}`;
   if (
+    !REPOSITORY_RE.test(entry.source.repository) ||
     entry.source.repository_url !== expectedRepository ||
     !COMMIT_RE.test(entry.source.commit)
   ) {
@@ -567,6 +582,7 @@ export function pinnedSourceDirectoryUrl(entry, path) {
   safeDependencyPath(path, "source directory path");
   const expectedRepository = `https://github.com/${entry.source.repository}`;
   if (
+    !REPOSITORY_RE.test(entry.source.repository) ||
     entry.source.repository_url !== expectedRepository ||
     !COMMIT_RE.test(entry.source.commit)
   ) {
