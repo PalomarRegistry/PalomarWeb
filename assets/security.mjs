@@ -1,8 +1,12 @@
 export const INDEX_SCHEMA_VERSION = 2;
-export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4, 5]);
+export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4, 5, 6]);
 export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
+
+export function supportsProjectPaths(entry) {
+  return entry?.schema_version === 6;
+}
 
 const SUBMISSION_REPOSITORY = "kim-em/PalomarSubmission";
 const ID_RE = /^PALOMAR-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{6})$/;
@@ -178,11 +182,28 @@ export function safeRepositoryPath(value, field = "repository path") {
     value.includes("?") ||
     value.includes("#") ||
     segments.some((segment) => !segment || segment === "." || segment === "..") ||
-    segments[0].includes(":")
+    segments[0].includes(":") ||
+    /[\uD800-\uDFFF]/u.test(value) ||
+    [...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
   ) {
     fail(`${field} is not a safe relative path`);
   }
   return value;
+}
+
+export function encodedRepositoryPath(path) {
+  return path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment).replace(
+      /[!'()*]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    ))
+    .join("/");
+}
+
+function safeDependencyPath(value, field) {
+  if (value === ".") return value;
+  return safeRepositoryPath(value, field);
 }
 
 function validateCanonicalRecordLinks(entry) {
@@ -204,7 +225,15 @@ function validateCanonicalRecordLinks(entry) {
   if (!COMMIT_RE.test(source.commit)) fail("source.commit is not a full lowercase commit");
   const repositoryUrl = `https://github.com/${source.repository}`;
   if (source.repository_url !== repositoryUrl) fail("source.repository_url is not canonical");
-  if (source.tree_url !== `${repositoryUrl}/tree/${source.commit}`) {
+  let expectedTreeUrl = `${repositoryUrl}/tree/${source.commit}`;
+  if (!supportsProjectPaths(entry) && source.project_path !== undefined) {
+    fail("source.project_path is not supported by this entry schema");
+  }
+  if (supportsProjectPaths(entry) && source.project_path !== undefined) {
+    safeRepositoryPath(source.project_path, "entry.source.project_path");
+    expectedTreeUrl += `/${encodedRepositoryPath(source.project_path)}`;
+  }
+  if (source.tree_url !== expectedTreeUrl) {
     fail("source.tree_url is not derived from source repository and commit");
   }
   safeExternalUrl(source.tree_url);
@@ -379,23 +408,69 @@ export function validateEntry(entry, summary) {
     formalization.formalization_metadata_path,
     "entry.formalization.formalization_metadata_path",
   );
+  if (!supportsProjectPaths(entry) && formalization.lakefile_path !== undefined) {
+    fail("entry.formalization.lakefile_path is not supported by this entry schema");
+  }
+  if (supportsProjectPaths(entry)) {
+    safeRepositoryPath(formalization.lakefile_path, "entry.formalization.lakefile_path");
+    const prefix = source.project_path ? `${source.project_path}/` : "";
+    for (const [field, value] of [
+      ["challenge_path", formalization.challenge_path],
+      ["solution_path", formalization.solution_path],
+      ["comparator_config_path", formalization.comparator_config_path],
+      ["lakefile_path", formalization.lakefile_path],
+    ]) {
+      if (!value.startsWith(prefix)) {
+        fail(`entry.formalization.${field} is outside entry.source.project_path`);
+      }
+    }
+    if (![`${prefix}lakefile.toml`, `${prefix}lakefile.lean`].includes(formalization.lakefile_path)) {
+      fail("entry.formalization.lakefile_path is not the selected project's Lakefile");
+    }
+  }
   string(formalization.lean_toolchain, "entry.formalization.lean_toolchain");
   stringArray(formalization.theorem_names, "entry.formalization.theorem_names");
   stringArray(formalization.definition_names, "entry.formalization.definition_names");
   stringArray(formalization.permitted_axioms, "entry.formalization.permitted_axioms");
+  const dependencyNames = new Set();
+  const dependencyPaths = new Set();
   for (const [position, value] of array(
     formalization.project_dependencies,
     "entry.formalization.project_dependencies",
   ).entries()) {
     const dependency = object(value, `entry.formalization.project_dependencies[${position}]`);
-    string(dependency.name, `entry.formalization.project_dependencies[${position}].name`);
-    if (!REPOSITORY_RE.test(dependency.repository)) {
-      fail(`entry.formalization.project_dependencies[${position}].repository is malformed`);
-    }
-    commit(
-      dependency.revision,
-      `entry.formalization.project_dependencies[${position}].revision`,
+    const dependencyName = string(
+      dependency.name,
+      `entry.formalization.project_dependencies[${position}].name`,
     );
+    if (supportsProjectPaths(entry) && dependencyNames.has(dependencyName)) {
+      fail(`entry.formalization.project_dependencies[${position}].name is duplicated`);
+    }
+    dependencyNames.add(dependencyName);
+    if (!supportsProjectPaths(entry) && dependency.path !== undefined) {
+      fail(`entry.formalization.project_dependencies[${position}].path is not supported`);
+    }
+    if (supportsProjectPaths(entry) && dependency.path !== undefined) {
+      const path = safeDependencyPath(
+        dependency.path,
+        `entry.formalization.project_dependencies[${position}].path`,
+      );
+      if (dependency.repository !== undefined || dependency.revision !== undefined) {
+        fail(`entry.formalization.project_dependencies[${position}] mixes path and Git fields`);
+      }
+      if (dependencyPaths.has(path)) {
+        fail(`entry.formalization.project_dependencies[${position}].path is duplicated`);
+      }
+      dependencyPaths.add(path);
+    } else {
+      if (!REPOSITORY_RE.test(dependency.repository)) {
+        fail(`entry.formalization.project_dependencies[${position}].repository is malformed`);
+      }
+      commit(
+        dependency.revision,
+        `entry.formalization.project_dependencies[${position}].revision`,
+      );
+    }
   }
 
   const verification = object(entry.verification, "entry.verification");
@@ -493,13 +568,28 @@ export function pinnedSourceFileUrl(entry, path) {
   safeRepositoryPath(path, "source file path");
   const expectedRepository = `https://github.com/${entry.source.repository}`;
   if (
+    !REPOSITORY_RE.test(entry.source.repository) ||
     entry.source.repository_url !== expectedRepository ||
     !COMMIT_RE.test(entry.source.commit)
   ) {
     fail("source file link lacks canonical repository evidence");
   }
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const encodedPath = encodedRepositoryPath(path);
   return safeExternalUrl(`${expectedRepository}/blob/${entry.source.commit}/${encodedPath}`);
+}
+
+export function pinnedSourceDirectoryUrl(entry, path) {
+  safeDependencyPath(path, "source directory path");
+  const expectedRepository = `https://github.com/${entry.source.repository}`;
+  if (
+    !REPOSITORY_RE.test(entry.source.repository) ||
+    entry.source.repository_url !== expectedRepository ||
+    !COMMIT_RE.test(entry.source.commit)
+  ) {
+    fail("source directory link lacks canonical repository evidence");
+  }
+  const suffix = path === "." ? "" : `/${encodedRepositoryPath(path)}`;
+  return safeExternalUrl(`${expectedRepository}/tree/${entry.source.commit}${suffix}`);
 }
 
 export function workflowRunId(workflowUrl) {

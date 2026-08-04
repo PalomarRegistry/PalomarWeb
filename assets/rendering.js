@@ -28,15 +28,19 @@ export function challengeSourceUrl(entry) {
   const repositoryUrl = entry?.source?.repository_url?.replace(/\/+$/, "");
   const commit = entry?.source?.commit;
   const challengePath = entry?.formalization?.challenge_path;
-  if (
-    !REPOSITORY.test(repository || "") ||
-    repositoryUrl !== `https://github.com/${repository}` ||
-    !SHA.test(commit || "") ||
-    challengePath !== "Challenge.lean"
-  ) {
+  let encodedPath;
+  try {
+    safeRepositoryPath(challengePath, "Challenge source path");
+    encodedPath = encodedRepositoryPath(challengePath);
+  } catch {
     throw new Error("entry has invalid canonical Challenge source metadata");
   }
-  return `${repositoryUrl}/blob/${commit}/Challenge.lean`;
+  if (!REPOSITORY.test(repository || "") ||
+      repositoryUrl !== `https://github.com/${repository}` ||
+      !SHA.test(commit || "")) {
+    throw new Error("entry has invalid canonical Challenge source metadata");
+  }
+  return `${repositoryUrl}/blob/${commit}/${encodedPath}`;
 }
 
 export function challengeArtifactUrl(entry, renderBase) {
@@ -74,3 +78,4 @@ export function entryRecordPath(id, version, path) {
   }
   return expected;
 }
+import { encodedRepositoryPath, safeRepositoryPath } from "./security.mjs";

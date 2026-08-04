@@ -8,6 +8,7 @@ import {
   databaseBaseFor,
   entryRecordUrl,
   isLoopbackHostname,
+  pinnedSourceDirectoryUrl,
   pinnedSourceFileUrl,
   reportIssueNumber,
   safeDataUrl,
@@ -15,6 +16,7 @@ import {
   safeInternalUrl,
   selectDatabaseUrl,
   selectRenderBase,
+  supportsProjectPaths,
   validateEntry,
   validateIndex,
   workflowRunId,
@@ -91,6 +93,10 @@ function theoremNames(entry) {
   return entry.formalization.theorem_names.join(", ");
 }
 
+function pathBasename(path) {
+  return path.split("/").at(-1);
+}
+
 function classification(entry) {
   return {
     arxiv: Array.isArray(entry.classification?.arxiv) ? entry.classification.arxiv : [],
@@ -154,6 +160,7 @@ function entryCard(entry, versionCount) {
     authorNames(entry),
     theoremNames(entry),
     entry.source.repository,
+    supportsProjectPaths(entry) ? entry.source.project_path || "" : "",
     entry.id,
     ...categories.arxiv,
     ...categories.msc2020,
@@ -177,11 +184,23 @@ function entryCard(entry, versionCount) {
   const subjects = el("div", "card-subjects");
   subjects.append(el("small", "", "Subjects"), categoryTokens(entry));
   meta.append(authors, theorems, subjects);
+  if (supportsProjectPaths(entry) && entry.source.project_path) {
+    const project = el("div", "card-project");
+    project.append(
+      el("small", "", "Project directory"),
+      el("span", "", entry.source.project_path),
+    );
+    meta.append(project);
+  }
   const footer = el("div", "card-footer");
   const historyUrl = new URL(localPageUrl("entry.html", entry));
   historyUrl.hash = "version-history";
   footer.append(
-    externalLink(entry.source.repository, entry.source.tree_url, "repo-link"),
+    externalLink(
+      entry.source.repository,
+      `${entry.source.repository_url}/tree/${entry.source.commit}`,
+      "repo-link",
+    ),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
   if (versionCount > 1) {
@@ -541,9 +560,11 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
   const dependencyRecordUrl = localPageUrl("entry.html", entry);
   dependencyRecordUrl.hash = "statement-dependencies";
   const comparatorPath = entry.formalization.comparator_config_path;
+  const challengePath = entry.formalization.challenge_path;
+  const challengeFilename = pathBasename(challengePath);
   links.append(
     externalLink(
-      "View full pinned statement file (Challenge.lean)",
+      `View full pinned statement file (${challengeFilename})`,
       challengeSourceUrl(entry),
       "challenge-source",
     ),
@@ -554,7 +575,7 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
     ),
     " · ",
     externalLink(
-      `View comparator configuration (${comparatorPath})`,
+      `View comparator configuration (${pathBasename(comparatorPath)})`,
       pinnedSourceFileUrl(entry, comparatorPath),
       "comparator-source",
     ),
@@ -571,7 +592,7 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
     el(
       "p",
       "challenge-surface-disclosure",
-      "The formatted view shows only the declarations named in this entry's comparator configuration. Comparator also checks the declarations used by their types. The full pinned Challenge.lean and dependency record expose the statement and dependency surface for inspection.",
+      `The formatted view shows only the declarations named in this entry's comparator configuration. Comparator also checks the declarations used by their types. The full pinned ${challengeFilename} and dependency record expose the statement and dependency surface for inspection.`,
     ),
   );
 
@@ -818,19 +839,29 @@ function solutionMetadata(entry, renderMetadata) {
     el(
       "summary",
       "",
-      `${dependencies.length} source repositories used by the proof`,
+      `${dependencies.length} project dependencies used by the proof`,
     ),
   );
   const list = el("ul", "dependency-list");
   for (const dependency of dependencies) {
     const item = el("li");
-    item.append(
-      externalLink(
-        dependency.repository,
-        `https://github.com/${dependency.repository}/tree/${dependency.revision}`,
-      ),
-      el("code", "", dependency.revision.slice(0, 12)),
-    );
+    if (supportsProjectPaths(entry) && dependency.path !== undefined) {
+      item.append(
+        externalLink(
+          dependency.name,
+          pinnedSourceDirectoryUrl(entry, dependency.path),
+        ),
+        el("code", "", dependency.path),
+      );
+    } else {
+      item.append(
+        externalLink(
+          dependency.repository,
+          `https://github.com/${dependency.repository}/tree/${dependency.revision}`,
+        ),
+        el("code", "", dependency.revision.slice(0, 12)),
+      );
+    }
     list.append(item);
   }
   closure.append(list);
@@ -868,7 +899,16 @@ async function renderEntry(
       "Lean verification date",
       displayDate(entry.verification.verified_at.slice(0, 10)),
     ),
-    externalDetailRow("Fixed source version", `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`, entry.source.tree_url),
+    externalDetailRow(
+      "Fixed source version",
+      `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`,
+      `${entry.source.repository_url}/tree/${entry.source.commit}`,
+    ),
+    externalDetailRow(
+      "Project directory",
+      supportsProjectPaths(entry) ? entry.source.project_path || "Repository root" : "Repository root",
+      entry.source.tree_url,
+    ),
     externalDetailRow(
       "Statement file",
       entry.formalization.challenge_path,
@@ -897,6 +937,15 @@ async function renderEntry(
       entry.verification.workflow_url,
     ),
   );
+  if (supportsProjectPaths(entry)) {
+    details.append(
+      externalDetailRow(
+        "Lakefile",
+        entry.formalization.lakefile_path,
+        pinnedSourceFileUrl(entry, entry.formalization.lakefile_path),
+      ),
+    );
+  }
   details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
   if (entry.schema_version >= 5) {
     details.append(

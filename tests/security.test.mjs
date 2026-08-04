@@ -10,6 +10,7 @@ import {
   databaseBaseFor,
   entryRecordUrl,
   isLoopbackHostname,
+  pinnedSourceDirectoryUrl,
   pinnedSourceFileUrl,
   safeDataUrl,
   safeExternalUrl,
@@ -252,7 +253,7 @@ test("indexed dependency provenance requires a Palomar ID", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 6 }), summary()), /unsupported entry/);
+  assert.throws(() => validateEntry(entry({ schema_version: 7 }), summary()), /unsupported entry/);
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";
@@ -369,6 +370,110 @@ test("schema v5 requires content-addressed durable verification evidence", () =>
   assert.throws(() => validateEntry(wrongAddress, summary()), /evidence_path must be/);
 });
 
+test("schema v6 accepts and canonically links a nested project and path dependency", () => {
+  const evidenceTree = "c".repeat(64);
+  const projectPath = "examples/Sharp Smoothing";
+  const valid = entry({
+    schema_version: 6,
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+    provenance: {
+      result_origin: "original",
+      repository_role: "substantive-development",
+      responsible_maintainers: [{ name: "Example" }],
+      mathematical_sources: [],
+      related_formalizations: [],
+    },
+  });
+  valid.submission.authorization = { relationship: "maintainer" };
+  valid.source.project_path = projectPath;
+  valid.source.tree_url =
+    `https://github.com/example/challenge/tree/${COMMIT}/examples/Sharp%20Smoothing`;
+  valid.source.license = {
+    path: "LICENSE",
+    sha256: DIGEST,
+    declared_identifier: "Apache-2.0",
+    detected_identifier: "Apache-2.0",
+  };
+  Object.assign(valid.formalization, {
+    challenge_path: `${projectPath}/Comparator/Task.lean`,
+    solution_path: `${projectPath}/Comparator/Answer.lean`,
+    comparator_config_path: `${projectPath}/Comparator/settings.json`,
+    formalization_metadata_path: `${projectPath}/formalization.yaml`,
+    lakefile_path: `${projectPath}/lakefile.lean`,
+    project_dependencies: [
+      { name: "local", path: "." },
+      { name: "mathlib", repository: "leanprover-community/mathlib4", revision: COMMIT },
+    ],
+  });
+  Object.assign(valid.verification, {
+    workflow_commit: "8".repeat(40),
+    workflow_run_attempt: 1,
+    evidence_tree_sha256: evidenceTree,
+    mechanical_report_sha256: "d".repeat(64),
+    evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
+  });
+  assert.doesNotThrow(() => validateEntry(valid, summary()));
+  assert.equal(
+    pinnedSourceFileUrl(valid, valid.formalization.challenge_path).href,
+    `https://github.com/example/challenge/blob/${COMMIT}/examples/Sharp%20Smoothing/Comparator/Task.lean`,
+  );
+  assert.equal(
+    pinnedSourceDirectoryUrl(valid, ".").href,
+    `https://github.com/example/challenge/tree/${COMMIT}`,
+  );
+
+  const wrongTree = structuredClone(valid);
+  wrongTree.source.tree_url = `https://github.com/example/challenge/tree/${COMMIT}`;
+  assert.throws(() => validateEntry(wrongTree, summary()), /tree_url is not derived/);
+
+  const escape = structuredClone(valid);
+  escape.formalization.project_dependencies[0].path = "../outside";
+  assert.throws(() => validateEntry(escape, summary()), /not a safe relative path/);
+
+  const misplacedLakefile = structuredClone(valid);
+  misplacedLakefile.formalization.lakefile_path = `${projectPath}/nested/lakefile.toml`;
+  assert.throws(() => validateEntry(misplacedLakefile, summary()), /selected project's Lakefile/);
+});
+
+test("schema v6 keeps the repository-root layout as the natural default", () => {
+  const evidenceTree = "c".repeat(64);
+  const valid = entry({
+    schema_version: 6,
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+    provenance: {
+      result_origin: "original",
+      repository_role: "substantive-development",
+      responsible_maintainers: [{ name: "Example" }],
+      mathematical_sources: [],
+      related_formalizations: [],
+    },
+  });
+  valid.submission.authorization = { relationship: "maintainer" };
+  valid.source.license = {
+    path: "LICENSE",
+    sha256: DIGEST,
+    declared_identifier: "Apache-2.0",
+    detected_identifier: "Apache-2.0",
+  };
+  valid.formalization.lakefile_path = "lakefile.toml";
+  Object.assign(valid.verification, {
+    workflow_commit: "8".repeat(40),
+    workflow_run_attempt: 1,
+    evidence_tree_sha256: evidenceTree,
+    mechanical_report_sha256: "d".repeat(64),
+    evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
+  });
+  assert.doesNotThrow(() => validateEntry(valid, summary()));
+
+  const misplacedLakefile = structuredClone(valid);
+  misplacedLakefile.formalization.lakefile_path = "src/lakefile.toml";
+  assert.throws(() => validateEntry(misplacedLakefile, summary()), /selected project's Lakefile/);
+
+  const legacyWithProjectPath = entry();
+  legacyWithProjectPath.source.project_path = "project";
+  assert.throws(() => validateEntry(legacyWithProjectPath, summary()), /not supported/);
+});
+
 test("record evidence links must agree with their canonical values", () => {
   const wrongDate = entry({ accepted_at: "2026-07-30" });
   assert.throws(() => validateEntry(wrongDate, summary()), /ID date does not match/);
@@ -434,4 +539,6 @@ test("About states the repository licence boundary", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
   assert.match(about, /root licence file, SPDX identifier, and checksum/);
   assert.match(about, /reused formalizations, and\s+dependencies retain their own licences/);
+  assert.match(about, /repository root is the default project directory/);
+  assert.match(about, /licence file remains at repository root/);
 });

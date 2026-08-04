@@ -71,6 +71,21 @@ test("source URL is always the immutable canonical GitHub file", () => {
   const moving = entry();
   moving.source.commit = "main";
   assert.throws(() => challengeSourceUrl(moving), /canonical/);
+
+  const nested = entry();
+  nested.formalization.challenge_path = "project/Comparator/Task.lean";
+  assert.equal(
+    challengeSourceUrl(nested),
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Task.lean`,
+  );
+
+  const traversal = entry();
+  traversal.formalization.challenge_path = "../Task.lean";
+  assert.throws(() => challengeSourceUrl(traversal), /canonical/);
+
+  const controlCharacter = entry();
+  controlCharacter.formalization.challenge_path = "project/Task\n.lean";
+  assert.throws(() => challengeSourceUrl(controlCharacter), /canonical/);
 });
 
 test("index paths cannot redirect entry fetching", () => {
