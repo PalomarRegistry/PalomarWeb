@@ -86,6 +86,8 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expect(first.locator(".card-subjects")).toContainText("math.CO");
   await expect(first.locator(".card-subjects")).toContainText("MSC 05C10");
+  await expect(first.locator(".card-project")).toContainText("Project directory");
+  await expect(first.locator(".card-project")).toContainText("project");
   await expect(page.getByRole("button", { name: "Mathlib only" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
 });
@@ -283,16 +285,17 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   );
   await expect(source).toHaveAttribute(
     "href",
-    `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Task.lean`,
   );
+  await expect(source).toHaveText("View full pinned statement file (Task.lean)");
   await expect(
     page.getByRole("link", { name: "Inspect statement dependencies" }),
   ).toHaveAttribute("href", /#statement-dependencies$/);
   await expect(
-    page.getByRole("link", { name: "View comparator configuration (comparator.json)" }),
+    page.getByRole("link", { name: "View comparator configuration (settings.json)" }),
   ).toHaveAttribute(
     "href",
-    `https://github.com/example/challenge/blob/${"1".repeat(40)}/comparator.json`,
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/settings.json`,
   );
   await expect(page.getByRole("link", { name: "Open formatted statement" })).toHaveCount(0);
   const iframe = page.locator(".challenge-presentation iframe");
@@ -330,26 +333,33 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
   await expect(page.getByText("Verification workflow commit")).toBeVisible();
   await expect(page.getByRole("link", { name: "Editorial evidence" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Solution.lean" }).first()).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean" }).first()).toHaveAttribute(
     "href",
-    `https://github.com/example/challenge/blob/${"1".repeat(40)}/Solution.lean`,
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Answer.lean`,
   );
   const sourceFiles = page.locator(
     '.entry-evidence .detail-row a[href*="github.com/example/challenge/blob/"]',
   );
   await expect(sourceFiles).toHaveText([
-    "Challenge.lean",
-    "Solution.lean",
-    "formalization.yaml",
+    "project/Comparator/Task.lean",
+    "project/Comparator/Answer.lean",
+    "project/formalization.yaml",
+    "project/lakefile.lean",
     "LICENSE.md",
   ]);
   await expect(sourceFiles.nth(2)).toHaveAttribute(
     "href",
-    `https://github.com/example/challenge/blob/${"1".repeat(40)}/formalization.yaml`,
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/formalization.yaml`,
   );
+  await expect(page.locator(".entry-evidence")).toContainText("Project directory");
+  await expect(page.locator(".entry-evidence")).toContainText("project");
   await expect(page.locator(".entry-solution .token-list code")).toHaveText("ExampleDependency");
   await page.locator(".solution-dependencies summary").click();
   await expect(page.locator(".dependency-list")).toContainText("example/dependency");
+  await expect(page.getByRole("link", { name: "shared" })).toHaveAttribute(
+    "href",
+    `https://github.com/example/challenge/tree/${"1".repeat(40)}/shared`,
+  );
   await iframe.hover();
   await page.mouse.wheel(0, 2000);
   await expect.poll(() => rendered.locator("html").evaluate((node) => node.scrollTop)).toBeGreaterThan(0);

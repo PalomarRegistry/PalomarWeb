@@ -77,7 +77,7 @@
           </li>
           <li id="editorial-floor">
             <strong>(Non-mechanical check)</strong> A language model judges that
-            the recorded formal statement (in <code>Challenge.lean</code>) is a
+            the recorded formal statement (conventionally <code>Challenge.lean</code>) is a
             fair rendering of the mathematical claim made in the recorded
             informal statement (in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>), and that the
             submission clears Palomar’s
@@ -329,20 +329,42 @@
           for Palomar’s
           <a href="https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&amp;version=2">first registered result</a>.
         </p>
-        <p>The repository root must contain:</p>
+        <p>
+          The repository root is the default project directory, so the usual
+          layout requires no path settings. If the Lean project lives in a
+          subdirectory, enter that repository-relative project path on the
+          submission form. You may also enter paths for a non-default Comparator
+          configuration or <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>; omitted fields keep
+          the conventional defaults inside the selected project.
+        </p>
+        <p>The selected project directory must contain:</p>
         <ul>
-          <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate;</li>
-          <li><code>lakefile.toml</code> and a committed <code>lake-manifest.json</code> (required in practice: without it, anything importing Mathlib will fail to build);</li>
-          <li><code>Challenge.lean</code>, containing the small, readable statement a mathematician should audit;</li>
-          <li><code>Solution.lean</code>, connecting that statement to the completed proof;</li>
-          <li><code>comparator.json</code>, naming every theorem and definition Comparator should compare; and</li>
+          <li>exactly one of <code>lakefile.toml</code> or <code>lakefile.lean</code>, with a committed <code>lake-manifest.json</code> required for <code>lakefile.lean</code> projects;</li>
+          <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate (a repository-root file may be shared by a nested project);</li>
+          <li>a small, readable Challenge module a mathematician should audit, conventionally <code>Challenge.lean</code>;</li>
+          <li>a proved Solution module, conventionally <code>Solution.lean</code>;</li>
+          <li>a Comparator JSON configuration, conventionally <code>comparator.json</code>, naming every theorem and definition Comparator should compare; and</li>
           <li><a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>, describing the project, result, sources, authorship, automation, review, and known limitations.</li>
         </ul>
+        <p>
+          A committed manifest is strongly recommended. For a
+          <code>lakefile.toml</code> project without one, Palomar can construct
+          a trusted manifest only from contained path dependencies whose targets
+          have committed manifests; other layouts must commit the selected
+          project's <code>lake-manifest.json</code>.
+        </p>
+        <p>
+          Comparator may name safe dotted Challenge and Solution modules, and
+          Palomar resolves their source files through the selected Lake project.
+          The one conventional licence file remains at repository root even for
+          a nested project, because the recorded licence covers the submitted
+          repository snapshot.
+        </p>
 
         <h3 id="comparator-requirements">What does Comparator require?</h3>
         <p>
-          <code>Challenge.lean</code> states the result independently, normally
-          with <code>sorry</code>; <code>Solution.lean</code> supplies the proved
+          The Challenge module states the result independently, normally with
+          <code>sorry</code>; the Solution module supplies the proved
           version. Their compared declarations must have the same names and
           types. Comparator rebuilds and compares them, checks the permitted
           axioms, and verifies the proof. Palomar currently permits only
@@ -350,7 +372,7 @@
           <code>Classical.choice</code>.
         </p>
         <p>
-          Keep <code>Challenge.lean</code> short and mathematically ordinary.
+          Keep the Challenge source short and mathematically ordinary.
           1,000 lines and 100 KiB are hard limits; 300 lines and 32 KiB is the
           surface we would rather review. Its transitive imports must resolve
           to Lean core; the pinned, allowlisted Mathlib or Tau Ceti closure; or
@@ -369,9 +391,10 @@
           qualified statement dependencies.
         </p>
         <p>
-          Dependencies used only by <code>Solution.lean</code> may be arbitrary
-          pinned Git dependencies. Local/path dependencies and
-          <code>lakefile.lean</code> are not accepted by the current prototype.
+          Dependencies used only by the Solution may be arbitrary pinned Git
+          dependencies. Local/path dependencies are also accepted when their
+          targets remain within the same pinned repository checkout. Neither
+          kind relaxes the stricter transitive Challenge-import rule.
         </p>
 
         <h3 id="formalization-yaml">What belongs in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>?</h3>
@@ -416,7 +439,7 @@
         <h2>How to submit</h2>
         <ol>
           <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
-          <li><a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA, record whether you maintain the substantive formalization or have approval from someone who does, confirm the required acknowledgements, and, for a correction to an existing entry, enter its Palomar ID.</li>
+          <li><a href="https://github.com/kim-em/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA. Leave the optional project, Comparator-config, and metadata paths blank for the normal root layout; fill them only for a nested or non-default layout. Record whether you maintain the substantive formalization or have approval from someone who does, confirm the required acknowledgements, and, for a correction to an existing entry, enter its Palomar ID.</li>
           <li>Submit the issue and watch it for status labels and comments. The issue is the public home for verification and review.</li>
         </ol>
         <p>

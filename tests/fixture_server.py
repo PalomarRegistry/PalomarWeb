@@ -21,7 +21,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         if identifier.endswith("000123")
         else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
     )
-    return {
+    record = {
         "schema_version": 5,
         "id": identifier,
         "accepted_at": "2026-07-29",
@@ -126,6 +126,25 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "rendered_at": "2026-07-29T09:00:00Z",
         },
     }
+    if identifier.endswith("000123"):
+        project = "project"
+        record["schema_version"] = 6
+        record["source"]["project_path"] = project
+        record["source"]["tree_url"] += f"/{project}"
+        record["formalization"].update(
+            {
+                "challenge_path": f"{project}/Comparator/Task.lean",
+                "solution_path": f"{project}/Comparator/Answer.lean",
+                "comparator_config_path": f"{project}/Comparator/settings.json",
+                "formalization_metadata_path": f"{project}/formalization.yaml",
+                "lakefile_path": f"{project}/lakefile.lean",
+                "project_dependencies": [
+                    {"name": "shared", "path": "shared"},
+                    *record["formalization"]["project_dependencies"],
+                ],
+            }
+        )
+    return record
 
 
 ENTRIES = {
