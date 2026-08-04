@@ -56,9 +56,9 @@
         <h2>What does acceptance by Palomar mean?</h2>
         <p>
           In order for a repository version to be accepted into the Palomar
-          registry, four checks must pass. One is mechanical and requires both
-          Lean’s kernel and the independent NanoDa kernel, two are performed by
-          a language model, and one by a human moderator.
+          registry, three checks must pass. One is mechanical and requires both
+          Lean’s kernel and the independent NanoDa kernel; the other two are
+          performed by a language model.
         </p>
         <ol class="assertions">
           <li>
@@ -86,7 +86,7 @@
             the model to judge both of these to be answered yes:
             <ol>
               <li>Could this result plausibly warrant a research paper or a serious research note?</li>
-              <li>Can a credible research area, and a research mathematician who would find the result relevant, be named?</li>
+              <li>Can a credible research area be identified, together with a plausible kind of mathematician in a research department who could reasonably find the result interesting or relevant? No actual person need be named.</li>
             </ol>
           </li>
           <li>
@@ -97,12 +97,6 @@
             leaving them to be inferred. The same language model assesses
             whether that account is clear and adequately supported.
           </li>
-          <li>
-            <strong>(Moderator approval)</strong> A human Palomar moderator
-            inspects the review report before it is published and approves the entry
-            before it appears on the site. That approval confirms the process ran
-            correctly, but is not an expert reading of the mathematics.
-          </li>
         </ol>
         <p>
           The passes the language model runs, the prompts it is given, and the
@@ -110,7 +104,12 @@
           <a href="https://github.com/kim-em/PalomarPolicy">PalomarPolicy</a>.
         </p>
         <p>
-          Palomar asserts nothing beyond these four checks.
+          All three checks run automatically, and a submission that passes them
+          is published without further judgment. Palomar adds no human editorial
+          step: no one here reads the mathematics the way a referee would.
+        </p>
+        <p>
+          Palomar asserts nothing beyond these three checks.
         </p>
         <p>
           The source, warnings, and full review of the repository are publicly
@@ -183,9 +182,8 @@
             grade, or otherwise assess how significant a result is.
           </li>
           <li>
-            <strong>Palomar does not perform peer review.</strong> While a human
-            moderator is needed to approve an addition of a repository to the
-            registry, this process does not include any expert review of the
+            <strong>Palomar does not perform peer review.</strong> Acceptance is
+            decided by the automated checks above, and no expert reviews the
             content of the repository itself.
           </li>
           <li>
@@ -216,9 +214,11 @@
         <p>
           Every submission is pinned to a full 40-character commit, so the
           artifact Palomar checked cannot drift. Every verification runs in
-          public GitHub Actions. Entries published under the durable-evidence
-          schema (version 5) preserve the resulting mechanical report and
-          workflow provenance with the append-only registry record. Those
+          public GitHub Actions, but GitHub retains those workflow logs for only
+          90 days, so the log itself is not the durable record. Entries
+          published under the durable-evidence schema (version 5) instead
+          preserve the resulting mechanical report and workflow provenance with
+          the append-only registry record. Those
           entries record the SHA-256 digest of the report and the exact workflow
           revision, alongside the statement and proof digests, Lean toolchain,
           and exact Comparator,
@@ -474,7 +474,7 @@
           editorial requirement. An escalation means specialist or human
           judgment is needed. Because every review is tied to an immutable
           commit, any revised source must be submitted at a new full commit SHA
-          following the moderator’s instructions on the issue.
+          following the instructions on the issue.
         </p>
         <p>
           Acceptance is not the final step. An accepted submission appears in the
