@@ -167,12 +167,11 @@ ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
                 "provenance": "allowlisted",
             },
             {
-                "repository": "example/dependency",
-                "provenance": "palomar-indexed",
-                "palomar_id": "PALOMAR-2026-07-29-000123",
+                "repository": "TauCetiProject/TauCeti",
+                "provenance": "allowlisted",
             },
         ],
-        "reasons": ["An exact indexed source snapshot determines the statement."],
+        "reasons": ["Challenge imports Tau Ceti"],
     }
 )
 class Handler(SimpleHTTPRequestHandler):

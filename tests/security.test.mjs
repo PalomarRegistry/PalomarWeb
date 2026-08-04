@@ -226,7 +226,7 @@ test("a canonical accepted record validates", () => {
   );
 });
 
-test("indexed dependency provenance requires a Palomar ID", () => {
+test("withdrawn palomar-indexed provenance is rejected", () => {
   const trust = {
     ...entry().trust,
     level: "qualified",
@@ -236,7 +236,7 @@ test("indexed dependency provenance requires a Palomar ID", () => {
   };
   assert.throws(
     () => validateEntry(entry({ trust }), summary()),
-    /palomar_id is required/,
+    /provenance is unsupported/,
   );
 
   trust.challenge_dependencies = [

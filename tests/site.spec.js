@@ -369,10 +369,10 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
 test("larger Challenge falls back to the dedicated wrapper", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`);
   await expect(page.locator("#statement-dependencies")).toContainText(
-    "leanprover-community/mathlib4 (allowlisted)",
+    "leanprover-community/mathlib4",
   );
   await expect(page.locator("#statement-dependencies")).toContainText(
-    "example/dependency (Palomar-indexed: PALOMAR-2026-07-29-000123)",
+    "TauCetiProject/TauCeti",
   );
   await expect(page.locator(".challenge-presentation iframe")).toHaveCount(0);
   await expect(page.locator(".challenge-fallback")).toBeVisible();
