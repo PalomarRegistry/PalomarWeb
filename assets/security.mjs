@@ -518,16 +518,10 @@ export function validateEntry(entry, summary) {
     if (!REPOSITORY_RE.test(dependency.repository)) {
       fail(`entry.trust.challenge_dependencies[${position}].repository is malformed`);
     }
-    if (!['allowlisted', 'palomar-indexed'].includes(dependency.provenance)) {
+    if (dependency.provenance !== 'allowlisted') {
       fail(`entry.trust.challenge_dependencies[${position}].provenance is unsupported`);
     }
-    if (dependency.provenance === "palomar-indexed") {
-      if (!ID_RE.test(dependency.palomar_id || "")) {
-        fail(
-          `entry.trust.challenge_dependencies[${position}].palomar_id is required and malformed`,
-        );
-      }
-    } else if (dependency.palomar_id !== undefined) {
+    if (dependency.palomar_id !== undefined) {
       fail(
         `entry.trust.challenge_dependencies[${position}].palomar_id is forbidden for allowlisted provenance`,
       );

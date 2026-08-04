@@ -288,8 +288,7 @@
         <p>
           To assist with such comparisons, Palomar caps the size of the formal
           statement at 1,000 lines and 100 KiB. Imports are restricted to Lean
-          core, pinned allowlisted libraries, and exact source snapshots from
-          accepted Palomar record versions; the language model audits the
+          core and pinned allowlisted libraries; the language model audits the
           definitions actually reached from those sources. Each registry entry
           displays the compared declarations, with their types available on
           hover, and links the exact statement file at the exact commit.
@@ -381,20 +380,12 @@
           Keep the Challenge source short and mathematically ordinary.
           1,000 lines and 100 KiB are hard limits; 300 lines and 32 KiB is the
           surface we would rather review. Its transitive imports must resolve
-          to Lean core; the pinned, allowlisted Mathlib or Tau Ceti closure; or
-          an exact source snapshot represented by a specific accepted Palomar
-          record version. Importing Tau Ceti or an indexed Palomar source is
-          accepted and records a wider statement dependency surface on the
-          entry.
-        </p>
-        <p>
-          For an indexed import, Palomar independently checks out the recorded
-          repository and commit, verifies every imported source file, and
-          compiles the reached source directly with trusted Lean. This makes the
-          imported statement surface fixed and reviewable; it does not certify
-          every definition in that repository or promote the project to
-          Mathlib-level trust. The resulting entry is therefore marked as having
-          qualified statement dependencies.
+          to Lean core or the pinned, allowlisted Mathlib or Tau Ceti closure,
+          and to nothing else. Importing Tau Ceti is accepted and marks the
+          entry as having qualified statement dependencies. A project Palomar
+          has already accepted is not importable on that basis: an entry fixes a
+          reviewable snapshot of its own statement, not a library for later
+          submissions.
         </p>
         <p>
           Dependencies used only by the Solution may be arbitrary pinned Git

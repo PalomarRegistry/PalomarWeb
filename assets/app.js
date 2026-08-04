@@ -1000,10 +1000,7 @@ async function renderEntry(
     trust.append(el("h3", "", "Source repositories"));
     const dependencies = el("ul", "plain-list");
     for (const dependency of entry.trust.challenge_dependencies) {
-      const provenance = dependency.provenance === "palomar-indexed"
-        ? `Palomar-indexed: ${dependency.palomar_id}`
-        : "allowlisted";
-      dependencies.append(el("li", "", `${dependency.repository} (${provenance})`));
+      dependencies.append(el("li", "", dependency.repository));
     }
     trust.append(dependencies);
   }
