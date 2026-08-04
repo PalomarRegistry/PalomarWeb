@@ -1,14 +1,22 @@
 export const INDEX_SCHEMA_VERSION = 2;
 export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4, 5, 6]);
 export const DEFAULT_DATABASE =
-  "https://raw.githubusercontent.com/kim-em/PalomarDatabase/main/index.json";
-export const DEFAULT_RENDER_BASE = "https://kim-em.github.io/PalomarDatabase/";
+  "https://raw.githubusercontent.com/PalomarRegistry/PalomarDatabase/main/index.json";
+export const DEFAULT_RENDER_BASE = "https://palomarregistry.github.io/PalomarDatabase/";
 
 export function supportsProjectPaths(entry) {
   return entry?.schema_version === 6;
 }
 
-const SUBMISSION_REPOSITORY = "kim-em/PalomarSubmission";
+// Palomar moved from a personal account to the PalomarRegistry organisation on
+// 2026-08-04. Records published before the move name the old repository and are
+// immutable, so both are canonical forever. A record must still be internally
+// consistent: every derived URL below comes from the repository the record
+// itself names, and that repository must be one of these.
+const SUBMISSION_REPOSITORIES = new Set([
+  "kim-em/PalomarSubmission",
+  "PalomarRegistry/PalomarSubmission",
+]);
 const ID_RE = /^PALOMAR-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{6})$/;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
@@ -211,10 +219,11 @@ function validateCanonicalRecordLinks(entry) {
   if (identifier[1] !== entry.accepted_at) fail("entry ID date does not match accepted_at");
   const issue = Number(identifier[2]);
   const submission = entry.submission;
+  const submissionRepository = submission.repository;
   if (
-    submission.repository !== SUBMISSION_REPOSITORY ||
+    !SUBMISSION_REPOSITORIES.has(submissionRepository) ||
     submission.issue !== issue ||
-    submission.url !== `https://github.com/${SUBMISSION_REPOSITORY}/issues/${issue}`
+    submission.url !== `https://github.com/${submissionRepository}/issues/${issue}`
   ) {
     fail("submission evidence does not match the Palomar ID and canonical issue");
   }
@@ -238,7 +247,7 @@ function validateCanonicalRecordLinks(entry) {
   }
   safeExternalUrl(source.tree_url);
 
-  const runPrefix = `https://github.com/${SUBMISSION_REPOSITORY}/actions/runs/`;
+  const runPrefix = `https://github.com/${submissionRepository}/actions/runs/`;
   const runId = entry.verification.workflow_url.slice(runPrefix.length);
   if (
     !entry.verification.workflow_url.startsWith(runPrefix) ||
@@ -248,7 +257,7 @@ function validateCanonicalRecordLinks(entry) {
   }
 
   const reportPrefix =
-    `https://github.com/${SUBMISSION_REPOSITORY}/issues/${issue}#issuecomment-`;
+    `https://github.com/${submissionRepository}/issues/${issue}#issuecomment-`;
   const commentId = entry.review.report_url.slice(reportPrefix.length);
   if (!entry.review.report_url.startsWith(reportPrefix) || !POSITIVE_INTEGER_RE.test(commentId)) {
     fail("review.report_url is not a canonical report comment for this Palomar ID");

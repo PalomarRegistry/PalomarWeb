@@ -22,9 +22,9 @@ import {
   workflowRunId,
 } from "./security.mjs";
 
-const CANONICAL_WEB_BASE = "https://kim-em.github.io/PalomarWeb/";
-const FEED_BASE = "https://kim-em.github.io/PalomarDatabase/feeds/";
-const DATABASE_SOURCE_BASE = "https://github.com/kim-em/PalomarDatabase/blob/main/";
+const CANONICAL_WEB_BASE = "https://palomarregistry.github.io/PalomarWeb/";
+const FEED_BASE = "https://palomarregistry.github.io/PalomarDatabase/feeds/";
+const DATABASE_SOURCE_BASE = "https://github.com/PalomarRegistry/PalomarDatabase/blob/main/";
 
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
