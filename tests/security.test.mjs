@@ -50,9 +50,9 @@ function entry(overrides = {}) {
     abstract: "A security fixture.",
     authors: [{ name: "Example" }],
     submission: {
-      repository: "kim-em/PalomarSubmission",
+      repository: "PalomarRegistry/PalomarSubmission",
       issue: 123,
-      url: "https://github.com/kim-em/PalomarSubmission/issues/123",
+      url: "https://github.com/PalomarRegistry/PalomarSubmission/issues/123",
       submitter: "example",
     },
     source: {
@@ -80,7 +80,7 @@ function entry(overrides = {}) {
       landrun_commit: "4".repeat(40),
       nanoda_commit: "9".repeat(40),
       verified_at: "2026-07-29T08:46:32Z",
-      workflow_url: "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
+      workflow_url: "https://github.com/PalomarRegistry/PalomarSubmission/actions/runs/12345",
       challenge_sha256: DIGEST,
       solution_sha256: "b".repeat(64),
     },
@@ -97,7 +97,7 @@ function entry(overrides = {}) {
       policy_commit: "5".repeat(40),
       verdict: "accept",
       report_url:
-        "https://github.com/kim-em/PalomarSubmission/issues/123#issuecomment-456",
+        "https://github.com/PalomarRegistry/PalomarSubmission/issues/123#issuecomment-456",
       scores: { clarity: 5 },
       reviewer_models: ["fixture:model"],
       warnings: [],
@@ -124,7 +124,7 @@ test("production ignores every database query override", () => {
   ]) {
     assert.equal(
       selectDatabaseUrl(
-        "https://kim-em.github.io/PalomarWeb/",
+        "https://palomarregistry.github.io/PalomarWeb/",
         `?database=${encodeURIComponent(override)}`,
       ).href,
       DEFAULT_DATABASE,
@@ -135,7 +135,7 @@ test("production ignores every database query override", () => {
 test("production also pins the rendered-Challenge origin", () => {
   assert.equal(
     selectRenderBase(
-      "https://kim-em.github.io/PalomarWeb/",
+      "https://palomarregistry.github.io/PalomarWeb/",
       "?render-base=https://attacker.invalid/",
       "https://attacker.invalid/database/",
     ).href,
@@ -480,7 +480,7 @@ test("record evidence links must agree with their canonical values", () => {
 
   const wrongSubmission = entry();
   wrongSubmission.submission.url =
-    "https://github.com/kim-em/PalomarSubmission/issues/999";
+    "https://github.com/PalomarRegistry/PalomarSubmission/issues/999";
   assert.throws(
     () => validateEntry(wrongSubmission, summary()),
     /submission evidence does not match/,
@@ -496,7 +496,7 @@ test("record evidence links must agree with their canonical values", () => {
 
   const wrongReview = entry();
   wrongReview.review.report_url =
-    "https://github.com/kim-em/PalomarSubmission/issues/999#issuecomment-456";
+    "https://github.com/PalomarRegistry/PalomarSubmission/issues/999#issuecomment-456";
   assert.throws(() => validateEntry(wrongReview, summary()), /report_url is not a canonical/);
 });
 
@@ -530,7 +530,7 @@ test("every HTML entry point carries the restrictive CSP", async () => {
     assert.match(html, /Content-Security-Policy/);
     assert.match(html, /default-src 'none'/);
     assert.match(html, /script-src 'self'/);
-    assert.match(html, /frame-src 'self' https:\/\/kim-em\.github\.io/);
+    assert.match(html, /frame-src 'self' https:\/\/palomarregistry\.github\.io/);
     assert.match(html, /object-src 'none'/);
   }
 });
@@ -541,4 +541,46 @@ test("About states the repository licence boundary", async () => {
   assert.match(about, /reused formalizations, and\s+dependencies retain their own licences/);
   assert.match(about, /repository root is the default project directory/);
   assert.match(about, /licence file remains at repository root/);
+});
+
+// Palomar moved to the PalomarRegistry organisation on 2026-08-04. Records
+// published before the move are immutable and name the old repository, so both
+// are canonical, and a record must still be internally consistent about which.
+
+function withSubmissionRepository(repository) {
+  return entry({
+    submission: {
+      repository,
+      issue: 123,
+      url: `https://github.com/${repository}/issues/123`,
+      submitter: "example",
+    },
+    verification: {
+      ...entry().verification,
+      workflow_url: `https://github.com/${repository}/actions/runs/12345`,
+    },
+    review: {
+      ...entry().review,
+      report_url: `https://github.com/${repository}/issues/123#issuecomment-456`,
+    },
+  });
+}
+
+test("a record published before the organisation move still validates", () => {
+  const historical = withSubmissionRepository("kim-em/PalomarSubmission");
+  assert.equal(validateEntry(historical, summary()).id, "PALOMAR-2026-07-29-000123");
+});
+
+test("an unknown submission repository is refused", () => {
+  assert.throws(
+    () => validateEntry(withSubmissionRepository("attacker/PalomarSubmission"), summary()),
+    /submission evidence does not match/,
+  );
+});
+
+test("submission, run, and report links must name the same repository", () => {
+  const mixed = withSubmissionRepository("PalomarRegistry/PalomarSubmission");
+  mixed.review.report_url =
+    "https://github.com/kim-em/PalomarSubmission/issues/123#issuecomment-456";
+  assert.throws(() => validateEntry(mixed, summary()), /review.report_url is not a canonical/);
 });

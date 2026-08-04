@@ -39,9 +39,9 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "related_formalizations": [],
         },
         "submission": {
-            "repository": "kim-em/PalomarSubmission",
+            "repository": "PalomarRegistry/PalomarSubmission",
             "issue": issue,
-            "url": f"https://github.com/kim-em/PalomarSubmission/issues/{issue}",
+            "url": f"https://github.com/PalomarRegistry/PalomarSubmission/issues/{issue}",
             "submitter": "example",
             "authorization": {"relationship": "maintainer"},
         },
@@ -79,7 +79,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "lean4export_commit": "3" * 40,
             "landrun_commit": "4" * 40,
             "nanoda_commit": "9" * 40,
-            "workflow_url": "https://github.com/kim-em/PalomarSubmission/actions/runs/12345",
+            "workflow_url": "https://github.com/PalomarRegistry/PalomarSubmission/actions/runs/12345",
             "challenge_sha256": "b" * 64,
             "solution_sha256": "c" * 64,
             "verified_at": "2026-07-29T08:46:32Z",
@@ -111,7 +111,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             },
             "warnings": [],
             "report_url": (
-                "https://github.com/kim-em/PalomarSubmission/issues/"
+                "https://github.com/PalomarRegistry/PalomarSubmission/issues/"
                 f"{issue}#issuecomment-456"
             ),
         },

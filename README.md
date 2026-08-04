@@ -1,7 +1,7 @@
 # Palomar Web
 
 The read-only human view of
-[`kim-em/PalomarDatabase`](https://github.com/kim-em/PalomarDatabase).
+[`PalomarRegistry/PalomarDatabase`](https://github.com/PalomarRegistry/PalomarDatabase).
 
 The site is static and deployed with GitHub Pages. It fetches `index.json` and
 entry records directly from the database repository at runtime, so publishing a
@@ -55,7 +55,7 @@ history when older snapshots exist.
 An entry URL with both `id` and `version` identifies one immutable snapshot:
 
 ```text
-https://kim-em.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&version=1
+https://palomarregistry.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&version=1
 ```
 
 Its HTML canonical link points to that same official, explicit version,
