@@ -55,7 +55,7 @@ history when older snapshots exist.
 An entry URL with both `id` and `version` identifies one immutable snapshot:
 
 ```text
-https://palomarregistry.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000001&version=1
+https://palomar-registry.org/entry.html?id=PALOMAR-2026-07-29-000001&version=1
 ```
 
 Its HTML canonical link points to that same official, explicit version,

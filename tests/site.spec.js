@@ -168,7 +168,7 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
-    "https://palomarregistry.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000123&version=2",
+    "https://palomar-registry.org/entry.html?id=PALOMAR-2026-07-29-000123&version=2",
   );
 });
 
@@ -202,7 +202,7 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
   );
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
-    "https://palomarregistry.github.io/PalomarWeb/entry.html?id=PALOMAR-2026-07-29-000123&version=1",
+    "https://palomar-registry.org/entry.html?id=PALOMAR-2026-07-29-000123&version=1",
   );
 });
 

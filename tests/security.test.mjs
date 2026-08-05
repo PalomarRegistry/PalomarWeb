@@ -25,7 +25,7 @@ import {
 } from "../assets/security.mjs";
 
 // The website's own origin, for the cross-origin assertion below.
-const CANONICAL_WEB_BASE_FOR_TEST = "https://palomarregistry.github.io/PalomarWeb/";
+const CANONICAL_WEB_BASE_FOR_TEST = "https://palomar-registry.org/";
 
 const COMMIT = "1".repeat(40);
 const DIGEST = "a".repeat(64);

@@ -25,7 +25,7 @@ import {
   workflowRunId,
 } from "./security.mjs";
 
-const CANONICAL_WEB_BASE = "https://palomarregistry.github.io/PalomarWeb/";
+const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 const FEED_BASE = "https://data.palomar-registry.org/feeds/";
 const DATABASE_SOURCE_BASE = "https://github.com/PalomarRegistry/PalomarDatabase/blob/main/";
 
