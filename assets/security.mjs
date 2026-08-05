@@ -2,7 +2,7 @@ export const INDEX_SCHEMA_VERSION = 2;
 export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4, 5, 6]);
 export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/PalomarRegistry/PalomarDatabase/main/index.json";
-export const DEFAULT_RENDER_BASE = "https://palomarregistry.github.io/PalomarDatabase/";
+export const DEFAULT_RENDER_BASE = "https://data.palomar-registry.org/";
 
 export function supportsProjectPaths(entry) {
   return entry?.schema_version === 6;

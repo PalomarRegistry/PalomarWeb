@@ -23,7 +23,7 @@ import {
 } from "./security.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomarregistry.github.io/PalomarWeb/";
-const FEED_BASE = "https://palomarregistry.github.io/PalomarDatabase/feeds/";
+const FEED_BASE = "https://data.palomar-registry.org/feeds/";
 const DATABASE_SOURCE_BASE = "https://github.com/PalomarRegistry/PalomarDatabase/blob/main/";
 
 const params = new URLSearchParams(window.location.search);
