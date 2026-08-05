@@ -16,7 +16,7 @@
       <nav aria-label="Main navigation">
         <a href="./">Registry</a>
         <a class="active" href="about.html" aria-current="page">About</a>
-        <a href="https://github.com/PalomarRegistry/PalomarSubmission/issues/new?template=submit.yml">Submit</a>
+        <a href="https://submit.palomar-registry.org/">Submit</a>
       </nav>
     </header>
 
@@ -436,42 +436,56 @@
         <h2>How to submit</h2>
         <ol>
           <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
-          <li><a href="https://github.com/PalomarRegistry/PalomarSubmission/issues/new?template=submit.yml">Open the short submission form</a>. Enter the repository URL and commit SHA. Leave the optional project, Comparator-config, and metadata paths blank for the normal root layout; fill them only for a nested or non-default layout. Record whether you maintain the substantive formalization or have approval from someone who does, confirm the required acknowledgements, and, for a correction to an existing entry, enter its Palomar ID.</li>
-          <li>Submit the issue and watch it for status labels and comments. The issue is the public home for verification and review.</li>
+          <li><a href="https://submit.palomar-registry.org/">Open the submission form</a>. Enter the repository and commit SHA. Leave the optional project, Comparator-config, and metadata paths blank for the normal root layout; fill them only for a nested or non-default layout. Record whether you maintain the substantive formalization or have approval from someone who does, and, for a correction to an existing entry, enter its Palomar ID.</li>
+          <li>Sign in with GitHub so Palomar can confirm you have write access to the repository you are submitting. The sign-in is used once and is not stored.</li>
+          <li>Keep the status page you are given. Its link is the only way back to your submission: Palomar does not email, and there is no account to sign in to.</li>
         </ol>
+        <h3 id="what-is-public">What is public, and what is not</h3>
         <p>
-          Palomar first labels the issue <code>status:verifying</code> while
-          mechanical verification runs. A passing issue moves to
-          <code>status:awaiting-review</code>; a failed check moves to
-          <code>status:changes-requested</code> and the mechanical report explains
-          what failed. If Palomar’s verification infrastructure itself fails,
-          the issue instead receives <code>status:verification-error</code>; no
-          submitter action is required until the maintainers respond. During
-          editorial review, the issue moves through
-          <code>status:review-in-progress</code> and then to
-          <code>status:accepted</code>, <code>status:changes-requested</code>,
-          <code>status:rejected</code>, or <code>status:escalated</code>.
+          Public from the moment you submit: your repository and commit.
+          Mechanical verification runs in a public GitHub Actions workflow, and
+          its logs are public. Whether you later publish is inferable from the
+          registry.
         </p>
         <p>
-          Once mechanical verification has passed, we aim to complete the
-          editorial review within one hour. This is a target rather than a
-          guarantee, especially when a submission needs specialist judgment.
+          Not public unless you publish: the editorial review, the decision, and
+          your identity as submitter. If a review goes badly, or you simply
+          change your mind, withdrawing leaves no public trace of the review or
+          the decision, and there is nothing for anyone to find.
         </p>
         <p>
-          The review comment gives the reasons, warnings, and any requested
-          changes—not just a label. A request for changes means the issue may be
-          reconsidered after specific correctable problems are addressed; a
-          rejection means the submission failed a fundamental mechanical or
-          editorial requirement. An escalation means specialist or human
-          judgment is needed. Because every review is tied to an immutable
-          commit, any revised source must be submitted at a new full commit SHA
-          following the instructions on the issue.
+          “Private” here means not public, not confidential. Reviews are
+          readable by Palomar operators, by GitHub, and by the model provider,
+          and are retained indefinitely so that any decision can be audited. Do
+          not put anything sensitive in the notes field.
+        </p>
+        <h3 id="what-happens-next">What happens next</h3>
+        <p>
+          Your status page shows mechanical verification first, with a link to
+          the public run. If verification fails, the report explains what
+          failed. If it passes, the submission waits for editorial review; once
+          mechanical verification has passed we aim to complete that review
+          within one hour, though that is a target rather than a guarantee,
+          especially when a submission needs specialist judgment.
         </p>
         <p>
-          Acceptance is not the final step. An accepted submission appears in the
-          registry once the corresponding database pull request is merged. The
-          issue is then labelled <code>status:published</code>, given a comment
-          linking its registry entry, and closed.
+          The review then appears on your status page, and nowhere else. It
+          gives the reasons, warnings, and any requested changes, not just a
+          decision. A request for changes means the work may be reconsidered
+          after specific correctable problems are addressed; a rejection means
+          the submission failed a fundamental mechanical or editorial
+          requirement; an escalation means specialist or human judgment is
+          needed. Because every review is tied to an immutable commit, revised
+          source is a new submission at a new full commit SHA.
+        </p>
+        <p>
+          Nothing is published until you ask for it. If the review is an
+          acceptance, your status page offers two choices: publish, or withdraw.
+          Publishing is permanent: the record, the review, and your repository
+          and commit go into the public registry, and Palomar records are
+          append-only, so a published record is never removed. Acceptance is not
+          publication; an accepted submission appears in the registry once the
+          corresponding database pull request is merged.
         </p>
         <p>
           Corrections are published as new versions of the same Palomar ID, and
@@ -531,7 +545,7 @@
 
       <section id="ready-to-submit" class="cta">
         <div><h2>Ready to submit?</h2><p>The form asks for a repository and one fixed commit.</p></div>
-        <a href="https://github.com/PalomarRegistry/PalomarSubmission/issues/new?template=submit.yml">Open the submission form</a>
+        <a href="https://submit.palomar-registry.org/">Open the submission form</a>
       </section>
       <span id="anchor-status" class="visually-hidden" role="status"></span>
     </main>
