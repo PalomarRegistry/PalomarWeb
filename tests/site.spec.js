@@ -11,6 +11,27 @@ function fileAtPreviousDeployment(path) {
   return execFileSync("git", ["show", `${previousRef}:${path}`], { encoding: "utf8" });
 }
 
+/**
+ * Which entry schemas the previous deployment's validator would accept.
+ *
+ * Cached JavaScript can only be compatible with records it can read. When the
+ * published schema changes, cached JavaScript is deliberately incompatible,
+ * and asserting otherwise would only be satisfiable by never changing it.
+ */
+function entrySchemasAtPreviousDeployment() {
+  const source = fileAtPreviousDeployment("assets/security.mjs");
+  const set = /ENTRY_SCHEMA_VERSIONS = new Set\(\[([0-9,\s]*)\]\)/.exec(source);
+  if (set) return new Set(set[1].split(",").map((n) => Number(n.trim())));
+  const single = /ENTRY_SCHEMA_VERSION = ([0-9]+)/.exec(source);
+  return single ? new Set([Number(single[1])]) : new Set();
+}
+
+const currentEntrySchema = Number(
+  /ENTRY_SCHEMA_VERSION = ([0-9]+)/.exec(
+    readFileSync(fileURLToPath(new URL("../assets/security.mjs", import.meta.url)), "utf8"),
+  )[1],
+);
+
 test("about headings expose hoverable links that copy their section URL", async ({ context, page }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/about.html");
@@ -218,7 +239,7 @@ test("a single current version has no supersession treatment", async ({ page }) 
   await expect(page.locator("#version-history li")).toHaveCount(1);
 });
 
-test("schema v5 entries display repository licence evidence and its boundary", async ({ page }) => {
+test("entries display repository licence evidence and its boundary", async ({ page }) => {
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`,
   );
@@ -332,7 +353,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".acceptance-callout")).toContainText("AI-mediated review");
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
   await expect(page.getByText("Verification workflow commit")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Editorial evidence" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Archived editorial review" })).toBeVisible();
   await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean" }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Answer.lean`,
@@ -393,6 +414,10 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
 
 test("current HTML remains compatible with cached JavaScript from the previous deployment", async ({ page }) => {
   test.skip(!previousRef, "PALOMAR_PREVIOUS_REF is only set in deployment and pull-request CI");
+  test.skip(
+    !entrySchemasAtPreviousDeployment().has(currentEntrySchema),
+    "the published entry schema changed, so cached JavaScript cannot read current records",
+  );
   await page.route("**/assets/app.js", (route) => route.fulfill({
     body: fileAtPreviousDeployment("assets/app.js"),
     contentType: "text/javascript; charset=utf-8",

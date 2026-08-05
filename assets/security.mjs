@@ -1,5 +1,5 @@
 export const INDEX_SCHEMA_VERSION = 2;
-export const ENTRY_SCHEMA_VERSIONS = new Set([2, 3, 4, 5, 6]);
+export const ENTRY_SCHEMA_VERSION = 1;
 export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/PalomarRegistry/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://data.palomar-registry.org/";
@@ -8,32 +8,21 @@ export const DEFAULT_RENDER_BASE = "https://data.palomar-registry.org/";
 // submitter never told us" into a positive claim about someone's work, which
 // is the one thing a registry must not do. These live here, beside the
 // validator that decides which values are legal, so the two cannot drift.
-export const UNSTATED_PROVENANCE = "Not stated by the submitter";
 export const RESULT_ORIGIN_LABELS = Object.freeze({
   original: "Original result first presented by this formalization",
   "source-based": "Formalization of or response to existing mathematical work",
-  unspecified: UNSTATED_PROVENANCE,
 });
 export const REPOSITORY_ROLE_LABELS = Object.freeze({
   "substantive-development": "Substantive formalization development",
   "thin-wrapper": "Thin Comparator wrapper around another formalization repository",
-  unspecified: UNSTATED_PROVENANCE,
 });
 
-export function supportsProjectPaths(entry) {
-  return entry?.schema_version === 6;
-}
-
-// Palomar moved from a personal account to the PalomarRegistry organisation on
-// 2026-08-04. Records published before the move name the old repository and are
-// immutable, so both are canonical forever. A record must still be internally
-// consistent: every derived URL below comes from the repository the record
-// itself names, and that repository must be one of these.
-const SUBMISSION_REPOSITORIES = new Set([
-  "kim-em/PalomarSubmission",
-  "PalomarRegistry/PalomarSubmission",
-]);
+// Verification runs in exactly one public workflow, and every run URL a record
+// carries is derived from the repository the record itself names, which must
+// be this one.
+const SUBMISSION_REPOSITORY = "PalomarRegistry/PalomarSubmission";
 const ID_RE = /^PALOMAR-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{6})$/;
+const SUBMISSION_ID_RE = /^[0-9a-z]{12}$/;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
@@ -233,17 +222,11 @@ function safeDependencyPath(value, field) {
 function validateCanonicalRecordLinks(entry) {
   const identifier = ID_RE.exec(entry.id);
   if (identifier[1] !== entry.accepted_at) fail("entry ID date does not match accepted_at");
-  const issue = Number(identifier[2]);
+
   const submission = entry.submission;
-  const submissionRepository = submission.repository;
-  if (
-    !SUBMISSION_REPOSITORIES.has(submissionRepository) ||
-    submission.issue !== issue ||
-    submission.url !== `https://github.com/${submissionRepository}/issues/${issue}`
-  ) {
-    fail("submission evidence does not match the Palomar ID and canonical issue");
+  if (!SUBMISSION_ID_RE.test(submission.submission_id)) {
+    fail("entry.submission.submission_id is malformed");
   }
-  safeExternalUrl(submission.url);
 
   const source = entry.source;
   if (!REPOSITORY_RE.test(source.repository)) fail("source.repository is malformed");
@@ -251,10 +234,7 @@ function validateCanonicalRecordLinks(entry) {
   const repositoryUrl = `https://github.com/${source.repository}`;
   if (source.repository_url !== repositoryUrl) fail("source.repository_url is not canonical");
   let expectedTreeUrl = `${repositoryUrl}/tree/${source.commit}`;
-  if (!supportsProjectPaths(entry) && source.project_path !== undefined) {
-    fail("source.project_path is not supported by this entry schema");
-  }
-  if (supportsProjectPaths(entry) && source.project_path !== undefined) {
+  if (source.project_path !== undefined) {
     safeRepositoryPath(source.project_path, "entry.source.project_path");
     expectedTreeUrl += `/${encodedRepositoryPath(source.project_path)}`;
   }
@@ -263,29 +243,24 @@ function validateCanonicalRecordLinks(entry) {
   }
   safeExternalUrl(source.tree_url);
 
-  const runPrefix = `https://github.com/${submissionRepository}/actions/runs/`;
-  const runId = entry.verification.workflow_url.slice(runPrefix.length);
-  if (
-    !entry.verification.workflow_url.startsWith(runPrefix) ||
-    !POSITIVE_INTEGER_RE.test(runId)
-  ) {
-    fail("verification.workflow_url is not a canonical PalomarSubmission Actions run");
+  // The run URL is derived, never trusted: a record names the repository, the
+  // run id and the workflow, and the link follows from those.
+  const verification = entry.verification;
+  if (verification.repository !== SUBMISSION_REPOSITORY) {
+    fail("verification.repository is not the Palomar verification repository");
   }
-
-  const reportPrefix =
-    `https://github.com/${submissionRepository}/issues/${issue}#issuecomment-`;
-  const commentId = entry.review.report_url.slice(reportPrefix.length);
-  if (!entry.review.report_url.startsWith(reportPrefix) || !POSITIVE_INTEGER_RE.test(commentId)) {
-    fail("review.report_url is not a canonical report comment for this Palomar ID");
+  const expectedRunUrl =
+    `https://github.com/${verification.repository}/actions/runs/${verification.run_id}`;
+  if (verification.workflow_url !== expectedRunUrl) {
+    fail("verification.workflow_url is not derived from the recorded run");
   }
-  safeExternalUrl(entry.verification.workflow_url);
-  safeExternalUrl(entry.review.report_url);
+  safeExternalUrl(verification.workflow_url);
 }
 
 export function validateEntry(entry, summary) {
   object(entry, "entry");
   object(summary, "entry summary");
-  if (!ENTRY_SCHEMA_VERSIONS.has(entry.schema_version)) {
+  if (entry.schema_version !== ENTRY_SCHEMA_VERSION) {
     fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
   }
   if (entry.status !== "accepted") fail("entry status is not accepted");
@@ -307,10 +282,7 @@ export function validateEntry(entry, summary) {
     string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
   }
 
-  if (entry.schema_version === 2 && entry.classification !== undefined) {
-    fail("entry.classification is not valid in schema version 2");
-  }
-  if (entry.schema_version >= 3) {
+  {
     const classification = object(entry.classification, "entry.classification");
     const arxiv = stringArray(classification.arxiv, "entry.classification.arxiv");
     const msc2020 = stringArray(classification.msc2020, "entry.classification.msc2020");
@@ -328,15 +300,17 @@ export function validateEntry(entry, summary) {
     }
   }
 
+  // A published record names the submission, and nothing about the person who
+  // sent it. There is no submitter field to display, by construction.
   const submission = object(entry.submission, "entry.submission");
-  string(submission.repository, "entry.submission.repository");
-  integer(submission.issue, "entry.submission.issue");
-  string(submission.url, "entry.submission.url");
-  string(submission.submitter, "entry.submission.submitter");
+  string(submission.submission_id, "entry.submission.submission_id");
+  if (Object.hasOwn(submission, "submitter") || Object.hasOwn(submission, "issue")) {
+    fail("entry.submission carries a field this schema does not have");
+  }
 
-  if (entry.schema_version >= 4) {
+  {
     const authorization = object(submission.authorization, "entry.submission.authorization");
-    if (!["maintainer", "approved", "legacy-unspecified"].includes(authorization.relationship)) {
+    if (!["maintainer", "approved"].includes(authorization.relationship)) {
       fail("entry.submission.authorization.relationship is not recognized");
     }
     if (authorization.evidence !== undefined) {
@@ -344,43 +318,19 @@ export function validateEntry(entry, summary) {
     }
 
     const provenance = object(entry.provenance, "entry.provenance");
-    // Provenance intake did not exist when the first records were published,
-    // so schema v5 added "unspecified", a `declared` map recording which
-    // fields the submitter actually asserted, and dropped the requirement for
-    // at least one maintainer. Schema v4 has none of that and forbids
-    // `declared` outright, so the allowance is gated rather than global:
-    // matching the schema in both directions is the whole point, since being
-    // stricter takes the site down and being looser defeats this validator.
-    const undeclarable = entry.schema_version >= 5;
-    const origins = ["original", "source-based"];
-    const roles = ["substantive-development", "thin-wrapper"];
-    if (undeclarable) {
-      origins.push("unspecified");
-      roles.push("unspecified");
-    } else if (Object.hasOwn(provenance, "declared")) {
-      fail("entry.provenance.declared is not permitted by this entry schema");
-    }
-    if (!origins.includes(provenance.result_origin)) {
+    // Provenance is declared at intake, so every published record states it.
+    // The labels live beside this list so the two cannot drift.
+    if (!Object.hasOwn(RESULT_ORIGIN_LABELS, provenance.result_origin)) {
       fail("entry.provenance.result_origin is not recognized");
     }
-    if (!roles.includes(provenance.repository_role)) {
+    if (!Object.hasOwn(REPOSITORY_ROLE_LABELS, provenance.repository_role)) {
       fail("entry.provenance.repository_role is not recognized");
-    }
-    if (Object.hasOwn(provenance, "declared")) {
-      const declared = object(provenance.declared, "entry.provenance.declared");
-      for (const flag of ["result_origin", "repository_role", "responsible_maintainers"]) {
-        // Own properties only: a plain property read is satisfied by the
-        // prototype chain, which is validation that fails open.
-        if (!Object.hasOwn(declared, flag) || typeof declared[flag] !== "boolean") {
-          fail(`entry.provenance.declared.${flag} must be a boolean`);
-        }
-      }
     }
     const maintainers = array(
       provenance.responsible_maintainers,
       "entry.provenance.responsible_maintainers",
     );
-    if (!undeclarable && !maintainers.length) {
+    if (!maintainers.length) {
       fail("entry.provenance.responsible_maintainers must not be empty");
     }
     for (const [position, maintainer] of maintainers.entries()) {
@@ -430,7 +380,7 @@ export function validateEntry(entry, summary) {
   string(source.repository_url, "entry.source.repository_url");
   string(source.commit, "entry.source.commit");
   string(source.tree_url, "entry.source.tree_url");
-  if (entry.schema_version >= 5) {
+  {
     const license = object(source.license, "entry.source.license");
     const licensePath = string(license.path, "entry.source.license.path");
     if (!LICENSE_PATH_RE.test(licensePath)) {
@@ -461,10 +411,7 @@ export function validateEntry(entry, summary) {
     formalization.formalization_metadata_path,
     "entry.formalization.formalization_metadata_path",
   );
-  if (!supportsProjectPaths(entry) && formalization.lakefile_path !== undefined) {
-    fail("entry.formalization.lakefile_path is not supported by this entry schema");
-  }
-  if (supportsProjectPaths(entry)) {
+  {
     safeRepositoryPath(formalization.lakefile_path, "entry.formalization.lakefile_path");
     const prefix = source.project_path ? `${source.project_path}/` : "";
     for (const [field, value] of [
@@ -496,14 +443,11 @@ export function validateEntry(entry, summary) {
       dependency.name,
       `entry.formalization.project_dependencies[${position}].name`,
     );
-    if (supportsProjectPaths(entry) && dependencyNames.has(dependencyName)) {
+    if (dependencyNames.has(dependencyName)) {
       fail(`entry.formalization.project_dependencies[${position}].name is duplicated`);
     }
     dependencyNames.add(dependencyName);
-    if (!supportsProjectPaths(entry) && dependency.path !== undefined) {
-      fail(`entry.formalization.project_dependencies[${position}].path is not supported`);
-    }
-    if (supportsProjectPaths(entry) && dependency.path !== undefined) {
+    if (dependency.path !== undefined) {
       const path = safeDependencyPath(
         dependency.path,
         `entry.formalization.project_dependencies[${position}].path`,
@@ -532,18 +476,10 @@ export function validateEntry(entry, summary) {
   commit(verification.comparator_commit, "entry.verification.comparator_commit");
   commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
   commit(verification.landrun_commit, "entry.verification.landrun_commit");
-  // NanoDa verification arrived in schema v4. Demanding the pin of the v2 and
-  // v3 records published before it made them undisplayable; accepting it on
-  // those records would be looser than their schemas, which set
-  // additionalProperties false.
-  if (entry.schema_version >= 4) {
-    commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
-  } else if (Object.hasOwn(verification, "nanoda_commit")) {
-    fail("entry.verification.nanoda_commit is not permitted by this entry schema");
-  }
+  commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
   digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
   digest(verification.solution_sha256, "entry.verification.solution_sha256");
-  if (entry.schema_version >= 5) {
+  {
     commit(verification.workflow_commit, "entry.verification.workflow_commit");
     integer(verification.workflow_run_attempt, "entry.verification.workflow_run_attempt");
     digest(verification.evidence_tree_sha256, "entry.verification.evidence_tree_sha256");
@@ -594,7 +530,10 @@ export function validateEntry(entry, summary) {
   string(review.reviewed_at, "entry.review.reviewed_at");
   commit(review.policy_commit, "entry.review.policy_commit");
   if (review.verdict !== "accept") fail("entry.review.verdict is not accept");
-  string(review.report_url, "entry.review.report_url");
+  digest(object(review.report, "entry.review.report").sha256, "entry.review.report.sha256");
+  if (review.report.source_url !== undefined) {
+    safeExternalUrl(string(review.report.source_url, "entry.review.report.source_url"));
+  }
   stringArray(review.reviewer_models, "entry.review.reviewer_models");
   object(review.scores, "entry.review.scores");
   stringArray(review.warnings, "entry.review.warnings");
@@ -649,9 +588,4 @@ export function pinnedSourceDirectoryUrl(entry, path) {
 
 export function workflowRunId(workflowUrl) {
   return new URL(workflowUrl).pathname.split("/").at(-1);
-}
-
-export function reportIssueNumber(reportUrl) {
-  const match = new URL(reportUrl).pathname.match(/\/issues\/([1-9][0-9]*)$/);
-  return match ? match[1] : "?";
 }
