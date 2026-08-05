@@ -4,6 +4,22 @@ export const DEFAULT_DATABASE =
   "https://raw.githubusercontent.com/PalomarRegistry/PalomarDatabase/main/index.json";
 export const DEFAULT_RENDER_BASE = "https://data.palomar-registry.org/";
 
+// Provenance is three-valued. Rendering it with a binary fallback turns "the
+// submitter never told us" into a positive claim about someone's work, which
+// is the one thing a registry must not do. These live here, beside the
+// validator that decides which values are legal, so the two cannot drift.
+export const UNSTATED_PROVENANCE = "Not stated by the submitter";
+export const RESULT_ORIGIN_LABELS = Object.freeze({
+  original: "Original result first presented by this formalization",
+  "source-based": "Formalization of or response to existing mathematical work",
+  unspecified: UNSTATED_PROVENANCE,
+});
+export const REPOSITORY_ROLE_LABELS = Object.freeze({
+  "substantive-development": "Substantive formalization development",
+  "thin-wrapper": "Thin Comparator wrapper around another formalization repository",
+  unspecified: UNSTATED_PROVENANCE,
+});
+
 export function supportsProjectPaths(entry) {
   return entry?.schema_version === 6;
 }
@@ -328,17 +344,45 @@ export function validateEntry(entry, summary) {
     }
 
     const provenance = object(entry.provenance, "entry.provenance");
-    if (!["original", "source-based"].includes(provenance.result_origin)) {
+    // Provenance intake did not exist when the first records were published,
+    // so schema v5 added "unspecified", a `declared` map recording which
+    // fields the submitter actually asserted, and dropped the requirement for
+    // at least one maintainer. Schema v4 has none of that and forbids
+    // `declared` outright, so the allowance is gated rather than global:
+    // matching the schema in both directions is the whole point, since being
+    // stricter takes the site down and being looser defeats this validator.
+    const undeclarable = entry.schema_version >= 5;
+    const origins = ["original", "source-based"];
+    const roles = ["substantive-development", "thin-wrapper"];
+    if (undeclarable) {
+      origins.push("unspecified");
+      roles.push("unspecified");
+    } else if (Object.hasOwn(provenance, "declared")) {
+      fail("entry.provenance.declared is not permitted by this entry schema");
+    }
+    if (!origins.includes(provenance.result_origin)) {
       fail("entry.provenance.result_origin is not recognized");
     }
-    if (!["substantive-development", "thin-wrapper"].includes(provenance.repository_role)) {
+    if (!roles.includes(provenance.repository_role)) {
       fail("entry.provenance.repository_role is not recognized");
+    }
+    if (Object.hasOwn(provenance, "declared")) {
+      const declared = object(provenance.declared, "entry.provenance.declared");
+      for (const flag of ["result_origin", "repository_role", "responsible_maintainers"]) {
+        // Own properties only: a plain property read is satisfied by the
+        // prototype chain, which is validation that fails open.
+        if (!Object.hasOwn(declared, flag) || typeof declared[flag] !== "boolean") {
+          fail(`entry.provenance.declared.${flag} must be a boolean`);
+        }
+      }
     }
     const maintainers = array(
       provenance.responsible_maintainers,
       "entry.provenance.responsible_maintainers",
     );
-    if (!maintainers.length) fail("entry.provenance.responsible_maintainers must not be empty");
+    if (!undeclarable && !maintainers.length) {
+      fail("entry.provenance.responsible_maintainers must not be empty");
+    }
     for (const [position, maintainer] of maintainers.entries()) {
       string(
         object(maintainer, `entry.provenance.responsible_maintainers[${position}]`).name,
@@ -488,7 +532,15 @@ export function validateEntry(entry, summary) {
   commit(verification.comparator_commit, "entry.verification.comparator_commit");
   commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
   commit(verification.landrun_commit, "entry.verification.landrun_commit");
-  commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  // NanoDa verification arrived in schema v4. Demanding the pin of the v2 and
+  // v3 records published before it made them undisplayable; accepting it on
+  // those records would be looser than their schemas, which set
+  // additionalProperties false.
+  if (entry.schema_version >= 4) {
+    commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  } else if (Object.hasOwn(verification, "nanoda_commit")) {
+    fail("entry.verification.nanoda_commit is not permitted by this entry schema");
+  }
   digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
   digest(verification.solution_sha256, "entry.verification.solution_sha256");
   if (entry.schema_version >= 5) {

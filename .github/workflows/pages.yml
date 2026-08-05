@@ -23,12 +23,22 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # The site re-validates every record client-side. Drifting from the
+      # authoritative schemas is what made the whole registry unloadable, so
+      # the schemas are checked out and the tests compare against them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: PalomarRegistry/PalomarDatabase
+          persist-credentials: false
+          path: palomar-database
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: "24.4.1"
           cache: npm
       - run: npm ci
       - run: npm test
+        env:
+          PALOMAR_DATABASE_CHECKOUT: ${{ github.workspace }}/palomar-database
       - name: Resolve previous deployment revision
         env:
           BEFORE: ${{ github.event.before }}
