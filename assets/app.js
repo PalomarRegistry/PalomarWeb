@@ -6,6 +6,9 @@ import {
 } from "./rendering.js";
 import {
   databaseBaseFor,
+  RESULT_ORIGIN_LABELS,
+  REPOSITORY_ROLE_LABELS,
+  UNSTATED_PROVENANCE,
   entryRecordUrl,
   isLoopbackHostname,
   pinnedSourceDirectoryUrl,
@@ -716,21 +719,13 @@ function provenanceSection(entry) {
 
   const details = el("dl", "details provenance-details");
   details.append(
-    detailRow(
-      "Result origin",
-      provenance.result_origin === "original"
-        ? "Original result first presented by this formalization"
-        : "Formalization of or response to existing mathematical work",
-    ),
-    detailRow(
-      "Repository role",
-      provenance.repository_role === "thin-wrapper"
-        ? "Thin Comparator wrapper around another formalization repository"
-        : "Substantive formalization development",
-    ),
+    detailRow("Result origin", RESULT_ORIGIN_LABELS[provenance.result_origin] ?? UNSTATED_PROVENANCE),
+    detailRow("Repository role", REPOSITORY_ROLE_LABELS[provenance.repository_role] ?? UNSTATED_PROVENANCE),
     detailRow(
       "Responsible maintainers",
-      provenance.responsible_maintainers.map((person) => person.name).join(", "),
+      provenance.responsible_maintainers.length
+        ? provenance.responsible_maintainers.map((person) => person.name).join(", ")
+        : UNSTATED_PROVENANCE,
     ),
     detailRow(
       "Submission basis",

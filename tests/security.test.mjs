@@ -8,6 +8,9 @@ import {
   DEFAULT_DATABASE,
   DEFAULT_RENDER_BASE,
   databaseBaseFor,
+  RESULT_ORIGIN_LABELS,
+  REPOSITORY_ROLE_LABELS,
+  UNSTATED_PROVENANCE,
   entryRecordUrl,
   isLoopbackHostname,
   pinnedSourceDirectoryUrl,
@@ -81,7 +84,6 @@ function entry(overrides = {}) {
       comparator_commit: "2".repeat(40),
       lean4export_commit: "3".repeat(40),
       landrun_commit: "4".repeat(40),
-      nanoda_commit: "9".repeat(40),
       verified_at: "2026-07-29T08:46:32Z",
       workflow_url: "https://github.com/PalomarRegistry/PalomarSubmission/actions/runs/12345",
       challenge_sha256: DIGEST,
@@ -343,6 +345,7 @@ test("schema v5 requires content-addressed durable verification evidence", () =>
     detected_identifier: "Apache-2.0",
   };
   Object.assign(valid.verification, {
+    nanoda_commit: "9".repeat(40),
     workflow_commit: "8".repeat(40),
     workflow_run_attempt: 1,
     evidence_tree_sha256: evidenceTree,
@@ -409,6 +412,7 @@ test("schema v6 accepts and canonically links a nested project and path dependen
     ],
   });
   Object.assign(valid.verification, {
+    nanoda_commit: "9".repeat(40),
     workflow_commit: "8".repeat(40),
     workflow_run_attempt: 1,
     evidence_tree_sha256: evidenceTree,
@@ -460,6 +464,7 @@ test("schema v6 keeps the repository-root layout as the natural default", () => 
   };
   valid.formalization.lakefile_path = "lakefile.toml";
   Object.assign(valid.verification, {
+    nanoda_commit: "9".repeat(40),
     workflow_commit: "8".repeat(40),
     workflow_run_attempt: 1,
     evidence_tree_sha256: evidenceTree,
@@ -551,55 +556,119 @@ test("unsafe source paths and malformed displayed digests fail closed", () => {
 });
 
 test("provenance the submitter never declared is displayable", () => {
-  // Schemas v5 and v6 allow "unspecified" for records published before
-  // provenance intake existed. This validator did not, which left the only
-  // published entry, and therefore the whole registry listing, unloadable.
-  const legacy = entry({
-    schema_version: 5,
-    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-    provenance: {
-      declared: {
-        result_origin: false,
-        repository_role: false,
-        responsible_maintainers: false,
+  // Schemas v5 and v6 allow "unspecified", a `declared` map, and an empty
+  // maintainer list, for records published before provenance intake existed.
+  // This validator did not, which left the only published entry, and
+  // therefore the whole registry listing, unloadable.
+  const legacy = (schema_version) => {
+    const value = entry({
+      schema_version,
+      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+      provenance: {
+        declared: {
+          result_origin: false,
+          repository_role: false,
+          responsible_maintainers: false,
+        },
+        result_origin: "unspecified",
+        repository_role: "unspecified",
+        responsible_maintainers: [],
+        mathematical_sources: [],
+        related_formalizations: [],
       },
-      result_origin: "unspecified",
-      repository_role: "unspecified",
-      responsible_maintainers: [],
-      mathematical_sources: [],
-      related_formalizations: [],
-    },
-  });
-  legacy.submission.authorization = { relationship: "legacy-unspecified" };
-  legacy.verification.nanoda_commit = "9".repeat(40);
-  legacy.source.license = {
-    path: "LICENSE", sha256: DIGEST,
-    declared_identifier: "Apache-2.0", detected_identifier: "Apache-2.0",
+    });
+    value.submission.authorization = { relationship: "legacy-unspecified" };
+    value.source.license = {
+      path: "LICENSE", sha256: DIGEST,
+      declared_identifier: "Apache-2.0", detected_identifier: "Apache-2.0",
+    };
+    const evidenceTree = "c".repeat(64);
+    Object.assign(value.verification, {
+      nanoda_commit: "9".repeat(40),
+      workflow_commit: "8".repeat(40),
+      workflow_run_attempt: 1,
+      evidence_tree_sha256: evidenceTree,
+      mechanical_report_sha256: "d".repeat(64),
+      evidence_path: `evidence/${value.id}-v${value.version}/${evidenceTree}/`,
+    });
+    if (schema_version === 6) value.formalization.lakefile_path = "lakefile.toml";
+    return value;
   };
-  const evidenceTree = "c".repeat(64);
-  Object.assign(legacy.verification, {
-    workflow_commit: "8".repeat(40),
-    workflow_run_attempt: 1,
-    evidence_tree_sha256: evidenceTree,
-    mechanical_report_sha256: "d".repeat(64),
-    evidence_path: `evidence/${legacy.id}-v${legacy.version}/${evidenceTree}/`,
-  });
-  assert.doesNotThrow(() => validateEntry(legacy, summary()));
 
-  // A record that does claim to have declared them still must.
-  const claimed = structuredClone(legacy);
-  claimed.provenance.declared.responsible_maintainers = true;
-  assert.throws(
-    () => validateEntry(claimed, summary()),
-    /responsible_maintainers must not be empty/,
-  );
+  for (const version of [5, 6]) {
+    assert.doesNotThrow(() => validateEntry(legacy(version), summary()));
+  }
 
-  // An unrecognised value is still an unrecognised value.
-  const nonsense = structuredClone(legacy);
+  // The schemas place no minimum on maintainers for v5 and v6, so neither may
+  // this. Inventing a stricter rule here is how the outage happened.
+  const undeclaredFlagButEmpty = legacy(5);
+  undeclaredFlagButEmpty.provenance.declared.responsible_maintainers = true;
+  assert.doesNotThrow(() => validateEntry(undeclaredFlagButEmpty, summary()));
+
+  // An unrecognised value is still unrecognised.
+  const nonsense = legacy(5);
   nonsense.provenance.result_origin = "invented";
   assert.throws(() => validateEntry(nonsense, summary()), /result_origin is not recognized/);
+
+  // `declared` must be a well-formed object of booleans, and must not be
+  // satisfiable through the prototype chain.
+  for (const bad of [null, "yes", 42, [], { result_origin: false }]) {
+    const malformed = legacy(5);
+    malformed.provenance.declared = bad;
+    assert.throws(() => validateEntry(malformed, summary()));
+  }
+  const inherited = legacy(5);
+  inherited.provenance.declared = Object.create({
+    result_origin: false, repository_role: false, responsible_maintainers: false,
+  });
+  assert.throws(() => validateEntry(inherited, summary()), /must be a boolean/);
 });
 
+test("schema v4 gets none of the undeclared-provenance allowances", () => {
+  // Schema v4 permits neither "unspecified" nor `declared`, and requires a
+  // maintainer. Relaxing the client for v5 must not quietly relax v4 too.
+  const v4 = () => {
+    const value = entry({
+      schema_version: 4,
+      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+      provenance: {
+        result_origin: "original",
+        repository_role: "substantive-development",
+        responsible_maintainers: [{ name: "Example" }],
+        mathematical_sources: [],
+        related_formalizations: [],
+      },
+    });
+    value.submission.authorization = { relationship: "maintainer" };
+    value.verification.nanoda_commit = "9".repeat(40);
+    return value;
+  };
+  assert.doesNotThrow(() => validateEntry(v4(), summary()));
+
+  const unspecifiedOrigin = v4();
+  unspecifiedOrigin.provenance.result_origin = "unspecified";
+  assert.throws(() => validateEntry(unspecifiedOrigin, summary()), /result_origin is not recognized/);
+
+  const unspecifiedRole = v4();
+  unspecifiedRole.provenance.repository_role = "unspecified";
+  assert.throws(() => validateEntry(unspecifiedRole, summary()), /repository_role is not recognized/);
+
+  const declaredMap = v4();
+  declaredMap.provenance.declared = { responsible_maintainers: false };
+  assert.throws(() => validateEntry(declaredMap, summary()), /declared is not permitted/);
+
+  const noMaintainers = v4();
+  noMaintainers.provenance.responsible_maintainers = [];
+  assert.throws(() => validateEntry(noMaintainers, summary()), /must not be empty/);
+});
+
+test("a pre-v4 record may not carry a NanoDa pin", () => {
+  // Schemas v2 and v3 set additionalProperties false and define no such field,
+  // so accepting one would be looser than the schema rather than stricter.
+  const stray = entry();
+  stray.verification.nanoda_commit = "9".repeat(40);
+  assert.throws(() => validateEntry(stray, summary()), /not permitted by this entry schema/);
+});
 test("every HTML entry point carries the restrictive CSP", async () => {
   for (const name of htmlFiles) {
     const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
@@ -676,4 +745,41 @@ test("submission, run, and report links must name the same repository", () => {
   mixed.review.report_url =
     "https://github.com/kim-em/PalomarSubmission/issues/123#issuecomment-456";
   assert.throws(() => validateEntry(mixed, summary()), /review.report_url is not a canonical/);
+});
+
+
+test("every provenance value the schemas allow has an explicit label", async () => {
+  // The renderer used a binary fallback, so "unspecified" was displayed as
+  // "Substantive formalization development": a positive claim nobody made.
+  // Anything the validator accepts must have a label of its own, and only
+  // "unspecified" may read as unstated.
+  // The authoritative schemas live in PalomarDatabase. CI checks it out and
+  // sets PALOMAR_DATABASE_CHECKOUT; locally a sibling clone is assumed. This
+  // test exists because the site drifting from the schema is what took the
+  // registry down, so an unavailable schema is a failure, not a skip.
+  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
+    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const schema = JSON.parse(
+    await readFile(new URL("schema-v6.json", `file://${checkout}/`), "utf8"),
+  );
+  const provenance = schema.properties.provenance.properties;
+  const cases = [
+    ["result_origin", RESULT_ORIGIN_LABELS],
+    ["repository_role", REPOSITORY_ROLE_LABELS],
+  ];
+  for (const [field, labels] of cases) {
+    const allowed = provenance[field].enum;
+    assert.deepStrictEqual(
+      Object.keys(labels).sort(),
+      [...allowed].sort(),
+      `${field} labels must cover exactly the schema's values`,
+    );
+    for (const value of allowed) {
+      assert.strictEqual(
+        labels[value] === UNSTATED_PROVENANCE,
+        value === "unspecified",
+        `${field} "${value}" is labelled as the wrong kind of claim`,
+      );
+    }
+  }
 });
