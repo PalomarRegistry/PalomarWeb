@@ -21,6 +21,9 @@ import {
   validateIndex,
 } from "../assets/security.mjs";
 
+// The website's own origin, for the cross-origin assertion below.
+const CANONICAL_WEB_BASE_FOR_TEST = "https://palomarregistry.github.io/PalomarWeb/";
+
 const COMMIT = "1".repeat(40);
 const DIGEST = "a".repeat(64);
 
@@ -124,7 +127,7 @@ test("production ignores every database query override", () => {
   ]) {
     assert.equal(
       selectDatabaseUrl(
-        "https://palomarregistry.github.io/PalomarWeb/",
+        "https://data.palomar-registry.org/PalomarWeb/",
         `?database=${encodeURIComponent(override)}`,
       ).href,
       DEFAULT_DATABASE,
@@ -135,7 +138,7 @@ test("production ignores every database query override", () => {
 test("production also pins the rendered-Challenge origin", () => {
   assert.equal(
     selectRenderBase(
-      "https://palomarregistry.github.io/PalomarWeb/",
+      "https://data.palomar-registry.org/PalomarWeb/",
       "?render-base=https://attacker.invalid/",
       "https://attacker.invalid/database/",
     ).href,
@@ -530,9 +533,26 @@ test("every HTML entry point carries the restrictive CSP", async () => {
     assert.match(html, /Content-Security-Policy/);
     assert.match(html, /default-src 'none'/);
     assert.match(html, /script-src 'self'/);
-    assert.match(html, /frame-src 'self' https:\/\/palomarregistry\.github\.io/);
+    assert.match(html, /frame-src 'self' https:\/\/data\.palomar-registry\.org/);
+    // The render origin is fetched as well as framed: app.js reads
+    // challenge-metadata.json from it. While the site and the renders shared
+    // an origin, connect-src 'self' covered that silently. It does not now,
+    // and omitting it fails only in the browser console.
+    assert.match(
+      html,
+      /connect-src 'self' https:\/\/raw\.githubusercontent\.com https:\/\/data\.palomar-registry\.org/,
+    );
     assert.match(html, /object-src 'none'/);
   }
+});
+
+test("the render origin is a different origin from the site", () => {
+  // The iframe sandbox omits allow-same-origin, but that should not be the
+  // only thing separating a submitter's rendered output from the registry.
+  const site = new URL(CANONICAL_WEB_BASE_FOR_TEST);
+  const renders = new URL(DEFAULT_RENDER_BASE);
+  assert.notStrictEqual(renders.origin, site.origin);
+  assert.strictEqual(renders.protocol, "https:");
 });
 
 test("About states the repository licence boundary", async () => {

@@ -48,8 +48,8 @@ test("inline policy includes both size limits and exactly one declaration", () =
 
 test("artifact URL is derived only from the content-addressed registry fields", () => {
   assert.equal(
-    challengeArtifactUrl(entry(), "https://palomarregistry.github.io/PalomarDatabase/").href,
-    `https://palomarregistry.github.io/PalomarDatabase/renders/PALOMAR-2026-07-29-000123-v1/${"a".repeat(64)}/Challenge/index.html`,
+    challengeArtifactUrl(entry(), "https://data.palomar-registry.org/").href,
+    `https://data.palomar-registry.org/renders/PALOMAR-2026-07-29-000123-v1/${"a".repeat(64)}/Challenge/index.html`,
   );
   const traversal = entry();
   traversal.challenge_render.artifact_path = "renders/../../attacker/";
@@ -58,8 +58,8 @@ test("artifact URL is derived only from the content-addressed registry fields", 
 
 test("artifact metadata URL stays inside the content-addressed bundle", () => {
   assert.equal(
-    challengeMetadataUrl(entry(), "https://palomarregistry.github.io/PalomarDatabase/").href,
-    `https://palomarregistry.github.io/PalomarDatabase/renders/PALOMAR-2026-07-29-000123-v1/${"a".repeat(64)}/challenge-metadata.json`,
+    challengeMetadataUrl(entry(), "https://data.palomar-registry.org/").href,
+    `https://data.palomar-registry.org/renders/PALOMAR-2026-07-29-000123-v1/${"a".repeat(64)}/challenge-metadata.json`,
   );
 });
 
