@@ -218,7 +218,7 @@ test("a single current version has no supersession treatment", async ({ page }) 
   await expect(page.locator("#version-history li")).toHaveCount(1);
 });
 
-test("schema v5 entries display repository licence evidence and its boundary", async ({ page }) => {
+test("entries display repository licence evidence and its boundary", async ({ page }) => {
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`,
   );
@@ -332,7 +332,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".acceptance-callout")).toContainText("AI-mediated review");
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
   await expect(page.getByText("Verification workflow commit")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Editorial evidence" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Archived editorial review" })).toBeVisible();
   await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean" }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Answer.lean`,

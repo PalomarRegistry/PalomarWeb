@@ -8,18 +8,15 @@ import {
   databaseBaseFor,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
-  UNSTATED_PROVENANCE,
   entryRecordUrl,
   isLoopbackHostname,
   pinnedSourceDirectoryUrl,
   pinnedSourceFileUrl,
-  reportIssueNumber,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
   selectDatabaseUrl,
   selectRenderBase,
-  supportsProjectPaths,
   validateEntry,
   validateIndex,
   workflowRunId,
@@ -163,7 +160,7 @@ function entryCard(entry, versionCount) {
     authorNames(entry),
     theoremNames(entry),
     entry.source.repository,
-    supportsProjectPaths(entry) ? entry.source.project_path || "" : "",
+    entry.source.project_path || "",
     entry.id,
     ...categories.arxiv,
     ...categories.msc2020,
@@ -187,7 +184,7 @@ function entryCard(entry, versionCount) {
   const subjects = el("div", "card-subjects");
   subjects.append(el("small", "", "Subjects"), categoryTokens(entry));
   meta.append(authors, theorems, subjects);
-  if (supportsProjectPaths(entry) && entry.source.project_path) {
+  if (entry.source.project_path) {
     const project = el("div", "card-project");
     project.append(
       el("small", "", "Project directory"),
@@ -638,21 +635,17 @@ function acceptanceCallout(entry) {
   check.setAttribute("aria-hidden", "true");
   const copy = el("div");
   const evidenceLinks = el("p", "certificate-evidence-links");
-  if (entry.schema_version >= 5) {
-    evidenceLinks.append(
-      externalLink(
-        "Archived mechanical report",
-        `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}mechanical-report.json`,
-      ),
-      " · ",
-    );
-  } else {
-    evidenceLinks.append(
-      externalLink("Mechanical evidence", entry.verification.workflow_url),
-      " · ",
-    );
-  }
-  evidenceLinks.append(externalLink("Editorial evidence", entry.review.report_url));
+  evidenceLinks.append(
+    externalLink(
+      "Archived mechanical report",
+      `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}mechanical-report.json`,
+    ),
+    " · ",
+    externalLink(
+      "Archived editorial review",
+      `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}review.json`,
+    ),
+  );
   copy.append(
     el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
     el(
@@ -719,20 +712,17 @@ function provenanceSection(entry) {
 
   const details = el("dl", "details provenance-details");
   details.append(
-    detailRow("Result origin", RESULT_ORIGIN_LABELS[provenance.result_origin] ?? UNSTATED_PROVENANCE),
-    detailRow("Repository role", REPOSITORY_ROLE_LABELS[provenance.repository_role] ?? UNSTATED_PROVENANCE),
+    detailRow("Result origin", RESULT_ORIGIN_LABELS[provenance.result_origin]),
+    detailRow("Repository role", REPOSITORY_ROLE_LABELS[provenance.repository_role]),
     detailRow(
       "Responsible maintainers",
-      provenance.responsible_maintainers.length
-        ? provenance.responsible_maintainers.map((person) => person.name).join(", ")
-        : UNSTATED_PROVENANCE,
+      provenance.responsible_maintainers.map((person) => person.name).join(", "),
     ),
     detailRow(
       "Submission basis",
       {
         maintainer: "Submitted by a responsible author or maintainer",
         approved: "Submitted with approval from a responsible author or maintainer",
-        "legacy-unspecified": "Not recorded by the earlier submission form",
       }[entry.submission.authorization.relationship],
     ),
   );
@@ -840,7 +830,7 @@ function solutionMetadata(entry, renderMetadata) {
   const list = el("ul", "dependency-list");
   for (const dependency of dependencies) {
     const item = el("li");
-    if (supportsProjectPaths(entry) && dependency.path !== undefined) {
+    if (dependency.path !== undefined) {
       item.append(
         externalLink(
           dependency.name,
@@ -901,7 +891,7 @@ async function renderEntry(
     ),
     externalDetailRow(
       "Project directory",
-      supportsProjectPaths(entry) ? entry.source.project_path || "Repository root" : "Repository root",
+      entry.source.project_path || "Repository root",
       entry.source.tree_url,
     ),
     externalDetailRow(
@@ -932,7 +922,7 @@ async function renderEntry(
       entry.verification.workflow_url,
     ),
   );
-  if (supportsProjectPaths(entry)) {
+  {
     details.append(
       externalDetailRow(
         "Lakefile",
@@ -942,7 +932,7 @@ async function renderEntry(
     );
   }
   details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
-  if (entry.schema_version >= 5) {
+  {
     details.append(
       externalDetailRow(
         "Durable verification report",
@@ -962,7 +952,7 @@ async function renderEntry(
     );
   }
   evidence.append(details);
-  if (entry.schema_version >= 5) {
+  {
     evidence.append(
       el(
         "p",
@@ -1029,8 +1019,8 @@ async function renderEntry(
   }
   editorial.append(
     externalLink(
-      `Read the review on submission #${reportIssueNumber(entry.review.report_url)}`,
-      entry.review.report_url,
+      "Read the archived review",
+      `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}review.json`,
     ),
   );
 
@@ -1051,7 +1041,7 @@ async function renderEntry(
     versionHistory(entry, versions, currentVersion),
     classificationSection(entry, currentVersion),
   );
-  if (entry.schema_version >= 4) content.append(provenanceSection(entry));
+  content.append(provenanceSection(entry));
   content.append(
     challenge.section,
     evidence,

@@ -6,11 +6,11 @@ import { htmlFiles } from "../scripts/build-site.mjs";
 
 import {
   DEFAULT_DATABASE,
+  ENTRY_SCHEMA_VERSION,
   DEFAULT_RENDER_BASE,
   databaseBaseFor,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
-  UNSTATED_PROVENANCE,
   entryRecordUrl,
   isLoopbackHostname,
   pinnedSourceDirectoryUrl,
@@ -46,8 +46,9 @@ function index(entries = [summary()], overrides = {}) {
 }
 
 function entry(overrides = {}) {
+  const evidenceTree = "c".repeat(64);
   const value = {
-    schema_version: 2,
+    schema_version: 1,
     id: "PALOMAR-2026-07-29-000123",
     accepted_at: "2026-07-29",
     version: 1,
@@ -55,23 +56,36 @@ function entry(overrides = {}) {
     title: "Fixture theorem",
     abstract: "A security fixture.",
     authors: [{ name: "Example" }],
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
     submission: {
-      repository: "PalomarRegistry/PalomarSubmission",
-      issue: 123,
-      url: "https://github.com/PalomarRegistry/PalomarSubmission/issues/123",
-      submitter: "example",
+      submission_id: "a1b2c3d4e5f6",
+      authorization: { relationship: "maintainer" },
+    },
+    provenance: {
+      result_origin: "original",
+      repository_role: "substantive-development",
+      responsible_maintainers: [{ name: "Example" }],
+      mathematical_sources: [],
+      related_formalizations: [],
     },
     source: {
       repository: "example/challenge",
       repository_url: "https://github.com/example/challenge",
       commit: COMMIT,
       tree_url: `https://github.com/example/challenge/tree/${COMMIT}`,
+      license: {
+        path: "LICENSE",
+        sha256: DIGEST,
+        declared_identifier: "Apache-2.0",
+        detected_identifier: "Apache-2.0",
+      },
     },
     formalization: {
       challenge_path: "Challenge.lean",
       solution_path: "Solution.lean",
       comparator_config_path: "comparator.json",
       formalization_metadata_path: "formalization.yaml",
+      lakefile_path: "lakefile.toml",
       lean_toolchain: "leanprover/lean4:v4.31.0",
       theorem_names: ["Example.theorem"],
       definition_names: [],
@@ -81,13 +95,22 @@ function entry(overrides = {}) {
       ],
     },
     verification: {
+      repository: "PalomarRegistry/PalomarSubmission",
+      run_id: 12345,
+      workflow_path: ".github/workflows/submission.yml",
       comparator_commit: "2".repeat(40),
       lean4export_commit: "3".repeat(40),
       landrun_commit: "4".repeat(40),
+      nanoda_commit: "9".repeat(40),
       verified_at: "2026-07-29T08:46:32Z",
       workflow_url: "https://github.com/PalomarRegistry/PalomarSubmission/actions/runs/12345",
+      workflow_commit: "8".repeat(40),
+      workflow_run_attempt: 1,
       challenge_sha256: DIGEST,
       solution_sha256: "b".repeat(64),
+      evidence_tree_sha256: evidenceTree,
+      mechanical_report_sha256: "d".repeat(64),
+      evidence_path: `evidence/PALOMAR-2026-07-29-000123-v1/${evidenceTree}/`,
     },
     trust: {
       level: "high",
@@ -101,8 +124,7 @@ function entry(overrides = {}) {
       reviewed_at: "2026-07-29T08:53:02Z",
       policy_commit: "5".repeat(40),
       verdict: "accept",
-      report_url:
-        "https://github.com/PalomarRegistry/PalomarSubmission/issues/123#issuecomment-456",
+      report: { sha256: "e".repeat(64) },
       scores: { clarity: 5 },
       reviewer_models: ["fixture:model"],
       warnings: [],
@@ -258,7 +280,7 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 7 }), summary()), /unsupported entry/);
+  assert.throws(() => validateEntry(entry({ schema_version: 2 }), summary()), /unsupported entry/);
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";
@@ -273,239 +295,61 @@ test("entry schema, acceptance state, verdict, and selected identity fail closed
   );
 });
 
-test("schema v3 classification is required and strictly shaped", () => {
-  const valid = entry({
-    schema_version: 3,
-    classification: { arxiv: ["math.CO", "cs.DM"], msc2020: ["05C10"] },
-  });
-  assert.doesNotThrow(() => validateEntry(valid, summary()));
-
-  assert.throws(
-    () => validateEntry(entry({ schema_version: 3 }), summary()),
-    /classification must be an object/,
-  );
-  const malformed = entry({
-    schema_version: 3,
-    classification: { arxiv: ["math.NOT REAL"], msc2020: ["05C10"] },
-  });
-  assert.throws(() => validateEntry(malformed, summary()), /malformed code/);
-});
-
-test("schema v4 requires explicit provenance and submission authorization", () => {
-  const valid = entry({
-    schema_version: 4,
-    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-    provenance: {
-      result_origin: "original",
-      repository_role: "substantive-development",
-      responsible_maintainers: [{ name: "Example" }],
-      mathematical_sources: [],
-      related_formalizations: [],
-    },
-  });
-  valid.submission.authorization = { relationship: "maintainer" };
-  valid.verification.nanoda_commit = "9".repeat(40);
-  assert.doesNotThrow(() => validateEntry(valid, summary()));
-
-  const sourceBasedWithoutSource = structuredClone(valid);
-  sourceBasedWithoutSource.provenance.result_origin = "source-based";
-  assert.throws(
-    () => validateEntry(sourceBasedWithoutSource, summary()),
-    /lacks a substantive mathematical source/,
-  );
-
-  const wrapperWithoutTarget = structuredClone(valid);
-  wrapperWithoutTarget.provenance.repository_role = "thin-wrapper";
-  assert.throws(
-    () => validateEntry(wrapperWithoutTarget, summary()),
-    /substantive_formalization must be an object/,
-  );
-
-});
-
-test("schema v5 requires content-addressed durable verification evidence", () => {
-  const evidenceTree = "c".repeat(64);
-  const valid = entry({
-    schema_version: 5,
-    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-    provenance: {
-      result_origin: "original",
-      repository_role: "substantive-development",
-      responsible_maintainers: [{ name: "Example" }],
-      mathematical_sources: [],
-      related_formalizations: [],
-    },
-  });
-  valid.submission.authorization = { relationship: "maintainer" };
-  valid.verification.nanoda_commit = "9".repeat(40);
-  valid.source.license = {
-    path: "LICENSE",
-    sha256: DIGEST,
-    declared_identifier: "Apache-2.0",
-    detected_identifier: "Apache-2.0",
-  };
-  Object.assign(valid.verification, {
-    nanoda_commit: "9".repeat(40),
-    workflow_commit: "8".repeat(40),
-    workflow_run_attempt: 1,
-    evidence_tree_sha256: evidenceTree,
-    mechanical_report_sha256: "d".repeat(64),
-    evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
-  });
-  assert.doesNotThrow(() => validateEntry(valid, summary()));
-
-  const disagreement = structuredClone(valid);
-  disagreement.source.license.detected_identifier = "MIT";
-  assert.throws(() => validateEntry(disagreement, summary()), /identifiers disagree/);
-
-  const nestedLicense = structuredClone(valid);
-  nestedLicense.source.license.path = "licenses/LICENSE";
-  assert.throws(() => validateEntry(nestedLicense, summary()), /conventional root/);
-
-  const badLicenseDigest = structuredClone(valid);
-  badLicenseDigest.source.license.sha256 = "not a digest";
-  assert.throws(() => validateEntry(badLicenseDigest, summary()), /not a SHA-256/);
-
-  const traversal = structuredClone(valid);
-  traversal.verification.evidence_path = "../mechanical-report.json/";
-  assert.throws(() => validateEntry(traversal, summary()), /not a safe relative path/);
-
-  const wrongAddress = structuredClone(valid);
-  wrongAddress.verification.evidence_path =
-    `evidence/${valid.id}-v${valid.version}/${"e".repeat(64)}/`;
-  assert.throws(() => validateEntry(wrongAddress, summary()), /evidence_path must be/);
-});
-
-test("schema v6 accepts and canonically links a nested project and path dependency", () => {
-  const evidenceTree = "c".repeat(64);
-  const projectPath = "examples/Sharp Smoothing";
-  const valid = entry({
-    schema_version: 6,
-    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-    provenance: {
-      result_origin: "original",
-      repository_role: "substantive-development",
-      responsible_maintainers: [{ name: "Example" }],
-      mathematical_sources: [],
-      related_formalizations: [],
-    },
-  });
-  valid.submission.authorization = { relationship: "maintainer" };
-  valid.source.project_path = projectPath;
-  valid.source.tree_url =
-    `https://github.com/example/challenge/tree/${COMMIT}/examples/Sharp%20Smoothing`;
-  valid.source.license = {
-    path: "LICENSE",
-    sha256: DIGEST,
-    declared_identifier: "Apache-2.0",
-    detected_identifier: "Apache-2.0",
-  };
-  Object.assign(valid.formalization, {
-    challenge_path: `${projectPath}/Comparator/Task.lean`,
-    solution_path: `${projectPath}/Comparator/Answer.lean`,
-    comparator_config_path: `${projectPath}/Comparator/settings.json`,
-    formalization_metadata_path: `${projectPath}/formalization.yaml`,
-    lakefile_path: `${projectPath}/lakefile.lean`,
-    project_dependencies: [
-      { name: "local", path: "." },
-      { name: "mathlib", repository: "leanprover-community/mathlib4", revision: COMMIT },
-    ],
-  });
-  Object.assign(valid.verification, {
-    nanoda_commit: "9".repeat(40),
-    workflow_commit: "8".repeat(40),
-    workflow_run_attempt: 1,
-    evidence_tree_sha256: evidenceTree,
-    mechanical_report_sha256: "d".repeat(64),
-    evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
-  });
-  assert.doesNotThrow(() => validateEntry(valid, summary()));
-  assert.equal(
-    pinnedSourceFileUrl(valid, valid.formalization.challenge_path).href,
-    `https://github.com/example/challenge/blob/${COMMIT}/examples/Sharp%20Smoothing/Comparator/Task.lean`,
-  );
-  assert.equal(
-    pinnedSourceDirectoryUrl(valid, ".").href,
-    `https://github.com/example/challenge/tree/${COMMIT}`,
-  );
-
-  const wrongTree = structuredClone(valid);
-  wrongTree.source.tree_url = `https://github.com/example/challenge/tree/${COMMIT}`;
-  assert.throws(() => validateEntry(wrongTree, summary()), /tree_url is not derived/);
-
-  const escape = structuredClone(valid);
-  escape.formalization.project_dependencies[0].path = "../outside";
-  assert.throws(() => validateEntry(escape, summary()), /not a safe relative path/);
-
-  const misplacedLakefile = structuredClone(valid);
-  misplacedLakefile.formalization.lakefile_path = `${projectPath}/nested/lakefile.toml`;
-  assert.throws(() => validateEntry(misplacedLakefile, summary()), /selected project's Lakefile/);
-});
-
-test("schema v6 keeps the repository-root layout as the natural default", () => {
-  const evidenceTree = "c".repeat(64);
-  const valid = entry({
-    schema_version: 6,
-    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-    provenance: {
-      result_origin: "original",
-      repository_role: "substantive-development",
-      responsible_maintainers: [{ name: "Example" }],
-      mathematical_sources: [],
-      related_formalizations: [],
-    },
-  });
-  valid.submission.authorization = { relationship: "maintainer" };
-  valid.source.license = {
-    path: "LICENSE",
-    sha256: DIGEST,
-    declared_identifier: "Apache-2.0",
-    detected_identifier: "Apache-2.0",
-  };
-  valid.formalization.lakefile_path = "lakefile.toml";
-  Object.assign(valid.verification, {
-    nanoda_commit: "9".repeat(40),
-    workflow_commit: "8".repeat(40),
-    workflow_run_attempt: 1,
-    evidence_tree_sha256: evidenceTree,
-    mechanical_report_sha256: "d".repeat(64),
-    evidence_path: `evidence/${valid.id}-v${valid.version}/${evidenceTree}/`,
-  });
-  assert.doesNotThrow(() => validateEntry(valid, summary()));
-
-  const misplacedLakefile = structuredClone(valid);
-  misplacedLakefile.formalization.lakefile_path = "src/lakefile.toml";
-  assert.throws(() => validateEntry(misplacedLakefile, summary()), /selected project's Lakefile/);
-
-  const legacyWithProjectPath = entry();
-  legacyWithProjectPath.source.project_path = "project";
-  assert.throws(() => validateEntry(legacyWithProjectPath, summary()), /not supported/);
-});
-
 test("record evidence links must agree with their canonical values", () => {
   const wrongDate = entry({ accepted_at: "2026-07-30" });
   assert.throws(() => validateEntry(wrongDate, summary()), /ID date does not match/);
 
-  const wrongSubmission = entry();
-  wrongSubmission.submission.url =
-    "https://github.com/PalomarRegistry/PalomarSubmission/issues/999";
-  assert.throws(
-    () => validateEntry(wrongSubmission, summary()),
-    /submission evidence does not match/,
-  );
+  const wrongSubmissionId = entry();
+  wrongSubmissionId.submission.submission_id = "not-an-id";
+  assert.throws(() => validateEntry(wrongSubmissionId, summary()), /submission_id is malformed/);
 
   const wrongTree = entry();
   wrongTree.source.tree_url = `https://github.com/attacker/wrong/tree/${COMMIT}`;
   assert.throws(() => validateEntry(wrongTree, summary()), /tree_url is not derived/);
 
+  // The run URL is derived from the recorded repository and run id, so a link
+  // pointing anywhere else is a disagreement inside the record itself.
   const activeWorkflow = entry();
   activeWorkflow.verification.workflow_url = "javascript:alert(1)";
-  assert.throws(() => validateEntry(activeWorkflow, summary()), /workflow_url is not a canonical/);
+  assert.throws(() => validateEntry(activeWorkflow, summary()), /not derived from the recorded run/);
 
-  const wrongReview = entry();
-  wrongReview.review.report_url =
-    "https://github.com/PalomarRegistry/PalomarSubmission/issues/999#issuecomment-456";
-  assert.throws(() => validateEntry(wrongReview, summary()), /report_url is not a canonical/);
+  const foreignRun = entry();
+  foreignRun.verification.workflow_url =
+    "https://github.com/attacker/PalomarSubmission/actions/runs/12345";
+  assert.throws(() => validateEntry(foreignRun, summary()), /not derived from the recorded run/);
+
+  const foreignRepository = entry();
+  foreignRepository.verification.repository = "attacker/PalomarSubmission";
+  foreignRepository.verification.workflow_url =
+    "https://github.com/attacker/PalomarSubmission/actions/runs/12345";
+  assert.throws(
+    () => validateEntry(foreignRepository, summary()),
+    /not the Palomar verification repository/,
+  );
+
+  const relabelledRun = entry();
+  relabelledRun.verification.run_id = 99999;
+  assert.throws(() => validateEntry(relabelledRun, summary()), /not derived from the recorded run/);
+});
+
+test("a published record never carries the submitter", () => {
+  // Keeping the submitter private is the whole point of a private intake, and
+  // the schema has no field for one. A record that grew one is not displayed.
+  for (const field of ["submitter", "issue"]) {
+    const leaky = entry();
+    leaky.submission[field] = "example";
+    assert.throws(() => validateEntry(leaky, summary()), /a field this schema does not have/);
+  }
+});
+
+test("the archived review is cited by digest, not by a public link", () => {
+  const badDigest = entry();
+  badDigest.review.report = { sha256: "not a digest" };
+  assert.throws(() => validateEntry(badDigest, summary()), /report.sha256 is not a SHA-256/);
+
+  const activeSource = entry();
+  activeSource.review.report = { sha256: "e".repeat(64), source_url: "javascript:alert(1)" };
+  assert.throws(() => validateEntry(activeSource, summary()));
 });
 
 test("unsafe source paths and malformed displayed digests fail closed", () => {
@@ -517,158 +361,21 @@ test("unsafe source paths and malformed displayed digests fail closed", () => {
   badDigest.verification.challenge_sha256 = "not a digest";
   assert.throws(() => validateEntry(badDigest, summary()), /challenge_sha256 is not a SHA-256/);
 
-  // NanoDa verification arrived in schema v4, so the pin is demanded from v4
-  // onwards and must not be demanded of the records published before it.
-  const modern = () => {
-    const value = entry({
-      schema_version: 4,
-      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-      provenance: {
-        result_origin: "original",
-        repository_role: "substantive-development",
-        responsible_maintainers: [{ name: "Example" }],
-        mathematical_sources: [],
-        related_formalizations: [],
-      },
-    });
-    value.submission.authorization = { relationship: "maintainer" };
-    value.verification.nanoda_commit = "9".repeat(40);
-    return value;
-  };
-
-  const badNanodaPin = modern();
+  const badNanodaPin = entry();
   badNanodaPin.verification.nanoda_commit = "not a commit";
   assert.throws(
     () => validateEntry(badNanodaPin, summary()),
     /nanoda_commit is not a full lowercase commit/,
   );
 
-  const missingNanodaPin = modern();
+  const missingNanodaPin = entry();
   delete missingNanodaPin.verification.nanoda_commit;
   assert.throws(
     () => validateEntry(missingNanodaPin, summary()),
     /nanoda_commit is not a full lowercase commit/,
   );
-
-  const preNanoda = entry();
-  delete preNanoda.verification.nanoda_commit;
-  assert.doesNotThrow(() => validateEntry(preNanoda, summary()));
 });
 
-test("provenance the submitter never declared is displayable", () => {
-  // Schemas v5 and v6 allow "unspecified", a `declared` map, and an empty
-  // maintainer list, for records published before provenance intake existed.
-  // This validator did not, which left the only published entry, and
-  // therefore the whole registry listing, unloadable.
-  const legacy = (schema_version) => {
-    const value = entry({
-      schema_version,
-      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-      provenance: {
-        declared: {
-          result_origin: false,
-          repository_role: false,
-          responsible_maintainers: false,
-        },
-        result_origin: "unspecified",
-        repository_role: "unspecified",
-        responsible_maintainers: [],
-        mathematical_sources: [],
-        related_formalizations: [],
-      },
-    });
-    value.submission.authorization = { relationship: "legacy-unspecified" };
-    value.source.license = {
-      path: "LICENSE", sha256: DIGEST,
-      declared_identifier: "Apache-2.0", detected_identifier: "Apache-2.0",
-    };
-    const evidenceTree = "c".repeat(64);
-    Object.assign(value.verification, {
-      nanoda_commit: "9".repeat(40),
-      workflow_commit: "8".repeat(40),
-      workflow_run_attempt: 1,
-      evidence_tree_sha256: evidenceTree,
-      mechanical_report_sha256: "d".repeat(64),
-      evidence_path: `evidence/${value.id}-v${value.version}/${evidenceTree}/`,
-    });
-    if (schema_version === 6) value.formalization.lakefile_path = "lakefile.toml";
-    return value;
-  };
-
-  for (const version of [5, 6]) {
-    assert.doesNotThrow(() => validateEntry(legacy(version), summary()));
-  }
-
-  // The schemas place no minimum on maintainers for v5 and v6, so neither may
-  // this. Inventing a stricter rule here is how the outage happened.
-  const undeclaredFlagButEmpty = legacy(5);
-  undeclaredFlagButEmpty.provenance.declared.responsible_maintainers = true;
-  assert.doesNotThrow(() => validateEntry(undeclaredFlagButEmpty, summary()));
-
-  // An unrecognised value is still unrecognised.
-  const nonsense = legacy(5);
-  nonsense.provenance.result_origin = "invented";
-  assert.throws(() => validateEntry(nonsense, summary()), /result_origin is not recognized/);
-
-  // `declared` must be a well-formed object of booleans, and must not be
-  // satisfiable through the prototype chain.
-  for (const bad of [null, "yes", 42, [], { result_origin: false }]) {
-    const malformed = legacy(5);
-    malformed.provenance.declared = bad;
-    assert.throws(() => validateEntry(malformed, summary()));
-  }
-  const inherited = legacy(5);
-  inherited.provenance.declared = Object.create({
-    result_origin: false, repository_role: false, responsible_maintainers: false,
-  });
-  assert.throws(() => validateEntry(inherited, summary()), /must be a boolean/);
-});
-
-test("schema v4 gets none of the undeclared-provenance allowances", () => {
-  // Schema v4 permits neither "unspecified" nor `declared`, and requires a
-  // maintainer. Relaxing the client for v5 must not quietly relax v4 too.
-  const v4 = () => {
-    const value = entry({
-      schema_version: 4,
-      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
-      provenance: {
-        result_origin: "original",
-        repository_role: "substantive-development",
-        responsible_maintainers: [{ name: "Example" }],
-        mathematical_sources: [],
-        related_formalizations: [],
-      },
-    });
-    value.submission.authorization = { relationship: "maintainer" };
-    value.verification.nanoda_commit = "9".repeat(40);
-    return value;
-  };
-  assert.doesNotThrow(() => validateEntry(v4(), summary()));
-
-  const unspecifiedOrigin = v4();
-  unspecifiedOrigin.provenance.result_origin = "unspecified";
-  assert.throws(() => validateEntry(unspecifiedOrigin, summary()), /result_origin is not recognized/);
-
-  const unspecifiedRole = v4();
-  unspecifiedRole.provenance.repository_role = "unspecified";
-  assert.throws(() => validateEntry(unspecifiedRole, summary()), /repository_role is not recognized/);
-
-  const declaredMap = v4();
-  declaredMap.provenance.declared = { responsible_maintainers: false };
-  assert.throws(() => validateEntry(declaredMap, summary()), /declared is not permitted/);
-
-  const noMaintainers = v4();
-  noMaintainers.provenance.responsible_maintainers = [];
-  assert.throws(() => validateEntry(noMaintainers, summary()), /must not be empty/);
-});
-
-test("a pre-v4 record may not carry a NanoDa pin", () => {
-  // Schemas v2 and v3 set additionalProperties false and define no such field,
-  // so accepting one would be looser than the schema rather than stricter.
-  const stray = entry();
-  stray.verification.nanoda_commit = "9".repeat(40);
-  assert.throws(() => validateEntry(stray, summary()), /not permitted by this entry schema/);
-});
 test("every HTML entry point carries the restrictive CSP", async () => {
   for (const name of htmlFiles) {
     const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
@@ -705,81 +412,37 @@ test("About states the repository licence boundary", async () => {
   assert.match(about, /licence file remains at repository root/);
 });
 
-// Palomar moved to the PalomarRegistry organisation on 2026-08-04. Records
-// published before the move are immutable and name the old repository, so both
-// are canonical, and a record must still be internally consistent about which.
-
-function withSubmissionRepository(repository) {
-  return entry({
-    submission: {
-      repository,
-      issue: 123,
-      url: `https://github.com/${repository}/issues/123`,
-      submitter: "example",
-    },
-    verification: {
-      ...entry().verification,
-      workflow_url: `https://github.com/${repository}/actions/runs/12345`,
-    },
-    review: {
-      ...entry().review,
-      report_url: `https://github.com/${repository}/issues/123#issuecomment-456`,
-    },
-  });
-}
-
-test("a record published before the organisation move still validates", () => {
-  const historical = withSubmissionRepository("kim-em/PalomarSubmission");
-  assert.equal(validateEntry(historical, summary()).id, "PALOMAR-2026-07-29-000123");
-});
-
-test("an unknown submission repository is refused", () => {
-  assert.throws(
-    () => validateEntry(withSubmissionRepository("attacker/PalomarSubmission"), summary()),
-    /submission evidence does not match/,
-  );
-});
-
-test("submission, run, and report links must name the same repository", () => {
-  const mixed = withSubmissionRepository("PalomarRegistry/PalomarSubmission");
-  mixed.review.report_url =
-    "https://github.com/kim-em/PalomarSubmission/issues/123#issuecomment-456";
-  assert.throws(() => validateEntry(mixed, summary()), /review.report_url is not a canonical/);
-});
-
-
-test("every provenance value the schemas allow has an explicit label", async () => {
-  // The renderer used a binary fallback, so "unspecified" was displayed as
-  // "Substantive formalization development": a positive claim nobody made.
-  // Anything the validator accepts must have a label of its own, and only
-  // "unspecified" may read as unstated.
-  // The authoritative schemas live in PalomarDatabase. CI checks it out and
+test("every provenance value the schema allows has an explicit label", async () => {
+  // The renderer once used a binary fallback, so a value nobody stated was
+  // displayed as a positive claim about someone's work. Anything the
+  // validator accepts must have a label of its own.
+  // The authoritative schema lives in PalomarDatabase. CI checks it out and
   // sets PALOMAR_DATABASE_CHECKOUT; locally a sibling clone is assumed. This
   // test exists because the site drifting from the schema is what took the
   // registry down, so an unavailable schema is a failure, not a skip.
   const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
     ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
   const schema = JSON.parse(
-    await readFile(new URL("schema-v6.json", `file://${checkout}/`), "utf8"),
+    await readFile(new URL("schema-v1.json", `file://${checkout}/`), "utf8"),
   );
   const provenance = schema.properties.provenance.properties;
-  const cases = [
+  for (const [field, labels] of [
     ["result_origin", RESULT_ORIGIN_LABELS],
     ["repository_role", REPOSITORY_ROLE_LABELS],
-  ];
-  for (const [field, labels] of cases) {
-    const allowed = provenance[field].enum;
+  ]) {
     assert.deepStrictEqual(
       Object.keys(labels).sort(),
-      [...allowed].sort(),
+      [...provenance[field].enum].sort(),
       `${field} labels must cover exactly the schema's values`,
     );
-    for (const value of allowed) {
-      assert.strictEqual(
-        labels[value] === UNSTATED_PROVENANCE,
-        value === "unspecified",
-        `${field} "${value}" is labelled as the wrong kind of claim`,
-      );
-    }
   }
+});
+
+test("the site validates exactly the schema version the database publishes", async () => {
+  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
+    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const schema = JSON.parse(
+    await readFile(new URL("schema-v1.json", `file://${checkout}/`), "utf8"),
+  );
+  assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
 });

@@ -15,14 +15,15 @@ HASH = "a" * 64
 
 
 def entry(identifier: str, lines: int, version: int = 1) -> dict:
-    issue = int(identifier.rsplit("-", 1)[-1])
+    serial = int(identifier.rsplit("-", 1)[-1])
+    submission_id = f"{serial:012x}".replace("x", "0")
     classification = (
         {"arxiv": ["math.CO", "cs.DM"], "msc2020": ["05C10"]}
         if identifier.endswith("000123")
         else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
     )
     record = {
-        "schema_version": 5,
+        "schema_version": 1,
         "id": identifier,
         "accepted_at": "2026-07-29",
         "version": version,
@@ -39,10 +40,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "related_formalizations": [],
         },
         "submission": {
-            "repository": "PalomarRegistry/PalomarSubmission",
-            "issue": issue,
-            "url": f"https://github.com/PalomarRegistry/PalomarSubmission/issues/{issue}",
-            "submitter": "example",
+            "submission_id": submission_id,
             "authorization": {"relationship": "maintainer"},
         },
         "source": {
@@ -62,6 +60,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "solution_path": "Solution.lean",
             "comparator_config_path": "comparator.json",
             "formalization_metadata_path": "formalization.yaml",
+            "lakefile_path": "lakefile.toml",
             "theorem_names": ["Example.theorem"],
             "definition_names": [],
             "lean_toolchain": "leanprover/lean4:v4.31.0-rc2",
@@ -75,6 +74,9 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             ],
         },
         "verification": {
+            "repository": "PalomarRegistry/PalomarSubmission",
+            "run_id": 12345,
+            "workflow_path": ".github/workflows/submission.yml",
             "comparator_commit": "2" * 40,
             "lean4export_commit": "3" * 40,
             "landrun_commit": "4" * 40,
@@ -110,10 +112,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
                 "clarity": 5,
             },
             "warnings": [],
-            "report_url": (
-                "https://github.com/PalomarRegistry/PalomarSubmission/issues/"
-                f"{issue}#issuecomment-456"
-            ),
+            "report": {"sha256": "e" * 64},
         },
         "challenge_render": {
             "format": "verso-html",
@@ -128,7 +127,6 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
     }
     if identifier.endswith("000123"):
         project = "project"
-        record["schema_version"] = 6
         record["source"]["project_path"] = project
         record["source"]["tree_url"] += f"/{project}"
         record["formalization"].update(
