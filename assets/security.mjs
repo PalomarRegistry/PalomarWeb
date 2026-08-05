@@ -328,17 +328,28 @@ export function validateEntry(entry, summary) {
     }
 
     const provenance = object(entry.provenance, "entry.provenance");
-    if (!["original", "source-based"].includes(provenance.result_origin)) {
+    // Records published before provenance intake existed carry "unspecified"
+    // and a `declared` map saying which fields the submitter actually
+    // asserted. Schemas v5 and v6 both permit that; this validator did not,
+    // which made the only published entry undisplayable. Absence of `declared`
+    // is treated as "declared", so the strict path is the default.
+    const declared = (provenance.declared && typeof provenance.declared === "object")
+      ? provenance.declared
+      : {};
+    if (!["original", "source-based", "unspecified"].includes(provenance.result_origin)) {
       fail("entry.provenance.result_origin is not recognized");
     }
-    if (!["substantive-development", "thin-wrapper"].includes(provenance.repository_role)) {
+    if (!["substantive-development", "thin-wrapper", "unspecified"]
+        .includes(provenance.repository_role)) {
       fail("entry.provenance.repository_role is not recognized");
     }
     const maintainers = array(
       provenance.responsible_maintainers,
       "entry.provenance.responsible_maintainers",
     );
-    if (!maintainers.length) fail("entry.provenance.responsible_maintainers must not be empty");
+    if (declared.responsible_maintainers !== false && !maintainers.length) {
+      fail("entry.provenance.responsible_maintainers must not be empty");
+    }
     for (const [position, maintainer] of maintainers.entries()) {
       string(
         object(maintainer, `entry.provenance.responsible_maintainers[${position}]`).name,
@@ -488,7 +499,11 @@ export function validateEntry(entry, summary) {
   commit(verification.comparator_commit, "entry.verification.comparator_commit");
   commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
   commit(verification.landrun_commit, "entry.verification.landrun_commit");
-  commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  // NanoDa verification arrived in schema v4. Records published under v2 and
+  // v3 have no such field, and demanding it made them undisplayable.
+  if (entry.schema_version >= 4) {
+    commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  }
   digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
   digest(verification.solution_sha256, "entry.verification.solution_sha256");
   if (entry.schema_version >= 5) {

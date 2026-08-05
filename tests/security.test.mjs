@@ -512,19 +512,92 @@ test("unsafe source paths and malformed displayed digests fail closed", () => {
   badDigest.verification.challenge_sha256 = "not a digest";
   assert.throws(() => validateEntry(badDigest, summary()), /challenge_sha256 is not a SHA-256/);
 
-  const badNanodaPin = entry();
+  // NanoDa verification arrived in schema v4, so the pin is demanded from v4
+  // onwards and must not be demanded of the records published before it.
+  const modern = () => {
+    const value = entry({
+      schema_version: 4,
+      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+      provenance: {
+        result_origin: "original",
+        repository_role: "substantive-development",
+        responsible_maintainers: [{ name: "Example" }],
+        mathematical_sources: [],
+        related_formalizations: [],
+      },
+    });
+    value.submission.authorization = { relationship: "maintainer" };
+    value.verification.nanoda_commit = "9".repeat(40);
+    return value;
+  };
+
+  const badNanodaPin = modern();
   badNanodaPin.verification.nanoda_commit = "not a commit";
   assert.throws(
     () => validateEntry(badNanodaPin, summary()),
     /nanoda_commit is not a full lowercase commit/,
   );
 
-  const missingNanodaPin = structuredClone(badNanodaPin);
+  const missingNanodaPin = modern();
   delete missingNanodaPin.verification.nanoda_commit;
   assert.throws(
     () => validateEntry(missingNanodaPin, summary()),
     /nanoda_commit is not a full lowercase commit/,
   );
+
+  const preNanoda = entry();
+  delete preNanoda.verification.nanoda_commit;
+  assert.doesNotThrow(() => validateEntry(preNanoda, summary()));
+});
+
+test("provenance the submitter never declared is displayable", () => {
+  // Schemas v5 and v6 allow "unspecified" for records published before
+  // provenance intake existed. This validator did not, which left the only
+  // published entry, and therefore the whole registry listing, unloadable.
+  const legacy = entry({
+    schema_version: 5,
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+    provenance: {
+      declared: {
+        result_origin: false,
+        repository_role: false,
+        responsible_maintainers: false,
+      },
+      result_origin: "unspecified",
+      repository_role: "unspecified",
+      responsible_maintainers: [],
+      mathematical_sources: [],
+      related_formalizations: [],
+    },
+  });
+  legacy.submission.authorization = { relationship: "legacy-unspecified" };
+  legacy.verification.nanoda_commit = "9".repeat(40);
+  legacy.source.license = {
+    path: "LICENSE", sha256: DIGEST,
+    declared_identifier: "Apache-2.0", detected_identifier: "Apache-2.0",
+  };
+  const evidenceTree = "c".repeat(64);
+  Object.assign(legacy.verification, {
+    workflow_commit: "8".repeat(40),
+    workflow_run_attempt: 1,
+    evidence_tree_sha256: evidenceTree,
+    mechanical_report_sha256: "d".repeat(64),
+    evidence_path: `evidence/${legacy.id}-v${legacy.version}/${evidenceTree}/`,
+  });
+  assert.doesNotThrow(() => validateEntry(legacy, summary()));
+
+  // A record that does claim to have declared them still must.
+  const claimed = structuredClone(legacy);
+  claimed.provenance.declared.responsible_maintainers = true;
+  assert.throws(
+    () => validateEntry(claimed, summary()),
+    /responsible_maintainers must not be empty/,
+  );
+
+  // An unrecognised value is still an unrecognised value.
+  const nonsense = structuredClone(legacy);
+  nonsense.provenance.result_origin = "invented";
+  assert.throws(() => validateEntry(nonsense, summary()), /result_origin is not recognized/);
 });
 
 test("every HTML entry point carries the restrictive CSP", async () => {
