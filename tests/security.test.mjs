@@ -404,6 +404,19 @@ test("the render origin is a different origin from the site", () => {
   assert.strictEqual(renders.protocol, "https:");
 });
 
+test("every page sends submitters to the submission server", async () => {
+  // The issue form is gone. A link to it would send a submitter to a 404, and
+  // worse, would suggest submissions are still public by default.
+  for (const name of htmlFiles) {
+    const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
+    assert.doesNotMatch(html, /PalomarSubmission\/issues/, `${name} links to the deleted issue form`);
+  }
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  assert.match(about, /https:\/\/submit\.palomar-registry\.org\//);
+  assert.match(about, /Not public unless you publish/);
+  assert.match(about, /Nothing is published until you ask for it/);
+});
+
 test("About states the repository licence boundary", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
   assert.match(about, /root licence file, SPDX identifier, and checksum/);
