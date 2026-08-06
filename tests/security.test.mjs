@@ -459,3 +459,18 @@ test("the site validates exactly the schema version the database publishes", asy
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
 });
+
+test("the favicon ships with the site and every page asks for it", async () => {
+  // The build copies a fixed list, so an asset that is not on it is simply
+  // absent from the deployment however correct the markup is.
+  const build = await readFile(new URL("../scripts/build-site.mjs", import.meta.url), "utf8");
+  assert.match(build, /"favicon\.svg"/);
+  for (const name of htmlFiles) {
+    const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
+    assert.match(html, /rel="icon" href="favicon\.svg"/, `${name} does not ask for the favicon`);
+  }
+  const icon = await readFile(new URL("../favicon.svg", import.meta.url), "utf8");
+  // One flat colour per scheme, and nothing that a strict policy would refuse.
+  assert.match(icon, /prefers-color-scheme: dark/);
+  assert.doesNotMatch(icon, /<script|xlink:href|href="http/);
+});
