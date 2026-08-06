@@ -221,11 +221,16 @@ test("an entry answers its reader's first three questions first", async ({ page 
   expect(position("entry-trust")).toBeLessThan(position("entry-classification"));
   expect(position("entry-trust")).toBeLessThan(position("entry-provenance"));
 
-  // The dependencies are further down this page, not somewhere else. The
-  // dedicated render page does not carry them, and still links to the entry.
-  await expect(
-    page.locator(".challenge-links").getByRole("link", { name: "Inspect statement dependencies" }),
-  ).toHaveAttribute("href", /^[^?]*#statement-dependencies$/);
+  // The dependencies are further down this page, so following the link scrolls
+  // rather than loading anything. (The href is absolute either way, so what is
+  // worth asserting is where it lands.)
+  const before = page.url();
+  await page
+    .locator(".challenge-links")
+    .getByRole("link", { name: "Inspect statement dependencies" })
+    .click();
+  await expect(page.locator("#statement-dependencies")).toBeInViewport();
+  expect(page.url().split("#")[0]).toBe(before.split("#")[0]);
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
