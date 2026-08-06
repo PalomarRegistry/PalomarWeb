@@ -183,7 +183,17 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   );
   await expect(page.locator(".entry-classification")).toContainText("math.CO");
   await expect(page.locator(".entry-classification")).toContainText("05C10");
-  await expect(page.locator(".entry-classification").getByRole("link", { name: "RSS" })).toHaveCount(3);
+  // A classification is a way to find the neighbours, so the code itself is
+  // the link, and it goes to the entries that share it. The feeds it used to
+  // link to were never published, so every one of them was a 404.
+  await expect(page.locator(".entry-classification").getByRole("link", { name: "RSS" })).toHaveCount(0);
+  const mscLink = page.locator(".entry-classification .category-link", { hasText: "05C10" });
+  await expect(mscLink).toHaveAttribute("href", /index\.html\?msc=05C10/);
+  await expect(
+    page.locator(".entry-classification .category-link", { hasText: "math.CO" }),
+  ).toHaveAttribute("href", /index\.html\?arxiv=math\.CO/);
+  // And a code nobody can read is glossed with what it means.
+  await expect(mscLink).toHaveAttribute("title", /05C10 — .+/);
   await expect(page).toHaveURL(/entry\.html\?id=PALOMAR-2026-07-29-000123&version=2&database=/);
   await expect(page).toHaveURL(/#version-history$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -191,6 +201,39 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
     "href",
     "https://palomar-registry.org/entry.html?id=PALOMAR-2026-07-29-000123&version=2",
   );
+});
+
+test("an entry answers its reader's first three questions first", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator(".entry-evidence")).toBeVisible();
+
+  // What was checked, the statement it was checked about, and what that
+  // statement rests on. These used to be fifth, sixth and seventh, behind the
+  // version history and the subject classification.
+  const order = await page.evaluate(() =>
+    [...document.querySelectorAll("main section")]
+      .map((section) => section.className.split(" ")[0])
+      .filter(Boolean));
+  const position = (name) => order.indexOf(name);
+  expect(position("entry-evidence")).toBeGreaterThanOrEqual(0);
+  expect(position("entry-evidence")).toBeLessThan(position("challenge-presentation"));
+  expect(position("challenge-presentation")).toBeLessThan(position("entry-trust"));
+  expect(position("entry-trust")).toBeLessThan(position("entry-classification"));
+  expect(position("entry-trust")).toBeLessThan(position("entry-provenance"));
+
+  // The dependencies are further down this page, not somewhere else.
+  await expect(
+    page.locator(".challenge-links").getByRole("link", { name: "Inspect statement dependencies" }),
+  ).toHaveAttribute("href", /#statement-dependencies$/);
+});
+
+test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const rows = page.locator(".entry-provenance .provenance-details .detail-row dt");
+  const labels = await rows.allTextContents();
+  if (labels.includes("Substantive formalization")) {
+    expect(labels[0]).toBe("Substantive formalization");
+  }
 });
 
 test("entry pages list immutable versions and flag superseded snapshots", async ({ page }) => {

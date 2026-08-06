@@ -557,8 +557,9 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
   section.append(heading);
 
   const links = el("p", "challenge-links");
-  const dependencyRecordUrl = localPageUrl("entry.html", entry);
-  dependencyRecordUrl.hash = "statement-dependencies";
+  // Same page, a little further down. The old link rebuilt the entry URL from
+  // scratch, so following it looked like leaving for somewhere else.
+  const dependencyRecordUrl = new URL("#statement-dependencies", window.location.href);
   const comparatorPath = entry.formalization.comparator_config_path;
   const challengePath = entry.formalization.challenge_path;
   const challengeFilename = pathBasename(challengePath);
@@ -608,7 +609,7 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
       el(
         "p",
         "challenge-fallback",
-        "This older entry cannot display its statement on this page. Use the statement file link above.",
+        "The formatted statement is not available for this entry yet. Use the statement file link above; the pinned source is the record either way.",
       ),
     );
     return {section, metadata: null};
@@ -664,7 +665,35 @@ function acceptanceCallout(entry) {
   return callout;
 }
 
-function classificationSection(entry, currentVersion) {
+/**
+ * The MSC2020 descriptions, fetched once and only where they are shown.
+ *
+ * A code is not a subject: nobody reads 52C10 and thinks "Erdős problems in
+ * discrete geometry". The table is large enough that it is not worth loading
+ * for a page with no classification on it, and unimportant enough that a page
+ * whose fetch fails should still render.
+ */
+let mscDescriptions = null;
+
+async function mscGlossary() {
+  if (mscDescriptions) return mscDescriptions;
+  try {
+    const response = await fetch(new URL("assets/data/msc2020-codes.json", document.baseURI));
+    mscDescriptions = response.ok ? await response.json() : {};
+  } catch {
+    mscDescriptions = {};
+  }
+  return mscDescriptions;
+}
+
+/** Every other entry sharing a classification, which is what a code is for. */
+function classificationSearchUrl(scheme, code) {
+  const url = new URL("index.html", document.baseURI);
+  url.searchParams.set(scheme, code);
+  return url;
+}
+
+function classificationSection(entry) {
   const categories = classification(entry);
   const section = el("section", "entry-classification");
   const heading = el("div", "section-heading");
@@ -673,31 +702,44 @@ function classificationSection(entry, currentVersion) {
   heading.append(title);
   section.append(heading);
   const details = el("dl", "details classification-details");
-  const categoryRow = (label, values, feedType) => {
+  const glossed = [];
+
+  const categoryRow = (label, values, scheme) => {
     const row = el("div", "detail-row");
     row.append(el("dt", "", label));
-    const value = el("dd", "category-feed-list");
+    const value = el("dd", "category-list");
     for (const code of values) {
-      const item = el("span", "category-feed-item");
-      item.append(el("code", "", code));
-      if (entry.version === currentVersion) {
-        const feedUrl = new URL(
-          `${feedType}/${encodeURIComponent(code)}.xml`,
-          categoryFeedBase(),
-        );
-        item.append(" ", dataLink("RSS", feedUrl));
-      }
-      value.append(item);
+      // The code itself is the link: a reader who wants the other entries in
+      // a subject clicks the subject, rather than a separate word beside it.
+      const link = internalLink(code, classificationSearchUrl(scheme, code), "category-link");
+      link.append(el("span", "visually-hidden", ` — other entries classified ${code}`));
+      if (scheme === "msc") glossed.push({ code, link });
+      value.append(link);
     }
     if (!values.length) value.append(el("span", "unclassified", "Not recorded for this older entry"));
     row.append(value);
     return row;
   };
+
   details.append(
     categoryRow("arXiv subjects", categories.arxiv, "arxiv"),
     categoryRow("MSC2020", categories.msc2020, "msc"),
   );
   section.append(details);
+
+  // Asynchronous, and deliberately not awaited: a description is a courtesy,
+  // and the section is correct without one.
+  if (glossed.length) {
+    mscGlossary().then((table) => {
+      for (const { code, link } of glossed) {
+        const description = table[code];
+        if (!description) continue;
+        link.title = `${code} — ${description}`;
+        const gloss = el("span", "category-gloss", description);
+        link.after(gloss);
+      }
+    });
+  }
   return section;
 }
 
@@ -711,6 +753,19 @@ function provenanceSection(entry) {
   section.append(heading);
 
   const details = el("dl", "details provenance-details");
+  // Where the mathematics actually lives comes first. For a thin wrapper it is
+  // the only row here that points at the work being registered; it used to sit
+  // below the repository role that exists to announce it.
+  if (provenance.repository_role === "thin-wrapper") {
+    const substantive = provenance.substantive_formalization;
+    details.append(
+      externalDetailRow(
+        "Substantive formalization",
+        `${substantive.repository}@${substantive.commit.slice(0, 12)}`,
+        substantive.tree_url,
+      ),
+    );
+  }
   details.append(
     detailRow("Result origin", RESULT_ORIGIN_LABELS[provenance.result_origin]),
     detailRow("Repository role", REPOSITORY_ROLE_LABELS[provenance.repository_role]),
@@ -726,16 +781,6 @@ function provenanceSection(entry) {
       }[entry.submission.authorization.relationship],
     ),
   );
-  if (provenance.repository_role === "thin-wrapper") {
-    const substantive = provenance.substantive_formalization;
-    details.append(
-      externalDetailRow(
-        "Substantive formalization",
-        `${substantive.repository}@${substantive.commit.slice(0, 12)}`,
-        substantive.tree_url,
-      ),
-    );
-  }
   if (entry.submission.authorization.evidence) {
     details.append(detailRow("Authorization evidence", entry.submission.authorization.evidence));
   }
@@ -1037,17 +1082,19 @@ async function renderEntry(
   content.append(heading);
   const notice = versionNotice(entry, currentVersion);
   if (notice) content.append(notice);
+  // What was checked, then the statement it was checked about, then what that
+  // statement rests on. Those are the three questions a reader arrives with,
+  // and they used to be the fifth, sixth and seventh things on the page,
+  // behind the version history and the subject classification.
   content.append(
-    versionHistory(entry, versions, currentVersion),
-    classificationSection(entry, currentVersion),
-  );
-  content.append(provenanceSection(entry));
-  content.append(
-    challenge.section,
     evidence,
+    challenge.section,
     trust,
     solutionMetadata(entry, challenge.metadata),
+    provenanceSection(entry),
+    classificationSection(entry),
     editorial,
+    versionHistory(entry, versions, currentVersion),
     machine,
   );
 }
