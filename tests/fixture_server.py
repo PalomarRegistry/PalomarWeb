@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import pathlib
 import re
@@ -23,7 +24,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
     )
     record = {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": identifier,
         "accepted_at": "2026-07-29",
         "version": version,
@@ -142,6 +143,31 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
                 ],
             }
         )
+    sources = [(record["source"]["repository"], record["source"]["commit"])]
+    sources.extend(
+        (dependency["repository"], dependency["revision"])
+        for dependency in record["formalization"]["project_dependencies"]
+        if "path" not in dependency
+    )
+    unique = {}
+    for repository, commit in sources:
+        unique.setdefault((repository.casefold(), commit), (repository, commit))
+    record["preservation"] = {
+        "archive_owner": "PalomarArchive",
+        "archived_at": "2026-07-29T09:01:00Z",
+        "receipt_sha256": "f" * 64,
+        "repositories": [
+            {
+                "source_repository": repository,
+                "commit": commit,
+                "fork_repository": "PalomarArchive/" + repository.replace("/", "--"),
+                "ref": f"refs/tags/palomar/{identifier}-v{version}/{commit}",
+            }
+            for repository, commit in sorted(
+                unique.values(), key=lambda item: (item[0].casefold(), item[1])
+            )
+        ],
+    }
     return record
 
 
@@ -186,9 +212,45 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - inherited HTTP method name
         path = self.path.split("?", 1)[0]
+        if path in {
+            "/database/source-availability.json",
+            "/database/source-availability-missing.json",
+        }:
+            original_status = "missing" if path.endswith("-missing.json") else "available"
+            mappings = {}
+            for record in ENTRIES.values():
+                for row in record["preservation"]["repositories"]:
+                    key = (row["source_repository"].casefold(), row["commit"])
+                    mappings.setdefault(key, row)
+            checked_at = dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace(
+                "+00:00", "Z"
+            )
+            endpoint = lambda status: {
+                "status": status,
+                "checked_at": checked_at,
+                "last_attempt_at": checked_at,
+                "consecutive_missing": 2 if status == "missing" else 0,
+                "last_error": None,
+            }
+            payload = {
+                "schema_version": 1,
+                "generated_at": checked_at,
+                "repositories": [
+                    {
+                        "source_repository": row["source_repository"],
+                        "commit": row["commit"],
+                        "fork_repository": row["fork_repository"],
+                        "original": endpoint(original_status),
+                        "archive": endpoint("available"),
+                    }
+                    for row in mappings.values()
+                ],
+            }
+            self.send_bytes(json.dumps(payload).encode(), "application/json")
+            return
         if path == "/database/index.json":
             payload = {
-                "schema_version": 2,
+                "schema_version": 3,
                 "generated_at": "2026-07-29T09:00:00Z",
                 "entries": [
                     {
@@ -202,6 +264,22 @@ class Handler(SimpleHTTPRequestHandler):
                 ]
             }
             self.send_bytes(json.dumps(payload).encode(), "application/json")
+            return
+        tombstone = re.fullmatch(
+            r"/database/tombstones/(PALOMAR-2026-07-29-000125)-v(1)\.json",
+            path,
+        )
+        if tombstone:
+            self.send_bytes(
+                json.dumps(
+                    {
+                        "id": tombstone.group(1),
+                        "version": int(tombstone.group(2)),
+                        "taken_down_on": "2026-08-06",
+                    }
+                ).encode(),
+                "application/json",
+            )
             return
         match = re.fullmatch(
             r"/database/entries/(PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})-v([1-9][0-9]*)\.json",

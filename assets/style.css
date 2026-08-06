@@ -979,3 +979,54 @@ pre {
     max-height: none;
   }
 }
+.source-availability {
+  border: 1px solid var(--line, #d9d6cc);
+  border-left: 0.35rem solid #52714f;
+  border-radius: 0.45rem;
+  margin: 1rem 0 1.5rem;
+  padding: 0.9rem 1rem;
+}
+
+.source-availability p {
+  margin: 0.35rem 0;
+}
+
+.source-availability.original-missing,
+.source-availability.archive-missing {
+  border-left-color: #9a6700;
+  background: #fff8df;
+}
+
+.source-availability.unrecoverable {
+  border-left-color: #b42318;
+  background: #fff1f0;
+}
+
+.source-status.missing {
+  color: #9a6700;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.exact-tombstone {
+  min-height: 100vh;
+}
+
+.exact-tombstone .entry-page {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  text-align: center;
+}
+
+.tombstone-record h1,
+.tombstone-record p {
+  margin: 0;
+}
+
+.tombstone-record p {
+  color: var(--muted);
+  margin-top: 0.65rem;
+}

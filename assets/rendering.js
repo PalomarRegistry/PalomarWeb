@@ -23,15 +23,13 @@ export function isInlineChallenge(entry) {
   );
 }
 
-export function challengeSourceUrl(entry) {
+export function challengeSourceUrl(entry, repositoryOverride = null) {
   const repository = entry?.source?.repository;
   const repositoryUrl = entry?.source?.repository_url?.replace(/\/+$/, "");
   const commit = entry?.source?.commit;
   const challengePath = entry?.formalization?.challenge_path;
-  let encodedPath;
   try {
     safeRepositoryPath(challengePath, "Challenge source path");
-    encodedPath = encodedRepositoryPath(challengePath);
   } catch {
     throw new Error("entry has invalid canonical Challenge source metadata");
   }
@@ -40,7 +38,15 @@ export function challengeSourceUrl(entry) {
       !SHA.test(commit || "")) {
     throw new Error("entry has invalid canonical Challenge source metadata");
   }
-  return `${repositoryUrl}/blob/${commit}/${encodedPath}`;
+  const selectedRepository = repositoryOverride || repository;
+  const isPreserved = entry?.preservation?.repositories?.some(
+    (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
+      row.commit === commit && row.fork_repository === selectedRepository,
+  );
+  if (selectedRepository !== repository && !isPreserved) {
+    throw new Error("entry has invalid preserved Challenge source metadata");
+  }
+  return pinnedRepositoryFileUrl(selectedRepository, commit, challengePath).href;
 }
 
 export function challengeArtifactUrl(entry, renderBase) {
@@ -78,4 +84,4 @@ export function entryRecordPath(id, version, path) {
   }
   return expected;
 }
-import { encodedRepositoryPath, safeRepositoryPath } from "./security.mjs";
+import { pinnedRepositoryFileUrl, safeRepositoryPath } from "./security.mjs";
