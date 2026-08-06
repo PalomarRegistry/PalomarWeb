@@ -545,7 +545,11 @@ function challengeMetadata(metadata) {
   return panel;
 }
 
-async function challengePresentation(entry, renderBase, { forceFrame = false } = {}) {
+async function challengePresentation(
+  entry,
+  renderBase,
+  { forceFrame = false, dependenciesOnThisPage = false } = {},
+) {
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
   const titleBlock = el("div");
@@ -557,9 +561,13 @@ async function challengePresentation(entry, renderBase, { forceFrame = false } =
   section.append(heading);
 
   const links = el("p", "challenge-links");
-  // Same page, a little further down. The old link rebuilt the entry URL from
-  // scratch, so following it looked like leaving for somewhere else.
-  const dependencyRecordUrl = new URL("#statement-dependencies", window.location.href);
+  // On the entry page the dependencies are a little further down, and a link
+  // that rebuilds the entry URL reads as a trip somewhere else. The dedicated
+  // render page does not carry them, so from there it is a trip somewhere else.
+  const dependencyRecordUrl = dependenciesOnThisPage
+    ? new URL("#statement-dependencies", window.location.href)
+    : localPageUrl("entry.html", entry);
+  if (!dependenciesOnThisPage) dependencyRecordUrl.hash = "statement-dependencies";
   const comparatorPath = entry.formalization.comparator_config_path;
   const challengePath = entry.formalization.challenge_path;
   const challengeFilename = pathBasename(challengePath);
@@ -1078,7 +1086,9 @@ async function renderEntry(
   pre.append(el("code", "", JSON.stringify(entry, null, 2)));
   machine.append(pre);
 
-  const challenge = await challengePresentation(entry, renderBase);
+  const challenge = await challengePresentation(entry, renderBase, {
+    dependenciesOnThisPage: true,
+  });
   content.append(heading);
   const notice = versionNotice(entry, currentVersion);
   if (notice) content.append(notice);
