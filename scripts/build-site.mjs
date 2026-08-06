@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
-const publicFiles = [...htmlFiles, "site.webmanifest"];
+const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
 const assetFiles = ["about.js", "app.js", "rendering.js", "security.mjs", "style.css"];
 
 function options(args) {
