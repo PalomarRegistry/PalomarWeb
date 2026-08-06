@@ -223,10 +223,9 @@
           Every submission is pinned to a full 40-character commit, so the
           artifact Palomar checked cannot drift. Every verification runs in
           public GitHub Actions, but GitHub retains those workflow logs for only
-          90 days, so the log itself is not the durable record. Entries
-          published under the durable-evidence schema (version 5) instead
-          preserve the resulting mechanical report and workflow provenance with
-          the append-only registry record. Those
+          90 days, so the log itself is not the durable record. Registered
+          entries instead preserve the resulting mechanical report and workflow
+          provenance with the append-only registry record. Those
           entries record the SHA-256 digest of the report and the exact workflow
           revision, alongside the statement and proof digests, Lean toolchain,
           and exact Comparator,
@@ -455,7 +454,8 @@
         </ol>
         <h3 id="what-is-public">What is public, and what is not</h3>
         <p>
-          Public from the moment you submit: your repository and commit.
+          Public from the moment you submit: your repository, commit, declared
+          authorization relationship, and any approval evidence you provide.
           Mechanical verification runs in a public GitHub Actions workflow, and
           its logs are public. Whether you later register is inferable from the
           registry.

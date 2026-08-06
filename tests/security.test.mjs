@@ -425,6 +425,7 @@ test("About describes the current review and version contracts", async () => {
   assert.match(about, /Corrections and dependency updates may be registered as new versions/);
   assert.match(about, /A new mathematical result receives a new ID/);
   assert.match(about, /Acceptance is not\s+registration/);
+  assert.doesNotMatch(about, /durable-evidence schema \(version 5\)/);
   assert.match(about, /review-failed/);
   assert.match(about, /operational fault, not a decision/);
 });
