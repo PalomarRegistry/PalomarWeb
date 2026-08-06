@@ -39,3 +39,16 @@ test("deployment build refuses to remove a directory outside the repository", as
     /output must be \.site or a \.site-test-/,
   );
 });
+
+test("the MSC descriptions shown to readers are readable", async () => {
+  // Vendored from PalomarSubmission, which validates against it. A '?' inside
+  // a description is a character that did not survive an encoding step, not
+  // punctuation: the first record in the registry is classified 52C10, whose
+  // description names Erdős.
+  const codes = JSON.parse(
+    await readFile(new URL("../assets/data/msc2020-codes.json", import.meta.url), "utf8"),
+  );
+  const broken = Object.entries(codes).filter(([, text]) => text.includes("?"));
+  assert.deepEqual(broken, []);
+  assert.equal(codes["52C10"], "Erdős problems and related topics of discrete geometry");
+});
