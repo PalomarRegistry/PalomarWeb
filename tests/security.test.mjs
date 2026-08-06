@@ -413,8 +413,18 @@ test("every page sends submitters to the submission server", async () => {
   }
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
   assert.match(about, /https:\/\/submit\.palomar-registry\.org\//);
-  assert.match(about, /Not public unless you publish/);
-  assert.match(about, /Nothing is published until you ask for it/);
+  assert.match(about, /Not public unless you register/);
+  assert.match(about, /Nothing is registered until you ask for it/);
+  assert.doesNotMatch(about, /GitHub issue/i);
+});
+
+test("About describes the current review and version contracts", async () => {
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  assert.match(about, /Palomar addresses only limited\s+aspects\s+of these criteria/);
+  assert.match(about, /This is not a substitute for\s+expert review/);
+  assert.match(about, /Corrections and dependency updates may be registered as new versions/);
+  assert.match(about, /A new mathematical result receives a new ID/);
+  assert.match(about, /Acceptance is not\s+registration/);
 });
 
 test("About states the repository licence boundary", async () => {

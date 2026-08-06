@@ -56,8 +56,8 @@
       <section id="what-acceptance-means">
         <h2>What does acceptance by Palomar mean?</h2>
         <p>
-          In order for a repository version to be accepted into the Palomar
-          registry, three checks must pass. One is mechanical and requires both
+          In order for a repository version to be accepted by Palomar, three
+          checks must pass. One is mechanical and requires both
           Lean’s kernel and the independent NanoDa kernel; the other two are
           performed by a language model.
         </p>
@@ -80,7 +80,10 @@
             <strong>(Non-mechanical check)</strong> A language model judges that
             the recorded formal statement (conventionally <code>Challenge.lean</code>) is a
             fair rendering of the mathematical claim made in the recorded
-            informal statement (in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>), and that the
+            informal account. That account may appear in Challenge module
+            documentation or declaration docstrings, the selected project
+            README, or
+            <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>, and the
             submission clears Palomar’s
             <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md">published minimum standard</a>.
             That standard includes a floor on research interest, which requires
@@ -92,11 +95,12 @@
           </li>
           <li>
             <strong>(Disclosure)</strong> The submission’s
-            <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a> states the project’s authorship,
-            mathematical origin, any sources or prior formalizations, automation
-            methods, limitations, and review status explicitly, rather than
-            leaving them to be inferred. The same language model assesses
-            whether that account is clear and adequately supported.
+            <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a> records the required structured facts,
+            including the project’s authorship, mathematical origin, sources or
+            prior formalizations, automation methods, limitations, and review
+            status. The narrative account may be supplied there or in the other
+            eligible locations above. The same language model assesses whether
+            the combined account is clear and adequately supported.
           </li>
         </ol>
         <p>
@@ -106,16 +110,18 @@
         </p>
         <p>
           All three checks run automatically, and a submission that passes them
-          is published without further judgment. Palomar adds no human editorial
-          step: no one here reads the mathematics the way a referee would.
+          is accepted without further judgment. Palomar adds no human editorial
+          step: no one here reads the mathematics the way a referee would. The
+          submitter then sees the private review and chooses whether to register
+          the accepted result or withdraw it.
         </p>
         <p>
           Palomar asserts nothing beyond these three checks.
         </p>
         <p>
-          The source, warnings, and full review of the repository are publicly
-          visible to help readers reach their own judgment on the work and
-          perform independent verification.
+          For a registered result, the source, warnings, and full review are
+          publicly visible to help readers reach their own judgment on the work
+          and perform independent verification.
         </p>
       </section>
 
@@ -195,11 +201,12 @@
           <li>
             <strong>Palomar is not a green light for journal
             submission.</strong> Mathematical journals require their submissions
-            adhere to professional standards of exposition, accuracy, and
-            citation, and be of genuine interest to their readers. None of these
-            criteria are directly addressed by this registry, which checks
-            informal descriptions of results only for fidelity to their formal
-            counterparts.
+            to meet professional standards of exposition, accuracy, novelty,
+            significance, and citation. Palomar addresses only limited aspects
+            of these criteria: its automated review checks the informal account
+            for clarity and fidelity, examines important citations, and applies
+            a minimum research-interest floor. This is not a substitute for
+            expert review of exposition, accuracy, novelty, or significance.
           </li>
           <li>
             <strong>Palomar is not a green light for formalized library
@@ -369,11 +376,13 @@
 
         <h3 id="comparator-requirements">What does Comparator require?</h3>
         <p>
-          The Challenge module states the result independently, normally with
-          <code>sorry</code>; the Solution module supplies the proved
-          version. Their compared declarations must have the same names and
-          types. Comparator rebuilds and compares them, checks the permitted
-          axioms, and verifies the proof. Palomar currently permits only
+          The Challenge module states the result independently and may use
+          deliberate <code>sorry</code> holes; the Solution module supplies the
+          proved version. The proved Solution declarations must not depend on
+          <code>sorryAx</code>, <code>Lean.ofReduceBool</code>, a custom axiom, or
+          an unnamed missing definition. The compared declarations must have the
+          same names and types. Comparator rebuilds and compares them, checks the
+          permitted axioms, and verifies the proof. Palomar currently permits only
           <code>propext</code>, <code>Quot.sound</code>, and
           <code>Classical.choice</code>.
         </p>
@@ -397,8 +406,9 @@
 
         <h3 id="formalization-yaml">What belongs in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>?</h3>
         <p>
-          At minimum, include the project name, authors, license, and responsible
-          maintainers; say whether the result is original or source-based and
+          The structured metadata must include the project name, authors,
+          license, and responsible maintainers; say whether the result is
+          original or source-based and
           whether the repository is the substantive development or a thin
           Comparator wrapper; include one or two
           classifications from the
@@ -406,10 +416,12 @@
           and one to eight codes from
           <a href="https://msc2020.org/">MSC2020</a>; the automation methods used (including <code>manual</code>,
           when appropriate); and the review status. For editorial review, also
-          give a plain-language account of every compared theorem, precise
-          bibliographic references, what is original or adapted, the role of AI
-          and human review, and any fidelity gaps, extra assumptions, or scope
-          limitations. Follow the
+          give a plain-language account of every compared theorem, what is
+          original or adapted, the role of AI and human review, and any fidelity
+          gaps, extra assumptions, or scope limitations. That narrative may be
+          in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>, Challenge module documentation or
+          declaration docstrings, or the selected project README. Keep precise
+          bibliographic references in the structured metadata. Follow the
           <a href="https://github.com/mathlib-initiative/formalization.yaml">formalization.yaml standard</a>
           and Palomar’s
           <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md">submission policy</a>.
@@ -445,14 +457,15 @@
         <p>
           Public from the moment you submit: your repository and commit.
           Mechanical verification runs in a public GitHub Actions workflow, and
-          its logs are public. Whether you later publish is inferable from the
+          its logs are public. Whether you later register is inferable from the
           registry.
         </p>
         <p>
-          Not public unless you publish: the editorial review, the decision, and
+          Not public unless you register: the editorial review, the decision, and
           your identity as submitter. If a review goes badly, or you simply
-          change your mind, withdrawing leaves no public trace of the review or
-          the decision, and there is nothing for anyone to find.
+          change your mind, withdrawing leaves no public trace of the review,
+          decision, or submitter identity. The already-public verification run
+          remains.
         </p>
         <p>
           “Private” here means not public, not confidential. Reviews are
@@ -466,37 +479,35 @@
           the public run. If verification fails, the report explains what
           failed. If it passes, the submission waits for editorial review; once
           mechanical verification has passed we aim to complete that review
-          within one hour, though that is a target rather than a guarantee,
-          especially when a submission needs specialist judgment.
+          within one hour, though that is a target rather than a guarantee.
         </p>
         <p>
           The review then appears on your status page, and nowhere else. It
           gives the reasons, warnings, and any requested changes, not just a
           decision. A request for changes means the work may be reconsidered
           after specific correctable problems are addressed; a rejection means
-          the submission failed a fundamental mechanical or editorial
-          requirement; an escalation means specialist or human judgment is
-          needed. Because every review is tied to an immutable commit, revised
-          source is a new submission at a new full commit SHA.
+          the submission failed a fundamental semantic, provenance, or editorial
+          requirement. Because every review is tied to an immutable commit,
+          revised source is a new submission at a new full commit SHA.
         </p>
         <p>
-          Nothing is published until you ask for it. If the review is an
-          acceptance, your status page offers two choices: publish, or withdraw.
-          Publishing is permanent: the record, the review, and your repository
+          Nothing is registered until you ask for it. If the review is an
+          acceptance, your status page offers two choices: register, or withdraw.
+          Registration is permanent: the record, the review, and your repository
           and commit go into the public registry, and Palomar records are
-          append-only, so a published record is never removed. Acceptance is not
-          publication; an accepted submission appears in the registry once the
+          append-only, so a registered record is never removed. Acceptance is not
+          registration; an accepted submission appears in the registry once the
           corresponding database pull request is merged.
         </p>
         <p>
-          Corrections are published as new versions of the same Palomar ID, and
-          every earlier version remains resolvable. A Palomar ID on its own
-          resolves to the newest version of that record, and a later version may
-          change the theorem, source, authors, or subject radically. For a stable
-          citation, name the version (e.g., PALOMAR-2026-07-29-000001 v1 instead
-          of PALOMAR-2026-07-29-000001). The entry page URL always names the
-          version you are viewing, so copying it from the address bar gives a
-          citable link.
+          Corrections and dependency updates may be registered as new versions
+          of the same Palomar ID, and every earlier version remains resolvable.
+          A new mathematical result receives a new ID. A Palomar ID on its own
+          resolves to the newest version of that record. For a stable citation,
+          name the version (e.g., PALOMAR-2026-07-29-000001 v1 instead of
+          PALOMAR-2026-07-29-000001). The entry page URL always names the version
+          you are viewing, so copying it from the address bar gives a citable
+          link.
         </p>
       </section>
 
