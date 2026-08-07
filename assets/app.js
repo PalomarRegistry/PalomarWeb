@@ -1289,13 +1289,13 @@ async function renderEntry(
   content.append(heading, sourceAvailabilityNotice(entry, availability));
   const notice = versionNotice(entry, currentVersion);
   if (notice) content.append(notice);
-  // What was checked, then the statement it was checked about, then what that
-  // statement rests on. Those are the three questions a reader arrives with,
-  // and they used to be the fifth, sixth and seventh things on the page,
-  // behind the version history and the subject classification.
+  // The statement first, then what was checked about it, then what it rests
+  // on. A registry entry is about a theorem, and the theorem should not be
+  // below the paperwork that certifies it; these three used to be the sixth,
+  // fifth and seventh things on the page.
   content.append(
-    evidence,
     challenge.section,
+    evidence,
     trust,
     solutionMetadata(entry, challenge.metadata, availability),
     provenanceSection(entry, availability),
