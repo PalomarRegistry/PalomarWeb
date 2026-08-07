@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const database = encodeURIComponent("http://127.0.0.1:4173/database/index.json");
+const missingAvailability = encodeURIComponent(
+  "http://127.0.0.1:4173/database/source-availability-missing.json",
+);
 const previousRef = process.env.PALOMAR_PREVIOUS_REF;
 const currentIndex = readFileSync(fileURLToPath(new URL("../index.html", import.meta.url)), "utf8");
 
@@ -242,6 +245,30 @@ test("a thin wrapper says where the mathematics is before anything else", async 
   }
 });
 
+test("a missing original automatically switches source links to the Palomar copy", async ({ page }) => {
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}` +
+      `&availability=${missingAvailability}`,
+  );
+  const notice = page.locator(".source-availability.original-missing");
+  await expect(notice).toContainText("Original source unavailable");
+  await expect(notice.getByRole("link", { name: "Palomar preserved copy" })).toHaveAttribute(
+    "href",
+    /github\.com\/PalomarArchive\/example--challenge\/tree\/1{40}\/project$/,
+  );
+  await expect(
+    page.getByRole("link", { name: /View full pinned statement file/ }),
+  ).toHaveAttribute(
+    "href",
+    /github\.com\/PalomarArchive\/example--challenge\/blob\/1{40}\/project\/Comparator\/Task\.lean$/,
+  );
+  await page.locator("details.solution-dependencies > summary").click();
+  await expect(page.getByRole("link", { name: "example/dependency (Palomar copy)" })).toHaveAttribute(
+    "href",
+    /github\.com\/PalomarArchive\/example--dependency\/tree\/3{40}$/,
+  );
+});
+
 test("entry pages list immutable versions and flag superseded snapshots", async ({ page }) => {
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
@@ -311,6 +338,33 @@ test("entry version parameters use canonical positive-integer spelling", async (
   );
   await expect(page.locator("#status")).toContainText("missing or invalid Palomar ID or version");
   await expect(page.locator("#entry-content")).toBeHidden();
+});
+
+test("an exact unavailable entry shows only its target and public date", async ({ page }) => {
+  const id = "PALOMAR-2026-07-29-000125";
+  await page.goto(`/entry.html?id=${id}&version=1&database=${database}`);
+
+  await expect(page.locator(".tombstone-record h1")).toHaveText(`${id} v1`);
+  await expect(page.locator(".tombstone-record p")).toHaveText("6 August 2026");
+  await expect(page.locator("a:visible")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/reason|takedown|withdraw/i);
+});
+
+test("an exact unavailable render uses the same minimal disclosure", async ({ page }) => {
+  const id = "PALOMAR-2026-07-29-000125";
+  await page.goto(`/render.html?id=${id}&version=1&database=${database}`);
+
+  await expect(page.locator(".tombstone-record h1")).toHaveText(`${id} v1`);
+  await expect(page.locator(".tombstone-record p")).toHaveText("6 August 2026");
+  await expect(page.locator("a:visible")).toHaveCount(0);
+});
+
+test("unknown exact versions remain generic not-found pages", async ({ page }) => {
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-999999&version=1&database=${database}`,
+  );
+  await expect(page.locator("#status")).toContainText("entry not found");
+  await expect(page.locator(".tombstone-record")).toHaveCount(0);
 });
 
 test("the index version-history link reaches history loaded at runtime", async ({ page }) => {
@@ -501,4 +555,3 @@ test("current JavaScript preserves represented deep links with cached HTML", asy
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
-

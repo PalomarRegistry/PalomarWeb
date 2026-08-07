@@ -1,7 +1,10 @@
-export const INDEX_SCHEMA_VERSION = 2;
-export const ENTRY_SCHEMA_VERSION = 1;
+export const INDEX_SCHEMA_VERSION = 3;
+export const ENTRY_SCHEMA_VERSION = 2;
+export const ENTRY_SCHEMA_VERSIONS = new Set([1, 2]);
 export const DEFAULT_DATABASE =
-  "https://raw.githubusercontent.com/PalomarRegistry/PalomarDatabase/main/index.json";
+  "https://data.palomar-registry.org/index.json";
+export const DEFAULT_AVAILABILITY =
+  "https://data.palomar-registry.org/source-availability.json";
 export const DEFAULT_RENDER_BASE = "https://data.palomar-registry.org/";
 
 // Provenance is three-valued. Rendering it with a binary fallback turns "the
@@ -31,6 +34,8 @@ const DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const ARXIV_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const LICENSE_PATH_RE = /^(?:licen[cs]e|copying|unlicense|ofl)(?:\.(?:md|markdown|txt))?$/i;
+const TIMESTAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
+const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
@@ -114,6 +119,19 @@ export function selectRenderBase(locationHref, search, databaseBase) {
   return candidate;
 }
 
+export function selectAvailabilityUrl(locationHref, search, databaseBase) {
+  const locationUrl = new URL(locationHref);
+  if (!isLoopbackHostname(locationUrl.hostname)) return new URL(DEFAULT_AVAILABILITY);
+  const override = new URLSearchParams(search).get("availability");
+  const candidate = override
+    ? new URL(override, locationUrl)
+    : new URL("source-availability.json", databaseBase);
+  if (!["http:", "https:"].includes(candidate.protocol) || candidate.username || candidate.password) {
+    throw new Error("local availability fixture must use an HTTP(S) URL without credentials");
+  }
+  return candidate;
+}
+
 export function safeExternalUrl(value) {
   const url = new URL(value);
   if (url.protocol !== "https:" || url.username || url.password) {
@@ -171,6 +189,74 @@ export function validateIndex(index) {
   return index;
 }
 
+function availabilityEndpoint(value, field) {
+  const endpoint = object(value, field);
+  if (!["available", "missing", "unknown"].includes(endpoint.status)) {
+    fail(`${field}.status is unsupported`);
+  }
+  if (endpoint.checked_at !== null && endpoint.checked_at !== undefined) {
+    if (!TIMESTAMP_RE.test(endpoint.checked_at) || Number.isNaN(Date.parse(endpoint.checked_at))) {
+      fail(`${field}.checked_at is malformed`);
+    }
+  }
+  if (!TIMESTAMP_RE.test(endpoint.last_attempt_at) || Number.isNaN(Date.parse(endpoint.last_attempt_at))) {
+    fail(`${field}.last_attempt_at is malformed`);
+  }
+  if (!Number.isSafeInteger(endpoint.consecutive_missing) || endpoint.consecutive_missing < 0) {
+    fail(`${field}.consecutive_missing is malformed`);
+  }
+  if (endpoint.last_error !== null && endpoint.last_error !== undefined &&
+      typeof endpoint.last_error !== "string") {
+    fail(`${field}.last_error is malformed`);
+  }
+  return endpoint;
+}
+
+export function validateAvailability(manifest) {
+  object(manifest, "availability");
+  if (manifest.schema_version !== 1) fail("availability schema_version is unsupported");
+  if (!TIMESTAMP_RE.test(manifest.generated_at) || Number.isNaN(Date.parse(manifest.generated_at))) {
+    fail("availability.generated_at is malformed");
+  }
+  if (manifest.database_commit !== undefined) {
+    commit(manifest.database_commit, "availability.database_commit");
+  }
+  const seen = new Set();
+  for (const [position, value] of array(
+    manifest.repositories,
+    "availability.repositories",
+  ).entries()) {
+    const row = object(value, `availability.repositories[${position}]`);
+    if (!REPOSITORY_RE.test(row.source_repository)) {
+      fail(`availability.repositories[${position}].source_repository is malformed`);
+    }
+    if (!REPOSITORY_RE.test(row.fork_repository) ||
+        !row.fork_repository.startsWith("PalomarArchive/")) {
+      fail(`availability.repositories[${position}].fork_repository is malformed`);
+    }
+    commit(row.commit, `availability.repositories[${position}].commit`);
+    const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
+    if (seen.has(key)) fail(`availability.repositories[${position}] is duplicated`);
+    seen.add(key);
+    availabilityEndpoint(row.original, `availability.repositories[${position}].original`);
+    availabilityEndpoint(row.archive, `availability.repositories[${position}].archive`);
+  }
+  return manifest;
+}
+
+export function availabilityRecord(manifest, repository, revision, now = Date.now()) {
+  if (!manifest) return null;
+  const generated = Date.parse(manifest.generated_at);
+  if (!Number.isFinite(generated) || generated > now + 5 * 60 * 1000 ||
+      now - generated > AVAILABILITY_MAX_AGE_MS) {
+    return null;
+  }
+  return manifest.repositories.find(
+    (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
+      row.commit === revision,
+  ) || null;
+}
+
 export function entryRecordUrl(summary, databaseBase) {
   object(summary, "entry summary");
   const id = string(summary.id, "entry summary id");
@@ -184,6 +270,35 @@ export function entryRecordUrl(summary, databaseBase) {
     fail("entry path escaped the canonical database prefix");
   }
   return resolved;
+}
+
+export function tombstoneUrl(id, version, databaseBase) {
+  if (typeof id !== "string" || !ID_RE.test(id)) fail("tombstone ID is malformed");
+  integer(version, "tombstone version");
+  const base = new URL(databaseBase);
+  const expected = new URL(`tombstones/${id}-v${version}.json`, base);
+  if (expected.origin !== base.origin) fail("tombstone path escaped the database origin");
+  return expected;
+}
+
+export function validateTombstone(value, id, version) {
+  const tombstone = object(value, "tombstone");
+  if (Object.keys(tombstone).sort().join(",") !== "id,taken_down_on,version") {
+    fail("tombstone contains unexpected fields");
+  }
+  if (tombstone.id !== id || tombstone.version !== version) {
+    fail("tombstone identity does not match the requested version");
+  }
+  const timestamp = `${tombstone.taken_down_on}T00:00:00Z`;
+  const parsed = new Date(timestamp);
+  if (
+    !DATE_RE.test(tombstone.taken_down_on) ||
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== tombstone.taken_down_on
+  ) {
+    fail("tombstone date is malformed");
+  }
+  return tombstone;
 }
 
 export function safeRepositoryPath(value, field = "repository path") {
@@ -260,7 +375,7 @@ function validateCanonicalRecordLinks(entry) {
 export function validateEntry(entry, summary) {
   object(entry, "entry");
   object(summary, "entry summary");
-  if (entry.schema_version !== ENTRY_SCHEMA_VERSION) {
+  if (!ENTRY_SCHEMA_VERSIONS.has(entry.schema_version)) {
     fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
   }
   if (entry.status !== "accepted") fail("entry status is not accepted");
@@ -470,6 +585,60 @@ export function validateEntry(entry, summary) {
     }
   }
 
+  if (entry.schema_version >= 2 || entry.preservation !== undefined) {
+    const preservation = object(entry.preservation, "entry.preservation");
+    if (preservation.archive_owner !== "PalomarArchive") {
+      fail("entry.preservation.archive_owner is unsupported");
+    }
+    if (!TIMESTAMP_RE.test(preservation.archived_at) ||
+        Number.isNaN(Date.parse(preservation.archived_at))) {
+      fail("entry.preservation.archived_at is malformed");
+    }
+    digest(preservation.receipt_sha256, "entry.preservation.receipt_sha256");
+    const expected = new Map();
+    const addExpected = (repository, revision) => {
+      expected.set(`${repository.toLowerCase()}\0${revision}`, [repository, revision]);
+    };
+    addExpected(source.repository, source.commit);
+    for (const dependency of formalization.project_dependencies) {
+      if (dependency.path === undefined) addExpected(dependency.repository, dependency.revision);
+    }
+    const substantive = entry.provenance.substantive_formalization;
+    if (substantive) addExpected(substantive.repository, substantive.commit);
+    const expectedRows = [...expected.values()].sort((left, right) => {
+      const leftKey = `${left[0].toLowerCase()}\0${left[1]}`;
+      const rightKey = `${right[0].toLowerCase()}\0${right[1]}`;
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    });
+    const actualRows = [];
+    const seen = new Set();
+    for (const [position, value] of array(
+      preservation.repositories,
+      "entry.preservation.repositories",
+    ).entries()) {
+      const row = object(value, `entry.preservation.repositories[${position}]`);
+      if (!REPOSITORY_RE.test(row.source_repository)) {
+        fail(`entry.preservation.repositories[${position}].source_repository is malformed`);
+      }
+      commit(row.commit, `entry.preservation.repositories[${position}].commit`);
+      if (!REPOSITORY_RE.test(row.fork_repository) ||
+          !row.fork_repository.startsWith("PalomarArchive/")) {
+        fail(`entry.preservation.repositories[${position}].fork_repository is malformed`);
+      }
+      const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
+      if (seen.has(key)) fail(`entry.preservation.repositories[${position}] is duplicated`);
+      seen.add(key);
+      const expectedRef = `refs/tags/palomar/${entry.id}-v${entry.version}/${row.commit}`;
+      if (row.ref !== expectedRef) {
+        fail(`entry.preservation.repositories[${position}].ref is not canonical`);
+      }
+      actualRows.push([row.source_repository, row.commit]);
+    }
+    if (JSON.stringify(actualRows) !== JSON.stringify(expectedRows)) {
+      fail("entry.preservation.repositories does not exactly cover the source graph");
+    }
+  }
+
   const verification = object(entry.verification, "entry.verification");
   string(verification.verified_at, "entry.verification.verified_at");
   string(verification.workflow_url, "entry.verification.workflow_url");
@@ -570,6 +739,23 @@ export function pinnedSourceFileUrl(entry, path) {
   }
   const encodedPath = encodedRepositoryPath(path);
   return safeExternalUrl(`${expectedRepository}/blob/${entry.source.commit}/${encodedPath}`);
+}
+
+export function pinnedRepositoryFileUrl(repository, revision, path) {
+  if (!REPOSITORY_RE.test(repository)) fail("source repository is malformed");
+  commit(revision, "source commit");
+  safeRepositoryPath(path, "source file path");
+  return safeExternalUrl(
+    `https://github.com/${repository}/blob/${revision}/${encodedRepositoryPath(path)}`,
+  );
+}
+
+export function pinnedRepositoryDirectoryUrl(repository, revision, path = ".") {
+  if (!REPOSITORY_RE.test(repository)) fail("source repository is malformed");
+  commit(revision, "source commit");
+  safeDependencyPath(path, "source directory path");
+  const suffix = path === "." ? "" : `/${encodedRepositoryPath(path)}`;
+  return safeExternalUrl(`https://github.com/${repository}/tree/${revision}${suffix}`);
 }
 
 export function pinnedSourceDirectoryUrl(entry, path) {

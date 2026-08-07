@@ -23,14 +23,20 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # The site re-validates every record client-side. Drifting from the
-      # authoritative schemas is what made the whole registry unloadable, so
-      # the schemas are checked out and the tests compare against them.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: PalomarRegistry/PalomarDatabase
-          persist-credentials: false
-          path: palomar-database
+      # The canonical database is private. The site re-validates every public
+      # record client-side, so compare against the schemas from the filtered
+      # public snapshot rather than cloning the canonical repository.
+      - name: Download the published schemas
+        env:
+          PUBLIC_DATA_ORIGIN: https://palomar-data.palomar-server.workers.dev
+        run: |
+          mkdir palomar-database
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/schema-v1.json" \
+            --output palomar-database/schema-v1.json
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/schema-v2.json" \
+            --output palomar-database/schema-v2.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.4.1"

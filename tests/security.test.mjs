@@ -6,9 +6,11 @@ import { htmlFiles } from "../scripts/build-site.mjs";
 
 import {
   DEFAULT_DATABASE,
+  DEFAULT_AVAILABILITY,
   ENTRY_SCHEMA_VERSION,
   DEFAULT_RENDER_BASE,
   databaseBaseFor,
+  availabilityRecord,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
   entryRecordUrl,
@@ -19,9 +21,13 @@ import {
   safeExternalUrl,
   safeInternalUrl,
   selectDatabaseUrl,
+  selectAvailabilityUrl,
   selectRenderBase,
+  tombstoneUrl,
   validateEntry,
+  validateAvailability,
   validateIndex,
+  validateTombstone,
 } from "../assets/security.mjs";
 
 // The website's own origin, for the cross-origin assertion below.
@@ -42,13 +48,13 @@ function summary(overrides = {}) {
 }
 
 function index(entries = [summary()], overrides = {}) {
-  return { schema_version: 2, entries, ...overrides };
+  return { schema_version: 3, entries, ...overrides };
 }
 
 function entry(overrides = {}) {
   const evidenceTree = "c".repeat(64);
   const value = {
-    schema_version: 1,
+    schema_version: 2,
     id: "PALOMAR-2026-07-29-000123",
     accepted_at: "2026-07-29",
     version: 1,
@@ -79,6 +85,25 @@ function entry(overrides = {}) {
         declared_identifier: "Apache-2.0",
         detected_identifier: "Apache-2.0",
       },
+    },
+    preservation: {
+      archive_owner: "PalomarArchive",
+      archived_at: "2026-07-29T09:01:00Z",
+      receipt_sha256: "f".repeat(64),
+      repositories: [
+        {
+          source_repository: "example/challenge",
+          commit: COMMIT,
+          fork_repository: "PalomarArchive/example--challenge--fixture",
+          ref: `refs/tags/palomar/PALOMAR-2026-07-29-000123-v1/${COMMIT}`,
+        },
+        {
+          source_repository: "leanprover-community/mathlib4",
+          commit: COMMIT,
+          fork_repository: "PalomarArchive/mathlib4--fixture",
+          ref: `refs/tags/palomar/PALOMAR-2026-07-29-000123-v1/${COMMIT}`,
+        },
+      ],
     },
     formalization: {
       challenge_path: "Challenge.lean",
@@ -178,6 +203,25 @@ test("production also pins the rendered-Challenge origin", () => {
   );
 });
 
+test("production pins availability while loopback can select a fixture", () => {
+  assert.equal(
+    selectAvailabilityUrl(
+      "https://palomar-registry.org/",
+      "?availability=https://attacker.invalid/status.json",
+      "https://attacker.invalid/database/",
+    ).href,
+    DEFAULT_AVAILABILITY,
+  );
+  assert.equal(
+    selectAvailabilityUrl(
+      "http://127.0.0.1:8000/",
+      "?availability=/fixtures/status.json",
+      "http://127.0.0.1:8000/database/",
+    ).href,
+    "http://127.0.0.1:8000/fixtures/status.json",
+  );
+});
+
 test("loopback development can select an HTTP fixture", () => {
   assert.equal(isLoopbackHostname("localhost"), true);
   assert.equal(isLoopbackHostname("127.9.8.7"), true);
@@ -211,13 +255,34 @@ test("index entry paths are exact descendants of the database prefix", () => {
 });
 
 test("index validation rejects unsupported, rejected, and duplicate summaries", () => {
-  assert.throws(() => validateIndex(index([], { schema_version: 3 })), /unsupported index/);
+  assert.throws(() => validateIndex(index([], { schema_version: 2 })), /unsupported index/);
   assert.throws(
     () => validateIndex(index([summary({ status: "draft" })])),
     /status is not accepted/,
   );
   assert.throws(() => validateIndex(index([summary(), summary()])), /duplicate index entry/);
   assert.equal(validateIndex(index()).entries.length, 1);
+});
+
+test("exact tombstones are closed, date-only, and bound to their URL", () => {
+  const base = databaseBaseFor("https://example.test/database/index.json");
+  const id = "PALOMAR-2026-07-29-000123";
+  assert.equal(
+    tombstoneUrl(id, 2, base).href,
+    `https://example.test/database/tombstones/${id}-v2.json`,
+  );
+  assert.deepEqual(
+    validateTombstone({ id, version: 2, taken_down_on: "2026-08-06" }, id, 2),
+    { id, version: 2, taken_down_on: "2026-08-06" },
+  );
+  assert.throws(
+    () => validateTombstone({ id, version: 2, taken_down_on: "2026-02-30" }, id, 2),
+    /date is malformed/,
+  );
+  assert.throws(
+    () => validateTombstone({ id, version: 2, taken_down_on: "2026-08-06", reason: "secret" }, id, 2),
+    /unexpected fields/,
+  );
 });
 
 test("active-content and insecure data-derived links are never allowed", () => {
@@ -253,6 +318,59 @@ test("a canonical accepted record validates", () => {
   );
 });
 
+test("preservation must cover every immutable source", () => {
+  const missing = entry();
+  missing.preservation.repositories.pop();
+  assert.throws(() => validateEntry(missing, summary()), /does not exactly cover/);
+
+  const moving = entry();
+  moving.preservation.repositories[0].ref = "refs/tags/latest";
+  assert.throws(() => validateEntry(moving, summary()), /ref is not canonical/);
+});
+
+test("legacy schema v1 records remain readable without an archive mapping", () => {
+  const legacy = entry({ schema_version: 1 });
+  delete legacy.preservation;
+  assert.equal(validateEntry(legacy, summary()).schema_version, 1);
+});
+
+test("availability is validated and stale state becomes unknown", () => {
+  const manifest = validateAvailability({
+    schema_version: 1,
+    generated_at: "2026-08-06T00:00:00Z",
+    repositories: [
+      {
+        source_repository: "example/challenge",
+        commit: COMMIT,
+        fork_repository: "PalomarArchive/example--challenge--fixture",
+        original: {
+          status: "missing",
+          checked_at: "2026-08-06T00:00:00Z",
+          last_attempt_at: "2026-08-06T00:00:00Z",
+          consecutive_missing: 2,
+          last_error: null,
+        },
+        archive: {
+          status: "available",
+          checked_at: "2026-08-06T00:00:00Z",
+          last_attempt_at: "2026-08-06T00:00:00Z",
+          consecutive_missing: 0,
+          last_error: null,
+        },
+      },
+    ],
+  });
+  assert.equal(
+    availabilityRecord(manifest, "EXAMPLE/challenge", COMMIT, Date.parse("2026-08-06T12:00:00Z"))
+      .original.status,
+    "missing",
+  );
+  assert.equal(
+    availabilityRecord(manifest, "example/challenge", COMMIT, Date.parse("2026-08-07T00:00:00Z")),
+    null,
+  );
+});
+
 test("withdrawn palomar-indexed provenance is rejected", () => {
   const trust = {
     ...entry().trust,
@@ -280,7 +398,7 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 2 }), summary()), /unsupported entry/);
+  assert.throws(() => validateEntry(entry({ schema_version: 99 }), summary()), /unsupported entry/);
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";
@@ -387,10 +505,8 @@ test("every HTML entry point carries the restrictive CSP", async () => {
     // challenge-metadata.json from it. While the site and the renders shared
     // an origin, connect-src 'self' covered that silently. It does not now,
     // and omitting it fails only in the browser console.
-    assert.match(
-      html,
-      /connect-src 'self' https:\/\/raw\.githubusercontent\.com https:\/\/data\.palomar-registry\.org/,
-    );
+    assert.match(html, /connect-src 'self' https:\/\/data\.palomar-registry\.org/);
+    assert.doesNotMatch(html, /raw\.githubusercontent\.com/);
     assert.match(html, /object-src 'none'/);
   }
 });
@@ -449,7 +565,7 @@ test("every provenance value the schema allows has an explicit label", async () 
   const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
     ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
   const schema = JSON.parse(
-    await readFile(new URL("schema-v1.json", `file://${checkout}/`), "utf8"),
+    await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
   );
   const provenance = schema.properties.provenance.properties;
   for (const [field, labels] of [
@@ -468,7 +584,7 @@ test("the site validates exactly the schema version the database publishes", asy
   const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
     ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
   const schema = JSON.parse(
-    await readFile(new URL("schema-v1.json", `file://${checkout}/`), "utf8"),
+    await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
 });

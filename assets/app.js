@@ -6,25 +6,29 @@ import {
 } from "./rendering.js";
 import {
   databaseBaseFor,
+  availabilityRecord,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
   entryRecordUrl,
   isLoopbackHostname,
-  pinnedSourceDirectoryUrl,
-  pinnedSourceFileUrl,
+  pinnedRepositoryDirectoryUrl,
+  pinnedRepositoryFileUrl,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
   selectDatabaseUrl,
+  selectAvailabilityUrl,
   selectRenderBase,
+  tombstoneUrl,
   validateEntry,
+  validateAvailability,
   validateIndex,
+  validateTombstone,
   workflowRunId,
 } from "./security.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 const FEED_BASE = "https://data.palomar-registry.org/feeds/";
-const DATABASE_SOURCE_BASE = "https://github.com/PalomarRegistry/PalomarDatabase/blob/main/";
 
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
@@ -37,7 +41,12 @@ function dataSource() {
   const databaseUrl = selectDatabaseUrl(window.location.href, window.location.search);
   const databaseBase = databaseBaseFor(databaseUrl);
   const renderBase = selectRenderBase(window.location.href, window.location.search, databaseBase);
-  return { databaseUrl, databaseBase, renderBase };
+  const availabilityUrl = selectAvailabilityUrl(
+    window.location.href,
+    window.location.search,
+    databaseBase,
+  );
+  return { databaseUrl, databaseBase, renderBase, availabilityUrl };
 }
 
 function categoryFeedBase() {
@@ -83,6 +92,67 @@ async function fetchJson(url) {
     throw error;
   }
   return response.json();
+}
+
+async function loadAvailability(url) {
+  try {
+    return validateAvailability(await fetchJson(url));
+  } catch (error) {
+    console.warn(`Source availability is unavailable: ${error.message}`);
+    return null;
+  }
+}
+
+function sourceLocation(entry, availability, repository, commit) {
+  if (!entry.preservation) {
+    return {
+      repository,
+      originalRepository: repository,
+      archiveRepository: null,
+      commit,
+      originalStatus: "unknown",
+      archiveStatus: "unknown",
+      checkedAt: null,
+      useArchive: false,
+    };
+  }
+  const mapping = entry.preservation.repositories.find(
+    (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
+      row.commit === commit,
+  );
+  if (!mapping) throw new Error(`entry has no preserved copy of ${repository}@${commit}`);
+  const observed = availabilityRecord(availability, repository, commit);
+  const status = observed &&
+      observed.fork_repository.toLowerCase() === mapping.fork_repository.toLowerCase()
+    ? observed
+    : null;
+  const originalStatus = status?.original.status || "unknown";
+  const archiveStatus = status?.archive.status || "unknown";
+  const useArchive = originalStatus === "missing" && archiveStatus !== "missing";
+  return {
+    repository: useArchive ? mapping.fork_repository : repository,
+    originalRepository: repository,
+    archiveRepository: mapping.fork_repository,
+    commit,
+    originalStatus,
+    archiveStatus,
+    checkedAt: status?.original.checked_at || null,
+    useArchive,
+  };
+}
+
+function topSourceLocation(entry, availability) {
+  return sourceLocation(entry, availability, entry.source.repository, entry.source.commit);
+}
+
+function sourceFileUrl(entry, path, availability) {
+  const location = topSourceLocation(entry, availability);
+  return pinnedRepositoryFileUrl(location.repository, entry.source.commit, path);
+}
+
+function sourceDirectoryUrl(entry, path, availability) {
+  const location = topSourceLocation(entry, availability);
+  return pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit, path);
 }
 
 function authorNames(entry) {
@@ -148,7 +218,7 @@ function trustBadge(entry) {
   return badge;
 }
 
-function entryCard(entry, versionCount) {
+function entryCard(entry, versionCount, availability) {
   const categories = classification(entry);
   const card = el("article", "entry-card");
   card.dataset.trust = entry.trust.level;
@@ -193,16 +263,28 @@ function entryCard(entry, versionCount) {
     meta.append(project);
   }
   const footer = el("div", "card-footer");
+  const location = topSourceLocation(entry, availability);
   const historyUrl = new URL(localPageUrl("entry.html", entry));
   historyUrl.hash = "version-history";
   footer.append(
     externalLink(
-      entry.source.repository,
-      `${entry.source.repository_url}/tree/${entry.source.commit}`,
+      location.useArchive ? "Palomar preserved copy" : entry.source.repository,
+      pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit),
       "repo-link",
     ),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
+  if (!location.useArchive && location.archiveRepository) {
+    footer.append(
+      externalLink(
+        "Palomar preserved copy",
+        pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit),
+        "archive-link",
+      ),
+    );
+  } else {
+    footer.append(el("span", "source-status missing", "Original unavailable"));
+  }
   if (versionCount > 1) {
     const historyLink = internalLink(
       `${versionCount} versions`,
@@ -229,7 +311,8 @@ async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
   try {
-    const { databaseUrl, databaseBase } = dataSource();
+    const { databaseUrl, databaseBase, availabilityUrl } = dataSource();
+    const availabilityPromise = loadAvailability(availabilityUrl);
     const index = validateIndex(await fetchJson(databaseUrl));
     const versionCounts = new Map();
     for (const summary of index.entries) {
@@ -237,6 +320,7 @@ async function renderIndex() {
     }
     const currentIndex = { entries: latestVersions(index.entries) };
     const entries = await loadEntries(currentIndex, databaseBase);
+    const availability = await availabilityPromise;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     setOptionalText("#metric-results", String(entries.length));
@@ -252,7 +336,7 @@ async function renderIndex() {
     }
     status.hidden = true;
     for (const entry of entries.sort((a, b) => a.id.localeCompare(b.id))) {
-      grid.append(entryCard(entry, versionCounts.get(entry.id)));
+      grid.append(entryCard(entry, versionCounts.get(entry.id), availability));
     }
     let trust = "all";
     const search = document.querySelector("#search");
@@ -368,6 +452,19 @@ function externalDetailRow(labelText, text, href) {
   value.append(externalLink(text, href));
   row.append(value);
   return row;
+}
+
+function dataDetailRow(labelText, text, href) {
+  const row = el("div", "detail-row");
+  row.append(el("dt", "", labelText));
+  const value = el("dd");
+  value.append(dataLink(text, href));
+  row.append(value);
+  return row;
+}
+
+function evidenceDataUrl(entry, databaseBase, filename) {
+  return new URL(`${entry.verification.evidence_path}${filename}`, databaseBase);
 }
 
 function localPageUrl(page, entry) {
@@ -548,7 +645,7 @@ function challengeMetadata(metadata) {
 async function challengePresentation(
   entry,
   renderBase,
-  { forceFrame = false, dependenciesOnThisPage = false } = {},
+  { forceFrame = false, dependenciesOnThisPage = false, availability = null } = {},
 ) {
   const section = el("section", "challenge-presentation");
   const heading = el("div", "section-heading");
@@ -571,10 +668,11 @@ async function challengePresentation(
   const comparatorPath = entry.formalization.comparator_config_path;
   const challengePath = entry.formalization.challenge_path;
   const challengeFilename = pathBasename(challengePath);
+  const location = topSourceLocation(entry, availability);
   links.append(
     externalLink(
       `View full pinned statement file (${challengeFilename})`,
-      challengeSourceUrl(entry),
+      challengeSourceUrl(entry, location.repository),
       "challenge-source",
     ),
     " · ",
@@ -585,7 +683,7 @@ async function challengePresentation(
     " · ",
     externalLink(
       `View comparator configuration (${pathBasename(comparatorPath)})`,
-      pinnedSourceFileUrl(entry, comparatorPath),
+      sourceFileUrl(entry, comparatorPath, availability),
       "comparator-source",
     ),
   );
@@ -638,23 +736,32 @@ async function challengePresentation(
   return {section, metadata};
 }
 
-function acceptanceCallout(entry) {
+function acceptanceCallout(entry, databaseBase) {
   const callout = el("div", "acceptance-callout");
   const check = el("span", "acceptance-check", "✓");
   check.setAttribute("aria-hidden", "true");
   const copy = el("div");
   const evidenceLinks = el("p", "certificate-evidence-links");
   evidenceLinks.append(
-    externalLink(
+    dataLink(
       "Archived mechanical report",
-      `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}mechanical-report.json`,
+      evidenceDataUrl(entry, databaseBase, "mechanical-report.json"),
     ),
     " · ",
-    externalLink(
+    dataLink(
       "Archived editorial review",
-      `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}review.json`,
+      evidenceDataUrl(entry, databaseBase, "review.json"),
     ),
   );
+  if (entry.preservation) {
+    evidenceLinks.append(
+      " · ",
+      dataLink(
+        "Source preservation receipt",
+        evidenceDataUrl(entry, databaseBase, "source-archive.json"),
+      ),
+    );
+  }
   copy.append(
     el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
     el(
@@ -699,6 +806,67 @@ function classificationSearchUrl(scheme, code) {
   const url = new URL("index.html", document.baseURI);
   url.searchParams.set(scheme, code);
   return url;
+}
+
+function sourceAvailabilityNotice(entry, availability) {
+  const location = topSourceLocation(entry, availability);
+  const notice = el("section", "source-availability");
+  const original = pinnedRepositoryDirectoryUrl(
+    location.originalRepository,
+    location.commit,
+    entry.source.project_path || ".",
+  );
+  if (!location.archiveRepository) {
+    notice.classList.add("legacy");
+    notice.append(
+      el("strong", "", "Source recorded before automatic preservation"),
+      el("p", "", "This legacy entry links to its original pinned commit."),
+      externalLink("Recorded original location", original),
+    );
+    return notice;
+  }
+  const archived = pinnedRepositoryDirectoryUrl(
+    location.archiveRepository,
+    location.commit,
+    entry.source.project_path || ".",
+  );
+  if (location.originalStatus === "missing" && location.archiveStatus === "missing") {
+    notice.classList.add("unrecoverable");
+    notice.append(
+      el("strong", "", "No working preserved source location"),
+      el("p", "", "Both the recorded original and Palomar's preserved copy are currently unavailable."),
+      externalLink("Recorded original location", original),
+      " · ",
+      externalLink("Recorded Palomar copy", archived),
+    );
+  } else if (location.originalStatus === "missing") {
+    notice.classList.add("original-missing");
+    const checked = location.checkedAt ? ` (checked ${location.checkedAt})` : "";
+    notice.append(
+      el("strong", "", "Original source unavailable"),
+      el("p", "", `Source links on this page now use Palomar's preserved copy${checked}.`),
+      externalLink("Palomar preserved copy", archived),
+      " · ",
+      externalLink("Recorded original location", original),
+    );
+  } else if (location.archiveStatus === "missing") {
+    notice.classList.add("archive-missing");
+    notice.append(
+      el("strong", "", "Source preservation degraded"),
+      el("p", "", "The original source still works, but Palomar's preserved copy is unavailable."),
+      externalLink("Original source", original),
+      " · ",
+      externalLink("Recorded Palomar copy", archived),
+    );
+  } else {
+    notice.classList.add("preserved");
+    notice.append(
+      el("strong", "", "Source preserved by Palomar"),
+      " ",
+      externalLink("Palomar preserved copy", archived),
+    );
+  }
+  return notice;
 }
 
 function classificationSection(entry) {
@@ -751,7 +919,7 @@ function classificationSection(entry) {
   return section;
 }
 
-function provenanceSection(entry) {
+function provenanceSection(entry, availability) {
   const provenance = entry.provenance;
   const section = el("section", "entry-provenance");
   const heading = el("div", "section-heading");
@@ -766,11 +934,17 @@ function provenanceSection(entry) {
   // below the repository role that exists to announce it.
   if (provenance.repository_role === "thin-wrapper") {
     const substantive = provenance.substantive_formalization;
+    const location = sourceLocation(
+      entry,
+      availability,
+      substantive.repository,
+      substantive.commit,
+    );
     details.append(
       externalDetailRow(
         "Substantive formalization",
         `${substantive.repository}@${substantive.commit.slice(0, 12)}`,
-        substantive.tree_url,
+        pinnedRepositoryDirectoryUrl(location.repository, substantive.commit),
       ),
     );
   }
@@ -837,7 +1011,7 @@ function provenanceSection(entry) {
   return section;
 }
 
-function solutionMetadata(entry, renderMetadata) {
+function solutionMetadata(entry, renderMetadata, availability) {
   const section = el("section", "entry-solution");
   const heading = el("div", "section-heading");
   const title = el("div");
@@ -857,7 +1031,7 @@ function solutionMetadata(entry, renderMetadata) {
     externalDetailRow(
       "Proof file",
       entry.formalization.solution_path,
-      pinnedSourceFileUrl(entry, entry.formalization.solution_path),
+      sourceFileUrl(entry, entry.formalization.solution_path, availability),
     ),
     detailRow("Proof file checksum (SHA-256)", entry.verification.solution_sha256),
   );
@@ -887,18 +1061,33 @@ function solutionMetadata(entry, renderMetadata) {
       item.append(
         externalLink(
           dependency.name,
-          pinnedSourceDirectoryUrl(entry, dependency.path),
+          sourceDirectoryUrl(entry, dependency.path, availability),
         ),
         el("code", "", dependency.path),
       );
     } else {
+      const location = sourceLocation(
+        entry,
+        availability,
+        dependency.repository,
+        dependency.revision,
+      );
       item.append(
         externalLink(
-          dependency.repository,
-          `https://github.com/${dependency.repository}/tree/${dependency.revision}`,
+          location.useArchive ? `${dependency.repository} (Palomar copy)` : dependency.repository,
+          pinnedRepositoryDirectoryUrl(location.repository, dependency.revision),
         ),
         el("code", "", dependency.revision.slice(0, 12)),
       );
+      if (!location.useArchive && location.archiveRepository) {
+        item.append(
+          " · ",
+          externalLink(
+            "Palomar preserved copy",
+            pinnedRepositoryDirectoryUrl(location.archiveRepository, dependency.revision),
+          ),
+        );
+      }
     }
     list.append(item);
   }
@@ -914,6 +1103,8 @@ async function renderEntry(
   renderBase,
   versions,
   currentVersion,
+  availability,
+  databaseBase,
 ) {
   document.title = `${entry.title} — Palomar`;
   setCanonicalEntryPage(entry);
@@ -929,8 +1120,9 @@ async function renderEntry(
   const titleBlock = el("div");
   titleBlock.append(el("div", "eyebrow", "Verification"), el("h2", "", "What was checked"));
   evidenceTitle.append(titleBlock);
-  evidence.append(evidenceTitle, acceptanceCallout(entry));
+  evidence.append(evidenceTitle, acceptanceCallout(entry, databaseBase));
   const details = el("dl", "details");
+  const location = topSourceLocation(entry, availability);
   details.append(
     detailRow("Acceptance date", displayDate(acceptanceDate(entry))),
     detailRow(
@@ -940,27 +1132,31 @@ async function renderEntry(
     externalDetailRow(
       "Fixed source version",
       `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`,
-      `${entry.source.repository_url}/tree/${entry.source.commit}`,
+      pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit),
     ),
     externalDetailRow(
       "Project directory",
       entry.source.project_path || "Repository root",
-      entry.source.tree_url,
+      pinnedRepositoryDirectoryUrl(
+        location.repository,
+        entry.source.commit,
+        entry.source.project_path || ".",
+      ),
     ),
     externalDetailRow(
       "Statement file",
       entry.formalization.challenge_path,
-      pinnedSourceFileUrl(entry, entry.formalization.challenge_path),
+      sourceFileUrl(entry, entry.formalization.challenge_path, availability),
     ),
     externalDetailRow(
       "Proof file",
       entry.formalization.solution_path,
-      pinnedSourceFileUrl(entry, entry.formalization.solution_path),
+      sourceFileUrl(entry, entry.formalization.solution_path, availability),
     ),
     externalDetailRow(
       "Formalization metadata",
       entry.formalization.formalization_metadata_path,
-      pinnedSourceFileUrl(entry, entry.formalization.formalization_metadata_path),
+      sourceFileUrl(entry, entry.formalization.formalization_metadata_path, availability),
     ),
     detailRow("Challenge SHA-256", entry.verification.challenge_sha256),
     detailRow("Solution SHA-256", entry.verification.solution_sha256),
@@ -980,24 +1176,24 @@ async function renderEntry(
       externalDetailRow(
         "Lakefile",
         entry.formalization.lakefile_path,
-        pinnedSourceFileUrl(entry, entry.formalization.lakefile_path),
+        sourceFileUrl(entry, entry.formalization.lakefile_path, availability),
       ),
     );
   }
   details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
   {
     details.append(
-      externalDetailRow(
+      dataDetailRow(
         "Durable verification report",
         entry.verification.mechanical_report_sha256,
-        `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}mechanical-report.json`,
+        evidenceDataUrl(entry, databaseBase, "mechanical-report.json"),
       ),
       detailRow("Verification workflow commit", entry.verification.workflow_commit),
       detailRow("Workflow run attempt", String(entry.verification.workflow_run_attempt)),
       externalDetailRow(
         "Repository licence file",
         entry.source.license.path,
-        pinnedSourceFileUrl(entry, entry.source.license.path),
+        sourceFileUrl(entry, entry.source.license.path, availability),
       ),
       detailRow("Declared repository licence", entry.source.license.declared_identifier),
       detailRow("Detected SPDX licence", entry.source.license.detected_identifier),
@@ -1071,9 +1267,9 @@ async function renderEntry(
     editorial.append(el("p", "no-warnings", "No permanent editorial warnings were recorded."));
   }
   editorial.append(
-    externalLink(
+    dataLink(
       "Read the archived review",
-      `${DATABASE_SOURCE_BASE}${entry.verification.evidence_path}review.json`,
+      evidenceDataUrl(entry, databaseBase, "review.json"),
     ),
   );
 
@@ -1088,8 +1284,9 @@ async function renderEntry(
 
   const challenge = await challengePresentation(entry, renderBase, {
     dependenciesOnThisPage: true,
+    availability,
   });
-  content.append(heading);
+  content.append(heading, sourceAvailabilityNotice(entry, availability));
   const notice = versionNotice(entry, currentVersion);
   if (notice) content.append(notice);
   // What was checked, then the statement it was checked about, then what that
@@ -1100,8 +1297,8 @@ async function renderEntry(
     evidence,
     challenge.section,
     trust,
-    solutionMetadata(entry, challenge.metadata),
-    provenanceSection(entry),
+    solutionMetadata(entry, challenge.metadata, availability),
+    provenanceSection(entry, availability),
     classificationSection(entry),
     editorial,
     versionHistory(entry, versions, currentVersion),
@@ -1110,25 +1307,59 @@ async function renderEntry(
 }
 
 async function loadEntry(id, requestedVersion) {
-  const { databaseUrl, databaseBase, renderBase } = dataSource();
+  const { databaseUrl, databaseBase, renderBase, availabilityUrl } = dataSource();
+  const availabilityPromise = loadAvailability(availabilityUrl);
   const index = validateIndex(await fetchJson(databaseUrl));
   const versions = index.entries
     .filter((item) => item.id === id)
     .sort((left, right) => left.version - right.version);
-  if (!versions.length) throw new Error("entry not found");
-  const currentVersion = versions.at(-1).version;
+  const currentVersion = versions.length ? versions.at(-1).version : null;
   const version = requestedVersion ?? currentVersion;
+  if (version === null) throw new Error("entry not found");
   const summary = index.entries.find((item) => item.id === id && item.version === version);
-  if (!summary) throw new Error("entry not found");
+  if (!summary) {
+    if (requestedVersion === null || requestedVersion === undefined) {
+      throw new Error("entry not found");
+    }
+    try {
+      const tombstone = validateTombstone(
+        await fetchJson(tombstoneUrl(id, requestedVersion, databaseBase)),
+        id,
+        requestedVersion,
+      );
+      return { tombstone };
+    } catch (error) {
+      if (error.status === 404) throw new Error("entry not found");
+      throw error;
+    }
+  }
   const canonicalUrl = entryRecordUrl(summary, databaseBase);
   const entry = validateEntry(await fetchJson(canonicalUrl), summary);
+  const availability = await availabilityPromise;
   return {
     entry,
     canonicalUrl,
     renderBase,
     versions,
     currentVersion,
+    availability,
+    databaseBase,
   };
+}
+
+function renderExactTombstone(tombstone, content) {
+  document.title = `${tombstone.id} v${tombstone.version} — Palomar`;
+  document.body.classList.add("exact-tombstone");
+  for (const node of document.querySelectorAll("body > .site-header, body > footer, body > .skip-link")) {
+    node.hidden = true;
+  }
+  const record = el("section", "tombstone-record");
+  record.append(
+    el("h1", "", `${tombstone.id} v${tombstone.version}`),
+    el("p", "", displayDate(tombstone.taken_down_on)),
+  );
+  content.replaceChildren(record);
+  content.hidden = false;
 }
 
 async function renderEntryPage() {
@@ -1150,13 +1381,21 @@ async function renderEntryPage() {
   }
   try {
     const requestedHash = window.location.hash;
+    const loaded = await loadEntry(id, version);
+    if (loaded.tombstone) {
+      status.hidden = true;
+      renderExactTombstone(loaded.tombstone, content);
+      return;
+    }
     const {
       entry,
       canonicalUrl,
       renderBase,
       versions,
       currentVersion,
-    } = await loadEntry(id, version);
+      availability,
+      databaseBase,
+    } = loaded;
     if (version === null) {
       const resolvedUrl = localPageUrl("entry.html", entry);
       resolvedUrl.hash = requestedHash;
@@ -1171,6 +1410,8 @@ async function renderEntryPage() {
       renderBase,
       versions,
       currentVersion,
+      availability,
+      databaseBase,
     );
     const anchorTarget = requestedHash.startsWith("#")
       ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
@@ -1198,14 +1439,24 @@ async function renderChallengePage() {
     return;
   }
   try {
-    const { entry, renderBase } = await loadEntry(id, version);
+    const loaded = await loadEntry(id, version);
+    if (loaded.tombstone) {
+      status.hidden = true;
+      renderExactTombstone(loaded.tombstone, content);
+      return;
+    }
+    const { entry, renderBase, availability } = loaded;
     document.title = `Named compared declarations — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
       el("div", "entry-id", `${entry.id} v${entry.version}`),
       el("h1", "", entry.title),
     );
-    const challenge = await challengePresentation(entry, renderBase, { forceFrame: true });
+    const challenge = await challengePresentation(
+      entry,
+      renderBase,
+      { forceFrame: true, availability },
+    );
     content.append(heading, challenge.section);
     status.hidden = true;
     content.hidden = false;

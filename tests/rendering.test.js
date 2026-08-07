@@ -18,6 +18,15 @@ function entry(overrides = {}) {
       repository_url: "https://github.com/example/challenge",
       commit: "1".repeat(40),
     },
+    preservation: {
+      repositories: [
+        {
+          source_repository: "example/challenge",
+          commit: "1".repeat(40),
+          fork_repository: "PalomarArchive/challenge",
+        },
+      ],
+    },
     formalization: {
       challenge_path: "Challenge.lean",
       theorem_names: ["Example.theorem"],
@@ -77,6 +86,10 @@ test("source URL is always the immutable canonical GitHub file", () => {
   assert.equal(
     challengeSourceUrl(nested),
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Task.lean`,
+  );
+  assert.equal(
+    challengeSourceUrl(entry(), "PalomarArchive/challenge"),
+    `https://github.com/PalomarArchive/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
 
   const traversal = entry();
