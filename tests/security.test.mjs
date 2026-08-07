@@ -28,6 +28,8 @@ import {
   validateAvailability,
   validateIndex,
   validateTombstone,
+  validateVersions,
+  versionsUrl,
 } from "../assets/security.mjs";
 
 // The website's own origin, for the cross-origin assertion below.
@@ -616,4 +618,44 @@ test("the favicon ships with the site and every page asks for it", async () => {
   // One flat colour per scheme, and nothing that a strict policy would refuse.
   assert.match(icon, /prefers-color-scheme: dark/);
   assert.doesNotMatch(icon, /<script|xlink:href|href="http/);
+});
+
+test("a version index must be every version of the result it names", () => {
+  // The document claims to be complete for one identifier. A row belonging to
+  // another would show one result's history under another result's name, and
+  // the row validator alone would not notice: the rows are well formed.
+  const id = "PALOMAR-2026-07-29-000123";
+  const row = (version) => ({
+    id,
+    version,
+    title: "A result",
+    status: "accepted",
+    path: `entries/${id}-v${version}.json`,
+  });
+  const document = { schema_version: 1, id, entries: [row(1), row(2)] };
+  assert.equal(validateVersions(structuredClone(document), id).entries.length, 2);
+
+  assert.throws(() => validateVersions({ ...document, id: "PALOMAR-2026-07-29-000999" }, id),
+    /different result/);
+  assert.throws(() => validateVersions(document, "PALOMAR-2026-07-29-000999"),
+    /different result/);
+  assert.throws(
+    () => validateVersions({ ...document, entries: [row(2), row(1)] }, id),
+    /increasing version order/,
+  );
+  assert.throws(() => validateVersions({ ...document, entries: [] }, id), /carries no versions/);
+  assert.throws(() => validateVersions({ ...document, schema_version: 2 }, id), /schema_version/);
+
+  const foreign = { id: "PALOMAR-2026-07-29-000999", version: 3, title: "t", status: "accepted",
+    path: "entries/PALOMAR-2026-07-29-000999-v3.json" };
+  assert.throws(() => validateVersions({ ...document, entries: [row(1), foreign] }, id),
+    /is a different result/);
+});
+
+test("a version index URL cannot leave the database origin", () => {
+  const base = "https://data.example.org/";
+  assert.equal(versionsUrl("PALOMAR-2026-07-29-000123", base).href,
+    "https://data.example.org/versions/PALOMAR-2026-07-29-000123.json");
+  assert.throws(() => versionsUrl("../../etc/passwd", base), /malformed/);
+  assert.throws(() => versionsUrl("PALOMAR-2026-07-29-00012", base), /malformed/);
 });

@@ -1,4 +1,8 @@
 export const INDEX_SCHEMA_VERSION = 3;
+export const VERSIONS_SCHEMA_VERSION = 1;
+// A result with five hundred registered versions is a bug, not a history, and
+// this is the one read surface whose size is not bounded by anything else.
+const MAX_VERSIONS_PER_ID = 500;
 export const ENTRY_SCHEMA_VERSION = 2;
 export const ENTRY_SCHEMA_VERSIONS = new Set([1, 2]);
 export const DEFAULT_DATABASE =
@@ -270,6 +274,52 @@ export function entryRecordUrl(summary, databaseBase) {
     fail("entry path escaped the canonical database prefix");
   }
   return resolved;
+}
+
+export function versionsUrl(id, databaseBase) {
+  if (typeof id !== "string" || !ID_RE.test(id)) fail("version index ID is malformed");
+  const base = new URL(databaseBase);
+  const expected = new URL(`versions/${id}.json`, base);
+  if (expected.origin !== base.origin) fail("version index path escaped the database origin");
+  return expected;
+}
+
+/**
+ * The versions of one result, from `versions/<id>.json`.
+ *
+ * The rows are the ones `index.json` carries, so the row grammar and
+ * `entryRecordUrl` apply unchanged. What is new is coverage and ordering: this
+ * document claims to be *every* active version of one identifier, so a row
+ * belonging to another identifier means it is not what it says it is, and
+ * reading it as if it were would show one result's history under another
+ * result's name.
+ */
+export function validateVersions(value, id) {
+  const document = object(value, "version index");
+  if (document.schema_version !== VERSIONS_SCHEMA_VERSION) {
+    fail(`unsupported version index schema_version ${String(document.schema_version)}`);
+  }
+  if (document.id !== id) fail("version index is for a different result");
+  const entries = array(document.entries, "version index entries");
+  if (entries.length === 0) fail("version index carries no versions");
+  if (entries.length > MAX_VERSIONS_PER_ID) fail("version index is implausibly long");
+  let previous = 0;
+  for (const [position, row] of entries.entries()) {
+    const summary = object(row, `version index entries[${position}]`);
+    if (summary.id !== id) fail(`version index entries[${position}] is a different result`);
+    const version = integer(summary.version, `version index entries[${position}].version`);
+    if (version <= previous) fail("version index is not in increasing version order");
+    previous = version;
+    string(summary.title, `version index entries[${position}].title`);
+    if (summary.status !== "accepted") {
+      fail(`version index entries[${position}].status is not accepted`);
+    }
+    const expectedPath = `entries/${id}-v${version}.json`;
+    if (summary.path !== expectedPath) {
+      fail(`version index entries[${position}].path must be ${expectedPath}`);
+    }
+  }
+  return document;
 }
 
 export function tombstoneUrl(id, version, databaseBase) {
