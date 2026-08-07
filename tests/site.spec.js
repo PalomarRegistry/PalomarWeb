@@ -584,3 +584,26 @@ test("current JavaScript preserves represented deep links with cached HTML", asy
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
+
+test("an entry shows the decision and the comments, never the scores", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const editorial = page.locator(".entry-editorial");
+  await expect(editorial).toBeVisible();
+
+  // The scores decide acceptance and stay with the record. They are not shown:
+  // the same repository at the same commit scored 5 and then 4 on the same
+  // axis across two runs, and a number that moves like that reads as a
+  // judgement it cannot support.
+  await expect(editorial).not.toContainText("/5");
+  for (const axis of ["statement alignment", "definition fidelity", "notability", "literature"]) {
+    await expect(editorial).not.toContainText(axis);
+  }
+  await expect(page.locator(".score-grid")).toHaveCount(0);
+
+  // What is shown is the decision, and the comments under one heading.
+  await expect(editorial.locator(".decision")).toBeVisible();
+  const commentary = editorial.locator("h3", { hasText: "AI review comments" });
+  const none = editorial.locator(".no-warnings");
+  expect(await commentary.count() + await none.count()).toBeGreaterThan(0);
+  await expect(editorial).not.toContainText("Permanent warnings");
+});

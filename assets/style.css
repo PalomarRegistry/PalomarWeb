@@ -832,36 +832,21 @@ pre {
   text-transform: uppercase;
 }
 
-.score-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+.review-explanation {
   margin-bottom: 1rem;
-  border-block: 1px solid var(--line);
-}
-
-.score {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: .55rem;
-  border-right: 1px dotted var(--line);
-}
-
-.score:last-child {
-  border-right: 0;
-}
-
-.score span {
-  display: block;
-  margin-bottom: .35rem;
+  padding-bottom: .8rem;
+  border-bottom: 1px solid var(--line);
   color: var(--muted);
-  font: .7rem/1.3 var(--sans);
-  text-transform: uppercase;
 }
 
-.score strong {
-  font: bold 1.1rem/1.3 var(--mono);
+.review-comments {
+  padding-left: 1.1rem;
 }
+
+.review-comments li {
+  margin: .45rem 0;
+}
+
 
 .no-warnings {
   color: var(--muted);
@@ -929,13 +914,6 @@ pre {
     grid-template-columns: 1fr;
   }
 
-  .score-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .score:nth-child(2n) {
-    border-right: 0;
-  }
 }
 
 @media print {
