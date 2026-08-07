@@ -191,6 +191,17 @@ ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
         "reasons": ["Challenge imports Tau Ceti"],
     }
 )
+def summary(item: dict) -> dict:
+    """One index row, which every derived surface repeats."""
+    return {
+        "id": item["id"],
+        "version": item["version"],
+        "title": item["title"],
+        "status": "accepted",
+        "path": f"entries/{item['id']}-v{item['version']}.json",
+    }
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -245,18 +256,47 @@ class Handler(SimpleHTTPRequestHandler):
             payload = {
                 "schema_version": 3,
                 "generated_at": "2026-07-29T09:00:00Z",
-                "entries": [
-                    {
-                        "id": item["id"],
-                        "version": item["version"],
-                        "title": item["title"],
-                        "status": "accepted",
-                        "path": f"entries/{item['id']}-v{item['version']}.json",
-                    }
-                    for item in ENTRIES.values()
-                ]
+                "entries": [summary(item) for item in ENTRIES.values()],
             }
             self.send_bytes(json.dumps(payload).encode(), "application/json")
+            return
+        # The registry a shard at a time, which is what the landing page reads
+        # instead of the index. Every shard exists, including the empty ones:
+        # a reader has to be able to tell "nothing here" from "not published".
+        if path == "/database/browse/index.json":
+            held = {}
+            for item in ENTRIES.values():
+                held[item["id"][-2:]] = held.get(item["id"][-2:], 0) + 1
+            self.send_bytes(
+                json.dumps({
+                    "schema_version": 1,
+                    "shards": [
+                        {
+                            "shard": f"{number:02d}",
+                            "path": f"browse/{number:02d}.json",
+                            "count": held.get(f"{number:02d}", 0),
+                        }
+                        for number in range(100)
+                    ],
+                }).encode(),
+                "application/json",
+            )
+            return
+        shard = re.fullmatch(r"/database/browse/([0-9]{2})\.json", path)
+        if shard:
+            rows = [
+                summary(item)
+                for item in ENTRIES.values()
+                if item["id"][-2:] == shard.group(1)
+            ]
+            self.send_bytes(
+                json.dumps({
+                    "schema_version": 1,
+                    "shard": shard.group(1),
+                    "entries": sorted(rows, key=lambda row: (row["id"], row["version"])),
+                }).encode(),
+                "application/json",
+            )
             return
         # The versions of one result, which is what an entry page reads instead
         # of the whole index.
@@ -266,17 +306,7 @@ class Handler(SimpleHTTPRequestHandler):
         )
         if versions:
             identifier = versions.group(1)
-            rows = [
-                {
-                    "id": item["id"],
-                    "version": item["version"],
-                    "title": item["title"],
-                    "status": "accepted",
-                    "path": f"entries/{item['id']}-v{item['version']}.json",
-                }
-                for item in ENTRIES.values()
-                if item["id"] == identifier
-            ]
+            rows = [summary(item) for item in ENTRIES.values() if item["id"] == identifier]
             if not rows:
                 self.send_error(404)
                 return

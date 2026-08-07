@@ -5,6 +5,8 @@ import {
   isInlineChallenge,
 } from "./rendering.js";
 import {
+  browseDirectoryUrl,
+  browseShardUrl,
   databaseBaseFor,
   availabilityRecord,
   RESULT_ORIGIN_LABELS,
@@ -20,9 +22,10 @@ import {
   selectAvailabilityUrl,
   selectRenderBase,
   tombstoneUrl,
+  validateBrowseDirectory,
+  validateBrowseShard,
   validateEntry,
   validateAvailability,
-  validateIndex,
   validateVersions,
   versionsUrl,
   validateTombstone,
@@ -330,18 +333,49 @@ async function loadEntries(index, databaseBase) {
   );
 }
 
+/**
+ * Every registered version, a browse page at a time.
+ *
+ * `index.json` is one document naming all of them, rewritten in full on every
+ * publication, and it is retiring for exactly that reason. The shards carry
+ * the same rows and each one changes only when a result on it does.
+ *
+ * A shard the directory counts as empty is not fetched, which is what keeps a
+ * small registry at a handful of requests rather than a hundred. The directory
+ * is written after the shards it counts, so it is never newer than they are:
+ * the worst a reader who arrives during a publication can see is a page one
+ * publication behind, which is the tolerance the feeds already have and which
+ * the next load heals.
+ */
+async function loadBrowseRows(databaseBase) {
+  const directory = validateBrowseDirectory(
+    await fetchJson(browseDirectoryUrl(databaseBase)),
+  );
+  const pages = await Promise.all(
+    directory.shards
+      .filter((shard) => shard.count > 0)
+      .map(async (shard) =>
+        validateBrowseShard(
+          await fetchJson(browseShardUrl(shard.shard, databaseBase)),
+          shard.shard,
+        ).entries,
+      ),
+  );
+  return pages.flat();
+}
+
 async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
   try {
-    const { databaseUrl, databaseBase, availabilityUrl } = dataSource();
+    const { databaseBase, availabilityUrl } = dataSource();
     const availabilityPromise = loadAvailability(availabilityUrl);
-    const index = validateIndex(await fetchJson(databaseUrl));
+    const rows = await loadBrowseRows(databaseBase);
     const versionCounts = new Map();
-    for (const summary of index.entries) {
+    for (const summary of rows) {
       versionCounts.set(summary.id, (versionCounts.get(summary.id) || 0) + 1);
     }
-    const currentIndex = { entries: latestVersions(index.entries) };
+    const currentIndex = { entries: latestVersions(rows) };
     const entries = await loadEntries(currentIndex, databaseBase);
     const availability = await availabilityPromise;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
@@ -1401,7 +1435,7 @@ async function renderEntry(
 }
 
 async function loadEntry(id, requestedVersion) {
-  const { databaseUrl, databaseBase, renderBase, availabilityUrl } = dataSource();
+  const { databaseBase, renderBase, availabilityUrl } = dataSource();
   const availabilityPromise = loadAvailability(availabilityUrl);
   // The versions of this one result, not the whole registry. Reading
   // `index.json` here meant fetching every record ever registered to render

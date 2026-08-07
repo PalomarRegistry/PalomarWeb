@@ -30,6 +30,13 @@ import {
   validateTombstone,
   validateVersions,
   versionsUrl,
+  browseDirectoryUrl,
+  browseShardOf,
+  browseShardUrl,
+  subjectUrl,
+  validateBrowseDirectory,
+  validateBrowseShard,
+  validateSubject,
 } from "../assets/security.mjs";
 
 // The website's own origin, for the cross-origin assertion below.
@@ -658,4 +665,176 @@ test("a version index URL cannot leave the database origin", () => {
     "https://data.example.org/versions/PALOMAR-2026-07-29-000123.json");
   assert.throws(() => versionsUrl("../../etc/passwd", base), /malformed/);
   assert.throws(() => versionsUrl("PALOMAR-2026-07-29-00012", base), /malformed/);
+});
+
+// The browse pages and the subject pages, whose new claim is not about the
+// rows -- those are the index's rows -- but about what each document asserts
+// it covers. A row in the wrong shard, or under the wrong code, passes the row
+// grammar, and reading it as if it belonged shows a reader something under the
+// wrong heading.
+
+function shardRow(serial, version = 1) {
+  const id = `PALOMAR-2026-07-29-${serial}`;
+  return { id, version, title: "A result", status: "accepted",
+    path: `entries/${id}-v${version}.json` };
+}
+
+function directory(overrides = new Map()) {
+  return {
+    schema_version: 1,
+    shards: Array.from({ length: 100 }, (_value, number) => {
+      const shard = String(number).padStart(2, "0");
+      return { shard, path: `browse/${shard}.json`, count: overrides.get(shard) ?? 0 };
+    }),
+  };
+}
+
+test("a browse directory is the hundred shards, in order, naming their own pages", () => {
+  const complete = directory(new Map([["23", 2]]));
+  assert.equal(validateBrowseDirectory(structuredClone(complete)).shards.length, 100);
+
+  assert.throws(
+    () => validateBrowseDirectory({ ...complete, shards: complete.shards.slice(0, 99) }),
+    /names 99 shards/,
+  );
+  assert.throws(
+    () => validateBrowseDirectory({ ...complete, shards: [...complete.shards].reverse() }),
+    /hundred shards in order/,
+  );
+  assert.throws(
+    () => validateBrowseDirectory({ ...complete, schema_version: 2 }),
+    /schema_version/,
+  );
+});
+
+test("a browse directory cannot point the reader anywhere but at its own shard", () => {
+  // The directory is an instruction, not data: its paths become the next
+  // fetch. A hostile one must be able to name only the page it is for.
+  for (const path of [
+    "browse/../index.json",
+    "https://attacker.invalid/23.json",
+    "browse/23.json?raw=1",
+    "browse/24.json",
+    "entries/PALOMAR-2026-07-29-000123-v1.json",
+  ]) {
+    const hostile = directory();
+    hostile.shards[23] = { shard: "23", path, count: 1 };
+    assert.throws(() => validateBrowseDirectory(hostile), /is not that shard's page/, path);
+  }
+});
+
+test("a browse directory count is a plausible number of results", () => {
+  for (const count of [-1, 1.5, 5001, "2", null]) {
+    const wrong = directory();
+    wrong.shards[23] = { shard: "23", path: "browse/23.json", count };
+    assert.throws(() => validateBrowseDirectory(wrong), /plausible number/, String(count));
+  }
+});
+
+test("a browse shard holds the identifiers that belong to it, in order", () => {
+  const page = { schema_version: 1, shard: "23",
+    entries: [shardRow("000123", 1), shardRow("000123", 2), shardRow("999923")] };
+  assert.equal(validateBrowseShard(structuredClone(page), "23").entries.length, 3);
+
+  assert.throws(() => validateBrowseShard(page, "24"), /not the one that was asked for/);
+  assert.throws(
+    () => validateBrowseShard({ ...page, entries: [shardRow("000124")] }, "23"),
+    /belongs to another shard/,
+  );
+  assert.throws(
+    () => validateBrowseShard({ ...page, entries: [shardRow("999923"), shardRow("000123")] }, "23"),
+    /identifier and version order/,
+  );
+  assert.throws(
+    () => validateBrowseShard({ ...page, entries: [shardRow("000123"), shardRow("000123")] }, "23"),
+    /identifier and version order/,
+  );
+  assert.throws(
+    () => validateBrowseShard({ ...page, entries: Array.from({ length: 5001 }, () => shardRow("000123")) }, "23"),
+    /implausibly long/,
+  );
+  assert.throws(() => validateBrowseShard(page, "2"), /shard name is malformed/);
+});
+
+test("a browse shard is read from the identifier and from nothing else", () => {
+  assert.equal(browseShardOf("PALOMAR-2026-07-29-735171"), "71");
+  assert.equal(browseShardOf("PALOMAR-2030-01-01-000000"), "00");
+  assert.throws(() => browseShardOf("PALOMAR-2026-07-29-73517"), /malformed/);
+  assert.throws(() => browseShardOf("PALOMAR-2026-07-29-735171-v1"), /malformed/);
+});
+
+test("a browse URL cannot leave the database origin", () => {
+  const base = "https://data.example.org/";
+  assert.equal(browseDirectoryUrl(base).href, "https://data.example.org/browse/index.json");
+  assert.equal(browseShardUrl("07", base).href, "https://data.example.org/browse/07.json");
+  for (const shard of ["7", "007", "..", "index", "0a"]) {
+    assert.throws(() => browseShardUrl(shard, base), /malformed/, shard);
+  }
+});
+
+test("a subject page is the newest results actually classified under its code", () => {
+  const row = (serial, when, codes = ["05C10"]) => ({
+    ...shardRow(serial),
+    published_at: when,
+    classification: { arxiv: ["math.CO"], msc2020: codes },
+  });
+  const page = {
+    schema_version: 1,
+    kind: "msc",
+    code: "05C10",
+    entries: [row("000123", "2026-08-02T00:00:00Z"), row("000124", "2026-08-01T00:00:00Z")],
+  };
+  assert.equal(validateSubject(structuredClone(page), "msc", "05C10").entries.length, 2);
+
+  assert.throws(() => validateSubject(page, "msc", "68R10"), /different subject/);
+  assert.throws(() => validateSubject(page, "arxiv", "05C10"), /different subject/);
+  assert.throws(() => validateSubject(page, "msc2020", "05C10"), /kind is not recognized/);
+  assert.throws(
+    () => validateSubject({ ...page, entries: [page.entries[1], page.entries[0]] }, "msc", "05C10"),
+    /not newest first/,
+  );
+  assert.throws(
+    () => validateSubject(
+      { ...page, entries: [row("000123", "2026-08-02T00:00:00Z", ["68R10"])] }, "msc", "05C10",
+    ),
+    /not classified under 05C10/,
+  );
+  assert.throws(
+    () => validateSubject(
+      { ...page, entries: [row("000123", "the day before yesterday")] }, "msc", "05C10",
+    ),
+    /published_at is malformed/,
+  );
+  assert.throws(
+    () => validateSubject(
+      { ...page, entries: Array.from({ length: 51 }, () => row("000123", "2026-08-02T00:00:00Z")) },
+      "msc", "05C10",
+    ),
+    /carries more than it may/,
+  );
+});
+
+test("two results published in the same second are in no wrong order", () => {
+  // A tie is not a violation, and refusing one would make a correct page fail
+  // whenever two results happened to be reviewed together.
+  const row = (serial) => ({
+    ...shardRow(serial),
+    published_at: "2026-08-02T00:00:00Z",
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+  });
+  const page = { schema_version: 1, kind: "msc", code: "05C10",
+    entries: [row("000123"), row("000124")] };
+  assert.equal(validateSubject(page, "msc", "05C10").entries.length, 2);
+});
+
+test("a subject URL cannot leave the database origin, or name a path", () => {
+  const base = "https://data.example.org/";
+  assert.equal(subjectUrl("msc", "05C10", base).href,
+    "https://data.example.org/subjects/msc/05C10.json");
+  assert.equal(subjectUrl("arxiv", "math.CO", base).href,
+    "https://data.example.org/subjects/arxiv/math.CO.json");
+  for (const code of ["../../etc/passwd", "05C10/../..", "", "05c10", "MATH.CO"]) {
+    assert.throws(() => subjectUrl("msc", code, base), /malformed/, code);
+  }
+  assert.throws(() => subjectUrl("msc2020", "05C10", base), /kind is not recognized/);
 });

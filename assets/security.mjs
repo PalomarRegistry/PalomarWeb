@@ -1,8 +1,23 @@
 export const INDEX_SCHEMA_VERSION = 3;
 export const VERSIONS_SCHEMA_VERSION = 1;
+export const BROWSE_SCHEMA_VERSION = 1;
+export const SUBJECT_SCHEMA_VERSION = 1;
 // A result with five hundred registered versions is a bug, not a history, and
 // this is the one read surface whose size is not bounded by anything else.
 const MAX_VERSIONS_PER_ID = 500;
+// A fixed hundred, one per pair of trailing serial digits. Identifiers are
+// allocated at random, so this is uniform by construction and there is nothing
+// for the origin to renegotiate: a directory naming any other set of shards is
+// not the directory this reader understands.
+const BROWSE_SHARDS = 100;
+const BROWSE_SHARD_RE = /^[0-9]{2}$/;
+// What the publisher refuses to exceed. Mirrored rather than trusted: a page
+// this long is either a registry that outgrew its shard count or an origin
+// that is not the registry, and both are worth stopping for.
+const MAX_ROWS_PER_SHARD = 5000;
+export const SUBJECT_KINDS = Object.freeze(["arxiv", "msc"]);
+// The newest fifty, which is a documented truncation and not an accident.
+const MAX_SUBJECT_ITEMS = 50;
 export const ENTRY_SCHEMA_VERSION = 2;
 export const ENTRY_SCHEMA_VERSIONS = new Set([1, 2]);
 export const DEFAULT_DATABASE =
@@ -169,6 +184,26 @@ export function safeInternalUrl(value, locationHref) {
   return url;
 }
 
+/**
+ * One row, exactly as `index.json` writes it.
+ *
+ * Four documents now repeat these rows, and a row grammar living in four
+ * places is four chances for one of them to accept a path the other three
+ * refuse. What each document adds on top is its own claim about which rows
+ * belong in it, and that is what stays with each validator.
+ */
+function summaryRow(value, field) {
+  const summary = object(value, field);
+  const id = string(summary.id, `${field}.id`);
+  if (!ID_RE.test(id)) fail(`${field}.id is malformed`);
+  const version = integer(summary.version, `${field}.version`);
+  string(summary.title, `${field}.title`);
+  if (summary.status !== "accepted") fail(`${field}.status is not accepted`);
+  const expectedPath = `entries/${id}-v${version}.json`;
+  if (summary.path !== expectedPath) fail(`${field}.path must be ${expectedPath}`);
+  return { id, version };
+}
+
 export function validateIndex(index) {
   object(index, "index");
   if (index.schema_version !== INDEX_SCHEMA_VERSION) {
@@ -176,21 +211,153 @@ export function validateIndex(index) {
   }
   const seen = new Set();
   for (const [position, value] of array(index.entries, "index.entries").entries()) {
-    const summary = object(value, `index.entries[${position}]`);
-    const id = string(summary.id, `index.entries[${position}].id`);
-    if (!ID_RE.test(id)) fail(`index.entries[${position}].id is malformed`);
-    const version = integer(summary.version, `index.entries[${position}].version`);
-    string(summary.title, `index.entries[${position}].title`);
-    if (summary.status !== "accepted") fail(`index.entries[${position}].status is not accepted`);
-    const expectedPath = `entries/${id}-v${version}.json`;
-    if (summary.path !== expectedPath) {
-      fail(`index.entries[${position}].path must be ${expectedPath}`);
-    }
+    const { id, version } = summaryRow(value, `index.entries[${position}]`);
     const key = `${id}\0${version}`;
     if (seen.has(key)) fail(`duplicate index entry ${id} version ${version}`);
     seen.add(key);
   }
   return index;
+}
+
+/** Which of the hundred browse pages a result is listed on, for its whole life. */
+export function browseShardOf(id) {
+  const identifier = ID_RE.exec(typeof id === "string" ? id : "");
+  if (!identifier) fail("browse shard identifier is malformed");
+  return identifier[2].slice(-2);
+}
+
+export function browseDirectoryUrl(databaseBase) {
+  const base = new URL(databaseBase);
+  const expected = new URL("browse/index.json", base);
+  if (expected.origin !== base.origin) fail("browse directory escaped the database origin");
+  return expected;
+}
+
+export function browseShardUrl(shard, databaseBase) {
+  // The shard name comes out of a document the origin supplies, and is about
+  // to become a path. Two digits and nothing else, decided here rather than
+  // taken on trust from the directory that offered it.
+  if (typeof shard !== "string" || !BROWSE_SHARD_RE.test(shard)) {
+    fail("browse shard name is malformed");
+  }
+  const base = new URL(databaseBase);
+  const expected = new URL(`browse/${shard}.json`, base);
+  if (expected.origin !== base.origin) fail("browse shard escaped the database origin");
+  return expected;
+}
+
+/**
+ * The directory of browse shards, from `browse/index.json`.
+ *
+ * A manifest that supplies paths to fetch is an instruction, not data. The
+ * grammar of those paths is fixed here so that a hostile or broken directory
+ * can name only one of the hundred pages it is allowed to name, and the
+ * hundred are required in order: that is what makes "every registered result
+ * is on exactly one of these pages" checkable rather than merely claimed.
+ */
+export function validateBrowseDirectory(value) {
+  const directory = object(value, "browse directory");
+  if (directory.schema_version !== BROWSE_SCHEMA_VERSION) {
+    fail(`unsupported browse directory schema_version ${String(directory.schema_version)}`);
+  }
+  const shards = array(directory.shards, "browse directory shards");
+  if (shards.length !== BROWSE_SHARDS) {
+    fail(`browse directory names ${shards.length} shards, not ${BROWSE_SHARDS}`);
+  }
+  for (const [position, value] of shards.entries()) {
+    const field = `browse directory shards[${position}]`;
+    const row = object(value, field);
+    const shard = String(position).padStart(2, "0");
+    if (row.shard !== shard) fail("browse directory is not the hundred shards in order");
+    if (row.path !== `browse/${shard}.json`) fail(`${field}.path is not that shard's page`);
+    if (!Number.isSafeInteger(row.count) || row.count < 0 || row.count > MAX_ROWS_PER_SHARD) {
+      fail(`${field}.count is not a plausible number of results`);
+    }
+  }
+  return directory;
+}
+
+/**
+ * One browse page, from `browse/<shard>.json`.
+ *
+ * The rows are the ones `index.json` carries, so the row grammar and
+ * `entryRecordUrl` apply unchanged. What is new is the claim the document
+ * makes about itself: that it holds every active version whose identifier
+ * belongs to this shard, in identifier and version order. A row from another
+ * shard is a well-formed row, and a reader that accepted it would show the
+ * same result twice while some other page went on claiming it.
+ */
+export function validateBrowseShard(value, shard) {
+  const page = object(value, "browse shard");
+  if (page.schema_version !== BROWSE_SCHEMA_VERSION) {
+    fail(`unsupported browse shard schema_version ${String(page.schema_version)}`);
+  }
+  if (typeof shard !== "string" || !BROWSE_SHARD_RE.test(shard)) {
+    fail("browse shard name is malformed");
+  }
+  if (page.shard !== shard) fail("browse shard is not the one that was asked for");
+  const entries = array(page.entries, "browse shard entries");
+  if (entries.length > MAX_ROWS_PER_SHARD) fail("browse shard is implausibly long");
+  let previousId = "";
+  let previousVersion = 0;
+  for (const [position, row] of entries.entries()) {
+    const field = `browse shard entries[${position}]`;
+    const { id, version } = summaryRow(row, field);
+    if (browseShardOf(id) !== shard) fail(`${field} belongs to another shard`);
+    if (id < previousId || (id === previousId && version <= previousVersion)) {
+      fail("browse shard is not in identifier and version order");
+    }
+    previousId = id;
+    previousVersion = version;
+  }
+  return page;
+}
+
+export function subjectUrl(kind, code, databaseBase) {
+  if (!SUBJECT_KINDS.includes(kind)) fail("subject kind is not recognized");
+  const pattern = kind === "arxiv" ? ARXIV_RE : MSC2020_RE;
+  if (typeof code !== "string" || !pattern.test(code)) fail("subject code is malformed");
+  const base = new URL(databaseBase);
+  const expected = new URL(`subjects/${kind}/${code}.json`, base);
+  if (expected.origin !== base.origin) fail("subject page escaped the database origin");
+  return expected;
+}
+
+/**
+ * One subject page, from `subjects/<kind>/<code>.json`.
+ *
+ * The claim is "the newest results classified under this code", and both
+ * halves of it are checkable only because a row carries its classification and
+ * its publication date. A result that is not classified under the code is a
+ * well-formed row, and showing it here would put someone's work under a
+ * heading it has nothing to do with; a page in some other order is well formed
+ * too, and would quietly stop being the page of what is new.
+ */
+export function validateSubject(value, kind, code) {
+  const page = object(value, "subject page");
+  if (page.schema_version !== SUBJECT_SCHEMA_VERSION) {
+    fail(`unsupported subject page schema_version ${String(page.schema_version)}`);
+  }
+  if (!SUBJECT_KINDS.includes(kind)) fail("subject kind is not recognized");
+  if (page.kind !== kind || page.code !== code) fail("subject page is for a different subject");
+  const scheme = kind === "arxiv" ? "arxiv" : "msc2020";
+  const entries = array(page.entries, "subject page entries");
+  if (entries.length > MAX_SUBJECT_ITEMS) fail("subject page carries more than it may");
+  let previous = Infinity;
+  for (const [position, row] of entries.entries()) {
+    const field = `subject page entries[${position}]`;
+    summaryRow(row, field);
+    const classification = object(row.classification, `${field}.classification`);
+    const codes = stringArray(classification[scheme], `${field}.classification.${scheme}`);
+    if (!codes.includes(code)) fail(`${field} is not classified under ${code}`);
+    const published = Date.parse(string(row.published_at, `${field}.published_at`));
+    if (!Number.isFinite(published)) fail(`${field}.published_at is malformed`);
+    // Equal is allowed: two results reviewed in the same second are in no
+    // particular order and neither one is out of place.
+    if (published > previous) fail("subject page is not newest first");
+    previous = published;
+  }
+  return page;
 }
 
 function availabilityEndpoint(value, field) {
@@ -305,19 +472,11 @@ export function validateVersions(value, id) {
   if (entries.length > MAX_VERSIONS_PER_ID) fail("version index is implausibly long");
   let previous = 0;
   for (const [position, row] of entries.entries()) {
-    const summary = object(row, `version index entries[${position}]`);
-    if (summary.id !== id) fail(`version index entries[${position}] is a different result`);
-    const version = integer(summary.version, `version index entries[${position}].version`);
-    if (version <= previous) fail("version index is not in increasing version order");
-    previous = version;
-    string(summary.title, `version index entries[${position}].title`);
-    if (summary.status !== "accepted") {
-      fail(`version index entries[${position}].status is not accepted`);
-    }
-    const expectedPath = `entries/${id}-v${version}.json`;
-    if (summary.path !== expectedPath) {
-      fail(`version index entries[${position}].path must be ${expectedPath}`);
-    }
+    const field = `version index entries[${position}]`;
+    const summary = summaryRow(row, field);
+    if (summary.id !== id) fail(`${field} is a different result`);
+    if (summary.version <= previous) fail("version index is not in increasing version order");
+    previous = summary.version;
   }
   return document;
 }

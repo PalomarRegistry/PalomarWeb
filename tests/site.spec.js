@@ -116,6 +116,29 @@ test("landing cards show the acceptance date and dated identifier", async ({ pag
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
 });
 
+test("the landing page reads the browse pages and not the whole index", async ({ page }) => {
+  // `index.json` names every version ever accepted and is rewritten in full on
+  // every publication. It is still served, and it is retiring; the landing
+  // page must stop being a reason to keep it. Only the shards the directory
+  // counts are fetched, so a registry of three costs three requests and not a
+  // hundred.
+  const asked = [];
+  await page.route("**/database/**", (route) => {
+    asked.push(new URL(route.request().url()).pathname);
+    return route.continue();
+  });
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card")).toHaveCount(2);
+
+  expect(asked).not.toContain("/database/index.json");
+  expect(asked.filter((path) => path.startsWith("/database/browse/")).sort()).toEqual([
+    "/database/browse/23.json",
+    "/database/browse/24.json",
+    "/database/browse/index.json",
+  ]);
+});
+
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
