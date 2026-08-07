@@ -360,6 +360,187 @@ export function validateVersions(value, id) {
   return document;
 }
 
+export const SEARCH_SCHEMA_VERSION = 1;
+// A word is lowercase, alphanumeric and short, and anything a word cannot be
+// was dropped by the indexer rather than escaped. That is what lets this
+// request be built straight from what somebody typed: there is no term
+// dictionary to check the word against first, because a document naming every
+// known word grows with the registry and would be rewritten on every
+// publication. See `docs/publication.md` in PalomarDatabase.
+const SEARCH_TERM_RE = /^[a-z0-9]{2,32}$/;
+const POSTING_RE = /^PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}-v[1-9][0-9]*$/;
+// Two hundred and sixty thousand results under one word at the published page
+// size. The publisher refuses to go past this, so a head that claims to is
+// describing an index this reader has never been able to read.
+const MAX_SEARCH_PAGES = 2048;
+const MAX_SEARCH_PAGE_SIZE = 1024;
+// The published list is a few hundred function words and is meant to stay
+// that way. A list an order of magnitude longer is not a stopword list any
+// more, and reading one would let the served data decide which queries this
+// page is willing to run.
+const MAX_STOPWORDS = 2000;
+
+function count(value, field) {
+  if (!Number.isSafeInteger(value) || value < 0) fail(`${field} must be a count`);
+  return value;
+}
+
+/**
+ * The words of a text, by exactly the rule the indexer used.
+ *
+ * Three steps, in this order: decompose, drop combining marks, lowercase. The
+ * marks are dropped rather than split on, so Erdős is `erdos` and not `erd`
+ * and `s`; a registry of mathematics is full of names nobody types with their
+ * accents. `toLowerCase` rather than a fuller case fold, because Python's
+ * `str.casefold` maps ß to ss and this does not, and the two sides have to
+ * agree exactly: a query folded differently is a request for a word the
+ * indexer never wrote, which looks from here exactly like no results.
+ *
+ * Used on the query and on each record this page is about to show, which is
+ * what lets a word with no postings still be decided correctly. See
+ * `searchCandidates` in `app.js`.
+ */
+export function searchTerms(text) {
+  const folded = String(text ?? "")
+    .normalize("NFKD")
+    .replace(/\p{Mn}/gu, "")
+    .toLowerCase();
+  return folded.split(/[^a-z0-9]+/).filter((word) => SEARCH_TERM_RE.test(word));
+}
+
+function searchUrl(term, leaf, databaseBase) {
+  if (typeof term !== "string" || !SEARCH_TERM_RE.test(term)) {
+    fail("search term is not a word this index can name");
+  }
+  const base = new URL(databaseBase);
+  const expected = new URL(`search/t/${term}/${leaf}.json`, base);
+  if (expected.origin !== base.origin || !expected.pathname.endsWith(`/${term}/${leaf}.json`)) {
+    fail("search path escaped the database origin");
+  }
+  return expected;
+}
+
+export function searchHeadUrl(term, databaseBase) {
+  return searchUrl(term, "head", databaseBase);
+}
+
+export function searchPageUrl(term, page, databaseBase) {
+  if (!Number.isSafeInteger(page) || page < 0 || page >= MAX_SEARCH_PAGES) {
+    fail("search page number is out of range");
+  }
+  return searchUrl(term, String(page), databaseBase);
+}
+
+/**
+ * How long one word's postings are, from `search/t/<term>/head.json`.
+ *
+ * The head is the only thing that tells a reader which pages exist, so it is
+ * an instruction and not data: its numbers become the next requests. A head
+ * claiming more pages than its sequence has sends a reader after pages that
+ * are not there; one claiming fewer hides results while looking perfectly
+ * well-formed. So the arithmetic is checked rather than trusted, and the
+ * bounds are checked too, because the alternative to a bound here is a page
+ * count somebody can make as large as they like.
+ *
+ * One count, not two. There were two while a withdrawal emptied its slot
+ * instead of closing the sequence up, and the difference between them said how
+ * many withdrawn results carried the word, which is what a takedown is meant
+ * to take away.
+ */
+export function validateSearchHead(value, term) {
+  const head = object(value, "search head");
+  if (head.schema_version !== SEARCH_SCHEMA_VERSION) {
+    fail(`unsupported search head schema_version ${String(head.schema_version)}`);
+  }
+  if (head.term !== term) fail("search head is for a different word");
+  const pageSize = integer(head.page_size, "search head page_size");
+  if (pageSize > MAX_SEARCH_PAGE_SIZE) fail("search head page_size is implausibly large");
+  const pages = count(head.pages, "search head pages");
+  if (pages > MAX_SEARCH_PAGES) fail("search head claims more pages than this index can have");
+  const results = count(head.results, "search head results");
+  if (pages !== Math.ceil(results / pageSize)) {
+    fail("search head page count does not cover the postings it claims");
+  }
+  return head;
+}
+
+/**
+ * One page of a word's postings, from `search/t/<term>/<page>.json`.
+ *
+ * The rows are versioned identifiers, so a posting resolves straight to a
+ * record with nothing in between. What is checked beyond their shape is what
+ * the page claims about itself: that it is this page of this word, that it
+ * holds no more than the page size the head published, and that its postings
+ * strictly increase. The last of those is the one worth having. An identifier
+ * begins with its registration date, so increasing order is date order within
+ * the page, and a page that repeated a posting or padded itself with the same
+ * result over and over would be a well-formed page that showed a reader the
+ * same work several times under a search it may not match at all.
+ */
+export function validateSearchPage(value, term, number, head) {
+  const page = object(value, "search page");
+  if (page.schema_version !== SEARCH_SCHEMA_VERSION) {
+    fail(`unsupported search page schema_version ${String(page.schema_version)}`);
+  }
+  if (page.term !== term) fail("search page is for a different word");
+  if (page.page !== number) fail("search page is not the page that was requested");
+  if (number >= head.pages) fail("search page is past the end of the sequence");
+  const postings = array(page.postings, "search page postings");
+  if (postings.length > head.page_size) fail("search page is longer than the head allows");
+  let previous = "";
+  for (const [position, posting] of postings.entries()) {
+    string(posting, `search page postings[${position}]`);
+    if (!POSTING_RE.test(posting)) fail(`search page postings[${position}] is malformed`);
+    if (posting <= previous) fail("search page postings are not in increasing order");
+    previous = posting;
+  }
+  return page;
+}
+
+export function stopwordsUrl(databaseBase) {
+  const base = new URL(databaseBase);
+  const expected = new URL("search/stopwords.json", base);
+  if (expected.origin !== base.origin) fail("stopwords path escaped the database origin");
+  return expected;
+}
+
+/**
+ * The words the indexer drops, from `search/stopwords.json`.
+ *
+ * This is the one document in the search surface that names words, and it is
+ * not the term dictionary the design refuses: it is a fixed editorial choice of
+ * function words, so it is the same size at a hundred thousand results as it is
+ * now, where a dictionary of every known word grows with the vocabulary and is
+ * rewritten on every publication. So the bound is checked here, and a list that
+ * had grown into a dictionary is refused rather than read.
+ *
+ * Fetched rather than copied. A copy in this repository would drift from the
+ * indexer's across two deployments, and a reader whose copy disagreed would ask
+ * for a word that was never written and be told, in a way they cannot diagnose,
+ * that nothing carries it.
+ */
+export function validateStopwords(value) {
+  const document = object(value, "stopwords");
+  if (document.schema_version !== SEARCH_SCHEMA_VERSION) {
+    fail(`unsupported stopwords schema_version ${String(document.schema_version)}`);
+  }
+  const words = array(document.stopwords, "stopwords list");
+  if (words.length > MAX_STOPWORDS) fail("stopword list has grown into a term dictionary");
+  for (const [position, word] of words.entries()) {
+    string(word, `stopwords list[${position}]`);
+    if (!SEARCH_TERM_RE.test(word)) fail(`stopwords list[${position}] is not a word`);
+  }
+  return new Set(words);
+}
+
+export function postingRecordUrl(posting, databaseBase) {
+  if (typeof posting !== "string" || !POSTING_RE.test(posting)) fail("posting is malformed");
+  const base = new URL(databaseBase);
+  const expected = new URL(`entries/${posting}.json`, base);
+  if (expected.origin !== base.origin) fail("posting path escaped the database origin");
+  return expected;
+}
+
 export function tombstoneUrl(id, version, databaseBase) {
   if (typeof id !== "string" || !ID_RE.test(id)) fail("tombstone ID is malformed");
   integer(version, "tombstone version");

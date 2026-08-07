@@ -8,12 +8,21 @@ import datetime as dt
 import json
 import pathlib
 import re
+import unicodedata
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
 PORT = 4173
 HASH = "a" * 64
+# Small enough that the fixture has several pages per word, because a single
+# page would exercise none of the walking the browser does.
+SEARCH_PAGE_SIZE = 2
+# The same three steps, in the same order, as `tools/build_search.py` in
+# PalomarDatabase and `searchTerms` in assets/security.mjs. A fixture that
+# tokenized differently would test the browser against an index nothing
+# publishes.
+SEARCH_STOPWORDS = {"an", "and", "for", "in", "of", "on", "the", "to", "with"}
 
 
 def entry(identifier: str, lines: int, version: int = 1) -> dict:
@@ -31,7 +40,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "version": version,
         "status": "accepted",
         "title": f"Fixture {identifier} version {version}",
-        "abstract": "A browser confinement fixture.",
+        "abstract": "A browser confinement fixture for the registry, about the quasicoherent behaviour of a synthetic result.",
         "authors": [{"name": "Example"}],
         "classification": classification,
         "provenance": {
@@ -176,6 +185,37 @@ ENTRIES = {
         "PALOMAR-2026-07-29-000124", 101, 1
     ),
 }
+def search_terms(text: str) -> list[str]:
+    decomposed = unicodedata.normalize("NFKD", text)
+    folded = "".join(
+        character for character in decomposed if unicodedata.category(character) != "Mn"
+    ).lower()
+    return [word for word in re.split(r"[^a-z0-9]+", folded) if 2 <= len(word) <= 32]
+
+
+def search_index(entries: dict) -> dict[str, list[str]]:
+    """One postings sequence per word, in registration order.
+
+    Built here rather than copied from a published snapshot so that the browser
+    suite exercises the walking and the validators against an index it can
+    reason about, including a word that is on every result and a word that is
+    on one.
+    """
+    postings: dict[str, list[str]] = {}
+    for (identifier, version), record in sorted(entries.items()):
+        texts = [record["title"], record["abstract"]]
+        texts.extend(author["name"] for author in record["authors"])
+        words = {
+            word
+            for text in texts
+            for word in search_terms(text)
+            if word not in SEARCH_STOPWORDS
+        }
+        for word in sorted(words):
+            postings.setdefault(word, []).append(f"{identifier}-v{version}")
+    return postings
+
+
 ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
     {
         "level": "qualified",
@@ -192,6 +232,15 @@ ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
         "reasons": ["Challenge imports Tau Ceti"],
     }
 )
+# One record whose text carries no function word at all, which is exactly the
+# case the published stopword list exists for: a query containing "the" has to
+# find it anyway, and inferring stopwords from a missing head could not.
+ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["abstract"] = (
+    "Quasicoherent sheaves, synthetically."
+)
+SEARCH_INDEX = search_index(ENTRIES)
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -302,6 +351,51 @@ class Handler(SimpleHTTPRequestHandler):
                 }).encode(),
                 "application/json",
             )
+            return
+        # The words the indexer drops, which is the one list there is: a fixed
+        # editorial choice, so it is constant in size and is nothing like the
+        # document naming every known word that this index exists without.
+        if path == "/database/search/stopwords.json":
+            self.send_bytes(
+                json.dumps(
+                    {"schema_version": 1, "stopwords": sorted(SEARCH_STOPWORDS)}
+                ).encode(),
+                "application/json",
+            )
+            return
+        # One word's postings. There is no document naming the words, by
+        # design, so an unknown word is a 404 and the browser has to be able to
+        # tell that apart from a broken index.
+        search = re.fullmatch(r"/database/search/t/([a-z0-9]{2,32})/(head|[0-9]{1,4})\.json", path)
+        if search:
+            term, leaf = search.group(1), search.group(2)
+            rows = SEARCH_INDEX.get(term)
+            if rows is None:
+                self.send_error(404)
+                return
+            pages = [
+                sorted(rows[start : start + SEARCH_PAGE_SIZE])
+                for start in range(0, len(rows), SEARCH_PAGE_SIZE)
+            ]
+            if leaf == "head":
+                payload = {
+                    "schema_version": 1,
+                    "term": term,
+                    "page_size": SEARCH_PAGE_SIZE,
+                    "pages": len(pages),
+                    "results": len(rows),
+                }
+            elif int(leaf) < len(pages):
+                payload = {
+                    "schema_version": 1,
+                    "term": term,
+                    "page": int(leaf),
+                    "postings": pages[int(leaf)],
+                }
+            else:
+                self.send_error(404)
+                return
+            self.send_bytes(json.dumps(payload).encode(), "application/json")
             return
         tombstone = re.fullmatch(
             r"/database/tombstones/(PALOMAR-2026-07-29-000125)-v(1)\.json",

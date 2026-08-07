@@ -45,9 +45,17 @@
           </a>
         </div>
 
+        <form id="registry-search" class="registry-search" role="search">
+          <label for="query">Search the registry:</label>
+          <input id="query" name="q" type="search" placeholder="words from a title, abstract, or author" autocomplete="off" spellcheck="false" maxlength="200">
+          <button type="submit">Search</button>
+        </form>
+        <div id="search-status" class="status" role="status" hidden></div>
+        <div id="search-results" class="entry-grid" aria-live="polite"></div>
+
         <div class="toolbar">
           <label class="search">
-            <span>Search:</span>
+            <span>Filter:</span>
             <input id="search" type="search" placeholder="title, author, theorem, or repository" autocomplete="off">
           </label>
           <div class="category-filters" role="group" aria-label="Subject filters">
