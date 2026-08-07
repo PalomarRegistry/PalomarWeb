@@ -704,7 +704,11 @@ export function validateEntry(entry, summary) {
     safeExternalUrl(string(review.report.source_url, "entry.review.report.source_url"));
   }
   stringArray(review.reviewer_models, "entry.review.reviewer_models");
-  object(review.scores, "entry.review.scores");
+  // Scores are required in the canonical registry record, but the public
+  // snapshot deliberately removes them. Accept both forms here so this
+  // validator describes the data the website actually receives. If scores
+  // are ever published, they must still have the canonical object shape.
+  if (review.scores !== undefined) object(review.scores, "entry.review.scores");
   stringArray(review.warnings, "entry.review.warnings");
 
   const render = object(entry.challenge_render, "entry.challenge_render");

@@ -413,6 +413,18 @@ test("entry schema, acceptance state, verdict, and selected identity fail closed
   );
 });
 
+test("the public review projection may omit private scores", () => {
+  const published = entry();
+  delete published.review.scores;
+  assert.equal(validateEntry(published, summary()), published);
+
+  published.review.scores = [];
+  assert.throws(
+    () => validateEntry(published, summary()),
+    /entry\.review\.scores must be an object/,
+  );
+});
+
 test("record evidence links must agree with their canonical values", () => {
   const wrongDate = entry({ accepted_at: "2026-07-30" });
   assert.throws(() => validateEntry(wrongDate, summary()), /ID date does not match/);

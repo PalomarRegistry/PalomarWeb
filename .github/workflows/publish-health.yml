@@ -44,6 +44,12 @@ jobs:
         env:
           SITE: https://palomar-registry.org
 
+      - name: Can the website contract read every live public record
+        if: steps.check.outputs.stale == 'false'
+        run: node scripts/check-published.mjs --data "$DATA"
+        env:
+          DATA: https://data.palomar-registry.org
+
       # One attempt, with the traps that cost a day written into the guards.
       # A deployment is identified by its commit, so a second one for a commit
       # already deploying is cancelled rather than queued; and re-running a
