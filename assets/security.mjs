@@ -1,12 +1,18 @@
-export const INDEX_SCHEMA_VERSION = 3;
 export const VERSIONS_SCHEMA_VERSION = 1;
+export const RECENT_SCHEMA_VERSION = 1;
 // A result with five hundred registered versions is a bug, not a history, and
 // this is the one read surface whose size is not bounded by anything else.
 const MAX_VERSIONS_PER_ID = 500;
+// The publisher's cap on `recent.json`, and the reason to have it here too: the
+// document this replaced was the whole registry, and a reader that accepted an
+// unbounded one would let it come back without anything saying so.
+const RECENT_ITEMS = 200;
 export const ENTRY_SCHEMA_VERSION = 2;
 export const ENTRY_SCHEMA_VERSIONS = new Set([1, 2]);
-export const DEFAULT_DATABASE =
-  "https://data.palomar-registry.org/index.json";
+// The endpoint, not a document. There is no whole-registry document to name
+// any more: every surface is derived from this prefix by the function that
+// knows which one it wants.
+export const DEFAULT_DATABASE = "https://data.palomar-registry.org/";
 export const DEFAULT_AVAILABILITY =
   "https://data.palomar-registry.org/source-availability.json";
 export const DEFAULT_RENDER_BASE = "https://data.palomar-registry.org/";
@@ -169,28 +175,60 @@ export function safeInternalUrl(value, locationHref) {
   return url;
 }
 
-export function validateIndex(index) {
-  object(index, "index");
-  if (index.schema_version !== INDEX_SCHEMA_VERSION) {
-    fail(`unsupported index schema_version ${String(index.schema_version)}`);
+export function recentUrl(databaseBase) {
+  const base = new URL(databaseBase);
+  const expected = new URL("recent.json", base);
+  if (expected.origin !== base.origin) fail("recent path escaped the database origin");
+  return expected;
+}
+
+/**
+ * What is new, from `recent.json`.
+ *
+ * The rows are the ones the index carried, so the row grammar and
+ * `entryRecordUrl` apply unchanged. What is new is coverage and ordering: this
+ * document claims to be the newest current versions and no more than the
+ * publisher's bound of them. A page in some other order renders perfectly well,
+ * and so does one carrying a result twice under two versions, which is why
+ * neither would be noticed by anything else.
+ */
+export function validateRecent(value) {
+  const document = object(value, "recent");
+  if (document.schema_version !== RECENT_SCHEMA_VERSION) {
+    fail(`unsupported recent schema_version ${String(document.schema_version)}`);
   }
+  const entries = array(document.entries, "recent.entries");
+  if (entries.length > RECENT_ITEMS) fail("recent carries more rows than it may");
   const seen = new Set();
-  for (const [position, value] of array(index.entries, "index.entries").entries()) {
-    const summary = object(value, `index.entries[${position}]`);
-    const id = string(summary.id, `index.entries[${position}].id`);
-    if (!ID_RE.test(id)) fail(`index.entries[${position}].id is malformed`);
-    const version = integer(summary.version, `index.entries[${position}].version`);
-    string(summary.title, `index.entries[${position}].title`);
-    if (summary.status !== "accepted") fail(`index.entries[${position}].status is not accepted`);
+  let previous = null;
+  for (const [position, value] of entries.entries()) {
+    const summary = object(value, `recent.entries[${position}]`);
+    const id = string(summary.id, `recent.entries[${position}].id`);
+    if (!ID_RE.test(id)) fail(`recent.entries[${position}].id is malformed`);
+    const version = integer(summary.version, `recent.entries[${position}].version`);
+    string(summary.title, `recent.entries[${position}].title`);
+    if (summary.status !== "accepted") fail(`recent.entries[${position}].status is not accepted`);
     const expectedPath = `entries/${id}-v${version}.json`;
     if (summary.path !== expectedPath) {
-      fail(`index.entries[${position}].path must be ${expectedPath}`);
+      fail(`recent.entries[${position}].path must be ${expectedPath}`);
     }
-    const key = `${id}\0${version}`;
-    if (seen.has(key)) fail(`duplicate index entry ${id} version ${version}`);
-    seen.add(key);
+    integer(summary.versions, `recent.entries[${position}].versions`);
+    const publishedAt = string(summary.published_at, `recent.entries[${position}].published_at`);
+    // Date-only or a full timestamp: a record with no review date falls back to
+    // `accepted_at`, which is a date, and both are what the publisher writes.
+    if (!TIMESTAMP_RE.test(publishedAt) && !DATE_RE.test(publishedAt)) {
+      fail(`recent.entries[${position}].published_at is malformed`);
+    }
+    const moment = Date.parse(publishedAt);
+    if (Number.isNaN(moment)) fail(`recent.entries[${position}].published_at is malformed`);
+    if (previous !== null && moment > previous) fail("recent is not in newest-first order");
+    previous = moment;
+    // One row per result, because these are the current versions: the same
+    // identifier twice means this is not the selection it says it is.
+    if (seen.has(id)) fail(`recent names ${id} more than once`);
+    seen.add(id);
   }
-  return index;
+  return document;
 }
 
 function availabilityEndpoint(value, field) {

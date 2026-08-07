@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const database = encodeURIComponent("http://127.0.0.1:4173/database/index.json");
+const database = encodeURIComponent("http://127.0.0.1:4173/database/");
 const missingAvailability = encodeURIComponent(
   "http://127.0.0.1:4173/database/source-availability-missing.json",
 );

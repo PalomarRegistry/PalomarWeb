@@ -18,11 +18,12 @@ import {
   safeInternalUrl,
   selectDatabaseUrl,
   selectAvailabilityUrl,
+  recentUrl,
   selectRenderBase,
   tombstoneUrl,
   validateEntry,
   validateAvailability,
-  validateIndex,
+  validateRecent,
   validateVersions,
   versionsUrl,
   validateTombstone,
@@ -40,15 +41,16 @@ const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
 
 function dataSource() {
-  const databaseUrl = selectDatabaseUrl(window.location.href, window.location.search);
-  const databaseBase = databaseBaseFor(databaseUrl);
+  const databaseBase = databaseBaseFor(
+    selectDatabaseUrl(window.location.href, window.location.search),
+  );
   const renderBase = selectRenderBase(window.location.href, window.location.search, databaseBase);
   const availabilityUrl = selectAvailabilityUrl(
     window.location.href,
     window.location.search,
     databaseBase,
   );
-  return { databaseUrl, databaseBase, renderBase, availabilityUrl };
+  return { databaseBase, renderBase, availabilityUrl };
 }
 
 function categoryFeedBase() {
@@ -223,15 +225,6 @@ function displayTimestamp(value) {
   }).format(when)} UTC`;
 }
 
-function latestVersions(entries) {
-  const latest = new Map();
-  for (const entry of entries) {
-    const previous = latest.get(entry.id);
-    if (!previous || entry.version > previous.version) latest.set(entry.id, entry);
-  }
-  return [...latest.values()];
-}
-
 function trustBadge(entry) {
   const high = entry.trust.level === "high";
   const badge = el("span", `trust-badge ${high ? "high" : "qualified"}`);
@@ -321,9 +314,9 @@ function entryCard(entry, versionCount, availability) {
   return card;
 }
 
-async function loadEntries(index, databaseBase) {
+async function loadEntries(page, databaseBase) {
   return Promise.all(
-    index.entries.map(async (summary) => {
+    page.entries.map(async (summary) => {
       const entry = await fetchJson(entryRecordUrl(summary, databaseBase));
       return validateEntry(entry, summary);
     }),
@@ -334,15 +327,16 @@ async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
   try {
-    const { databaseUrl, databaseBase, availabilityUrl } = dataSource();
+    const { databaseBase, availabilityUrl } = dataSource();
     const availabilityPromise = loadAvailability(availabilityUrl);
-    const index = validateIndex(await fetchJson(databaseUrl));
-    const versionCounts = new Map();
-    for (const summary of index.entries) {
-      versionCounts.set(summary.id, (versionCounts.get(summary.id) || 0) + 1);
-    }
-    const currentIndex = { entries: latestVersions(index.entries) };
-    const entries = await loadEntries(currentIndex, databaseBase);
+    // What is new, not the whole registry. This page used to read a document
+    // naming every active version and then sort and filter it here, which was
+    // tens of megabytes for a screen of cards and grew every time anybody else
+    // published anything. The publisher decides which results are current and
+    // how many versions each has, so neither is worked out again here.
+    const recent = validateRecent(await fetchJson(recentUrl(databaseBase)));
+    const versionCounts = new Map(recent.entries.map((row) => [row.id, row.versions]));
+    const entries = await loadEntries(recent, databaseBase);
     const availability = await availabilityPromise;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
@@ -1401,11 +1395,11 @@ async function renderEntry(
 }
 
 async function loadEntry(id, requestedVersion) {
-  const { databaseUrl, databaseBase, renderBase, availabilityUrl } = dataSource();
+  const { databaseBase, renderBase, availabilityUrl } = dataSource();
   const availabilityPromise = loadAvailability(availabilityUrl);
-  // The versions of this one result, not the whole registry. Reading
-  // `index.json` here meant fetching every record ever registered to render
-  // one page, and paying for it again every time anyone else published.
+  // The versions of this one result, not the whole registry. Reading a
+  // whole-registry index here meant fetching every record ever registered to
+  // render one page, and paying for it again every time anyone else published.
   let versions = [];
   try {
     versions = validateVersions(await fetchJson(versionsUrl(id, databaseBase)), id).entries;
