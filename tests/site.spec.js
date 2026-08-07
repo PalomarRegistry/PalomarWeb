@@ -595,6 +595,44 @@ test("current JavaScript preserves represented deep links with cached HTML", asy
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
 
+test("classification codes are spaced, and their descriptions are hovers", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const section = page.locator(".entry-classification");
+  await expect(section).toBeVisible();
+
+  // Codes ran together as "math.COcs.DM" when they were appended with nothing
+  // between them, and the row had no styling because the class had been
+  // renamed away from the one that was styled.
+  const gaps = await page.evaluate(() => {
+    const out = [];
+    document.querySelectorAll(".entry-classification .category-list").forEach((list) => {
+      const links = [...list.querySelectorAll(".category-link")];
+      for (let i = 1; i < links.length; i += 1) {
+        const a = links[i - 1].getBoundingClientRect();
+        const b = links[i].getBoundingClientRect();
+        if (Math.abs(a.top - b.top) < 2) out.push(b.left - a.right);
+      }
+    });
+    return out;
+  });
+  expect(gaps.length).toBeGreaterThan(0);
+  for (const gap of gaps) expect(gap).toBeGreaterThan(4);
+
+  // The description is a hover, not a second column: the codes are a compact
+  // row and the descriptions are long enough to swamp them.
+  const msc = section.locator(".category-link", { hasText: "05C10" });
+  await expect(msc).toHaveAttribute("title", /^05C10 — .+/);
+  const visible = await page.evaluate(() => {
+    const section = document.querySelector(".entry-classification");
+    return [...section.querySelectorAll("*")]
+      .filter((node) => !node.classList.contains("visually-hidden"))
+      .filter((node) => node.children.length === 0)
+      .map((node) => node.textContent)
+      .join(" ");
+  });
+  expect(visible).not.toContain("Planar graphs");
+});
+
 test("an entry shows the decision and the comments, never the scores", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   const editorial = page.locator(".entry-editorial");

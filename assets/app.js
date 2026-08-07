@@ -966,8 +966,9 @@ function classificationSection(entry) {
       // The code itself is the link: a reader who wants the other entries in
       // a subject clicks the subject, rather than a separate word beside it.
       const link = internalLink(code, classificationSearchUrl(scheme, code), "category-link");
-      link.append(el("span", "visually-hidden", ` — other entries classified ${code}`));
-      if (scheme === "msc") glossed.push({ code, link });
+      const spoken = el("span", "visually-hidden", ` — other entries classified ${code}`);
+      link.append(spoken);
+      if (scheme === "msc") glossed.push({ code, link, spoken });
       value.append(link);
     }
     if (!values.length) value.append(el("span", "unclassified", "Not recorded for this older entry"));
@@ -985,12 +986,15 @@ function classificationSection(entry) {
   // and the section is correct without one.
   if (glossed.length) {
     mscGlossary().then((table) => {
-      for (const { code, link } of glossed) {
+      for (const { code, link, spoken } of glossed) {
         const description = table[code];
         if (!description) continue;
+        // A hover, not a second column: the codes are a compact row, and the
+        // descriptions are long enough to swamp them. Given to assistive
+        // technology as text, since a title attribute alone reaches nobody
+        // who is not holding a mouse.
         link.title = `${code} — ${description}`;
-        const gloss = el("span", "category-gloss", description);
-        link.after(gloss);
+        spoken.textContent = ` — ${description}. Other entries classified ${code}`;
       }
     });
   }
