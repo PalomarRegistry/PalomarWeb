@@ -210,17 +210,22 @@ test("an entry answers its reader's first three questions first", async ({ page 
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   await expect(page.locator(".entry-evidence")).toBeVisible();
 
-  // What was checked, the statement it was checked about, and what that
-  // statement rests on. These used to be fifth, sixth and seventh, behind the
+  // The statement, then what was checked about it, then what it rests on. An
+  // entry is about a theorem, and the theorem does not go below the paperwork
+  // that certifies it. These used to be sixth, fifth and seventh, behind the
   // version history and the subject classification.
   const order = await page.evaluate(() =>
     [...document.querySelectorAll("main section")]
       .map((section) => section.className.split(" ")[0])
       .filter(Boolean));
   const position = (name) => order.indexOf(name);
-  expect(position("entry-evidence")).toBeGreaterThanOrEqual(0);
-  expect(position("entry-evidence")).toBeLessThan(position("challenge-presentation"));
-  expect(position("challenge-presentation")).toBeLessThan(position("entry-trust"));
+  // First, except for notices. A warning that the pinned source has moved or
+  // gone is the one thing that outranks the statement itself.
+  const NOTICES = ["source-availability", "version-notice"];
+  expect(order.slice(0, position("challenge-presentation")).every((name) => NOTICES.includes(name)))
+    .toBe(true);
+  expect(position("challenge-presentation")).toBeLessThan(position("entry-evidence"));
+  expect(position("entry-evidence")).toBeLessThan(position("entry-trust"));
   expect(position("entry-trust")).toBeLessThan(position("entry-classification"));
   expect(position("entry-trust")).toBeLessThan(position("entry-provenance"));
 
