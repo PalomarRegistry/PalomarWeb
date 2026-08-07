@@ -1,0 +1,86 @@
+name: Published site health
+
+# A publish step that fails silently is indistinguishable from one that did not
+# run. On 2026-08-06 a Pages outage left the registry serving a build seven
+# hours old: everything had merged, every workflow that mattered was green, and
+# the only thing that noticed was a person reading the page.
+#
+# This checks the site people can see against the commit it should have been
+# built from, tries once to unstick it, and fails loudly if it cannot.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  pages: write
+
+concurrency:
+  group: publish-health
+  cancel-in-progress: false
+
+jobs:
+  published:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: "22"
+
+      - name: Is the served site the site this repository describes
+        id: check
+        run: |
+          if node scripts/check-published.mjs --url "$SITE" --expect "$GITHUB_SHA"; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          SITE: https://palomar-registry.org
+
+      # One attempt, with the traps that cost a day written into the guards.
+      # A deployment is identified by its commit, so a second one for a commit
+      # already deploying is cancelled rather than queued; and re-running a
+      # failed job in place uploads a second `github-pages` artifact, which the
+      # deploy action refuses outright. So: never touch a deployment that is
+      # making progress, and dispatch rather than re-run.
+      - name: Try once to unstick it
+        if: steps.check.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          deployment=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=github-pages&per_page=1" \
+            --jq '.[0].id // empty')
+          state=""
+          created=""
+          if [ -n "$deployment" ]; then
+            state=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment/statuses" --jq '.[0].state // empty')
+            created=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment" --jq '.created_at')
+          fi
+          echo "latest deployment ${deployment:-none} is ${state:-unknown} (created ${created:-unknown})"
+
+          if [ "$state" = "in_progress" ] || [ "$state" = "queued" ] || [ "$state" = "waiting" ]; then
+            age=$(( $(date +%s) - $(date -d "$created" +%s) ))
+            if [ "$age" -lt 1800 ]; then
+              echo "it has been going for ${age}s; leaving it alone"
+              exit 0
+            fi
+            echo "stuck for ${age}s, cancelling"
+            gh api -X POST "repos/$GITHUB_REPOSITORY/pages/deployments/$deployment/cancel" || true
+          fi
+
+          echo "dispatching one deployment"
+          gh workflow run pages.yml --repo "$GITHUB_REPOSITORY"
+
+      - name: Say so
+        if: steps.check.outputs.stale == 'true'
+        run: |
+          echo "::error::The published site is not the current commit. A deployment has been attempted; if this keeps failing, check https://www.githubstatus.com for Pages."
+          exit 1
