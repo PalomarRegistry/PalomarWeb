@@ -560,6 +560,21 @@ test("current HTML remains compatible with cached JavaScript from the previous d
     !entrySchemasAtPreviousDeployment().has(currentEntrySchema),
     "the published entry schema changed, so cached JavaScript cannot read current records",
   );
+  // The same reasoning, one level up: a bundle that reads a document the
+  // registry no longer serves cannot render whatever else it gets right. The
+  // landing page moved off `index.json` and onto `recent.json`, and the
+  // published `index.json` is gone, so the deployment before that one is
+  // reading something that answers 404.
+  //
+  // This is a deliberate one-time break, taken pre-launch and worth naming.
+  // Assets are versioned, so fresh HTML always fetches fresh JavaScript; what
+  // breaks is a tab left open across the deployment, until it is reloaded. The
+  // skip clears itself once a deployment carrying this change is the previous
+  // one, which is the same way the schema guard above clears.
+  test.skip(
+    fileAtPreviousDeployment("assets/app.js").includes("index.json"),
+    "the previous deployment reads index.json, which is no longer served",
+  );
   await page.route("**/assets/app.js", (route) => route.fulfill({
     body: fileAtPreviousDeployment("assets/app.js"),
     contentType: "text/javascript; charset=utf-8",
