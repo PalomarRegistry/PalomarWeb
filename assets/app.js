@@ -1257,20 +1257,27 @@ async function renderEntry(
   editorialBlock.append(el("div", "eyebrow", "Editorial record"), el("h2", "", "Automated review"));
   editorialTitle.append(editorialBlock, el("span", "decision", "Accepted"));
   editorial.append(editorialTitle);
-  const scores = el("div", "score-grid");
-  for (const [name, score] of Object.entries(entry.review.scores)) {
-    const item = el("div", "score");
-    item.append(el("span", "", name.replaceAll("_", " ")), el("strong", "", `${score}/5`));
-    scores.append(item);
-  }
-  editorial.append(scores);
+  // No scores. They decide whether a submission is accepted and they are kept
+  // with the record, but they are not shown: the same repository at the same
+  // commit has scored 5 and then 4 on the same axis across two runs, and a
+  // number that moves like that reads as a judgement it cannot support. What
+  // it can support is the decision, which is above.
+  editorial.append(
+    el(
+      "p",
+      "review-explanation",
+      "An AI review compared the informal claim with the formal statement under " +
+        "the recorded policy, and its comments are below. It is not human peer " +
+        "review and not a novelty certificate.",
+    ),
+  );
   if (entry.review.warnings.length) {
-    editorial.append(el("h3", "", "Permanent warnings"));
-    const warnings = el("ul", "warning-list");
-    for (const warning of entry.review.warnings) warnings.append(el("li", "", warning));
-    editorial.append(warnings);
+    editorial.append(el("h3", "", "AI review comments"));
+    const comments = el("ul", "review-comments");
+    for (const comment of entry.review.warnings) comments.append(el("li", "", comment));
+    editorial.append(comments);
   } else {
-    editorial.append(el("p", "no-warnings", "No permanent editorial warnings were recorded."));
+    editorial.append(el("p", "no-warnings", "The review recorded no comments on this result."));
   }
   editorial.append(
     dataLink(
