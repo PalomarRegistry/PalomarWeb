@@ -52,3 +52,22 @@ test("the MSC descriptions shown to readers are readable", async () => {
   assert.deepEqual(broken, []);
   assert.equal(codes["52C10"], "Erdős problems and related topics of discrete geometry");
 });
+
+test("everything the pages fetch at runtime is actually shipped", async () => {
+  // The MSC table was added under assets/data/ and never added to the build's
+  // copy list, so it was absent from the deployed site while the hover that
+  // needs it failed silently by design. Anything the site fetches from its own
+  // origin has to be in the artifact.
+  const output = ".site-test-shipped";
+  await buildSite({ output, version: "test" });
+  try {
+    const app = await readFile(path.join(output, "assets", "app.js"), "utf8");
+    const referenced = [...app.matchAll(/new URL\("(assets\/[^"]+)"/g)].map((m) => m[1]);
+    assert.ok(referenced.length, "no same-origin asset URLs were found in app.js");
+    for (const asset of new Set(referenced)) {
+      await readFile(path.join(output, asset));
+    }
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+});

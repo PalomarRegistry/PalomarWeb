@@ -6,6 +6,9 @@ const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
 const assetFiles = ["about.js", "app.js", "rendering.js", "security.mjs", "style.css"];
+// Copied verbatim into assets/, keeping their subdirectory. Listed separately
+// because they are data rather than code: no version query, no rewriting.
+const assetDataFiles = ["data/msc2020-codes.json"];
 
 function options(args) {
   const result = {
@@ -44,6 +47,11 @@ export async function buildSite({ output, version }) {
   }
   for (const file of assetFiles) {
     await copyFile(path.join(root, "assets", file), path.join(destination, "assets", file));
+  }
+  for (const file of assetDataFiles) {
+    const target = path.join(destination, "assets", file);
+    await mkdir(path.dirname(target), { recursive: true });
+    await copyFile(path.join(root, "assets", file), target);
   }
 
   for (const file of htmlFiles) {
