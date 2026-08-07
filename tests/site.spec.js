@@ -356,14 +356,18 @@ test("entries display repository licence evidence and its boundary", async ({ pa
   );
 
   const evidence = page.locator(".entry-evidence");
-  await expect(evidence).toContainText("Repository licence file");
+  // One row, not four: the licence, the file, and the digest. Declared and
+  // detected are the same fact when they agree, which is the ordinary case.
+  await expect(evidence).toContainText("Repository licence");
   await expect(evidence.getByRole("link", { name: "LICENSE.md" })).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/LICENSE.md`,
   );
-  await expect(evidence).toContainText("Declared repository licence");
-  await expect(evidence).toContainText("Detected SPDX licence");
   await expect(evidence).toContainText("Apache-2.0");
+  await expect(evidence.locator(".detail-note").last()).toHaveAttribute(
+    "title",
+    /^[0-9a-f]{64}$/,
+  );
   await expect(evidence).toContainText("Cited papers, reused formalizations, and dependencies retain their own licences");
 });
 
