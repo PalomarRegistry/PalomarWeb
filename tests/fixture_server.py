@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import collections
 import datetime as dt
 import json
 import pathlib
@@ -241,22 +242,35 @@ class Handler(SimpleHTTPRequestHandler):
             }
             self.send_bytes(json.dumps(payload).encode(), "application/json")
             return
-        if path == "/database/index.json":
-            payload = {
-                "schema_version": 3,
-                "generated_at": "2026-07-29T09:00:00Z",
-                "entries": [
-                    {
-                        "id": item["id"],
-                        "version": item["version"],
-                        "title": item["title"],
-                        "status": "accepted",
-                        "path": f"entries/{item['id']}-v{item['version']}.json",
-                    }
-                    for item in ENTRIES.values()
-                ]
-            }
-            self.send_bytes(json.dumps(payload).encode(), "application/json")
+        # What is new, which is what the landing page reads. There is no
+        # whole-registry document to serve here any more, and serving one would
+        # let a browser test pass against a surface the origin does not have.
+        if path == "/database/recent.json":
+            current = {}
+            for item in ENTRIES.values():
+                previous = current.get(item["id"])
+                if previous is None or item["version"] > previous["version"]:
+                    current[item["id"]] = item
+            versions = collections.Counter(item["id"] for item in ENTRIES.values())
+            rows = [
+                {
+                    "id": item["id"],
+                    "version": item["version"],
+                    "title": item["title"],
+                    "status": "accepted",
+                    "path": f"entries/{item['id']}-v{item['version']}.json",
+                    "published_at": item["review"]["reviewed_at"],
+                    "versions": versions[item["id"]],
+                }
+                for item in current.values()
+            ]
+            # Newest first, ties broken by identifier descending, exactly as
+            # `selection.latest_entries` orders them in the publisher.
+            rows.sort(key=lambda row: (row["published_at"], row["id"]), reverse=True)
+            self.send_bytes(
+                json.dumps({"schema_version": 1, "entries": rows}).encode(),
+                "application/json",
+            )
             return
         # The versions of one result, which is what an entry page reads instead
         # of the whole index.

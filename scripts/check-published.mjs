@@ -11,7 +11,7 @@
  * the check is a comparison rather than new machinery.
  */
 
-import { validateEntry, validateIndex } from "../assets/security.mjs";
+import { validateEntry, validateRecent } from "../assets/security.mjs";
 
 const STAMP = /assets\/app\.js\?v=([A-Za-z0-9._-]+)/;
 
@@ -41,24 +41,29 @@ export function publishState(html, expected) {
 }
 
 /**
- * Can the current website contract load every active public registry entry?
- * This deliberately uses the same validators as the browser. It catches a
- * valid publication whose shape has drifted away from what the UI accepts.
+ * Can the current website contract load what the landing page shows?
+ *
+ * This deliberately uses the same validators, and now the same document, as
+ * the browser. It catches a valid publication whose shape has drifted away
+ * from what the UI accepts. It asked about every active entry while there was
+ * a document naming them all; there is not one any more, and asking about the
+ * page a visitor actually loads is both the check that matters and the only
+ * one whose cost does not grow with the registry.
  */
 export async function publicDataState(
   databaseUrl,
   fetcher = fetch,
-  validators = { validateIndex, validateEntry },
+  validators = { validateRecent, validateEntry },
 ) {
   const base = new URL(databaseUrl.endsWith("/") ? databaseUrl : `${databaseUrl}/`);
-  const indexUrl = new URL("index.json", base);
+  const pageUrl = new URL("recent.json", base);
   try {
-    const indexResponse = await fetcher(indexUrl, { cache: "no-store" });
-    if (!indexResponse.ok) {
-      return { healthy: false, reason: `${indexUrl} responded ${indexResponse.status}` };
+    const pageResponse = await fetcher(pageUrl, { cache: "no-store" });
+    if (!pageResponse.ok) {
+      return { healthy: false, reason: `${pageUrl} responded ${pageResponse.status}` };
     }
-    const index = validators.validateIndex(await indexResponse.json());
-    await Promise.all(index.entries.map(async (summary) => {
+    const recent = validators.validateRecent(await pageResponse.json());
+    await Promise.all(recent.entries.map(async (summary) => {
       const entryUrl = new URL(summary.path, base);
       const response = await fetcher(entryUrl, { cache: "no-store" });
       if (!response.ok) throw new Error(`${entryUrl} responded ${response.status}`);
@@ -66,7 +71,7 @@ export async function publicDataState(
     }));
     return {
       healthy: true,
-      reason: `the website contract accepts all ${index.entries.length} public entries`,
+      reason: `the website contract accepts all ${recent.entries.length} entries the landing page shows`,
     };
   } catch (error) {
     return { healthy: false, reason: `public registry data is incompatible: ${error.message}` };

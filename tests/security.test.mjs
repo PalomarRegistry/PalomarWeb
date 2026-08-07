@@ -23,10 +23,11 @@ import {
   selectDatabaseUrl,
   selectAvailabilityUrl,
   selectRenderBase,
+  recentUrl,
   tombstoneUrl,
   validateEntry,
   validateAvailability,
-  validateIndex,
+  validateRecent,
   validateTombstone,
   validateVersions,
   versionsUrl,
@@ -49,8 +50,12 @@ function summary(overrides = {}) {
   };
 }
 
-function index(entries = [summary()], overrides = {}) {
-  return { schema_version: 3, entries, ...overrides };
+function recentRow(overrides = {}) {
+  return { ...summary(), published_at: "2026-07-29T08:53:02Z", versions: 1, ...overrides };
+}
+
+function recent(entries = [recentRow()], overrides = {}) {
+  return { schema_version: 1, entries, ...overrides };
 }
 
 function entry(overrides = {}) {
@@ -229,8 +234,8 @@ test("loopback development can select an HTTP fixture", () => {
   assert.equal(isLoopbackHostname("[::1]"), true);
   assert.equal(isLoopbackHostname("127.0.0.999"), false);
   assert.equal(
-    selectDatabaseUrl("http://127.0.0.1:8000/", "?database=/fixtures/index.json").href,
-    "http://127.0.0.1:8000/fixtures/index.json",
+    selectDatabaseUrl("http://127.0.0.1:8000/", "?database=/fixtures/").href,
+    "http://127.0.0.1:8000/fixtures/",
   );
   assert.throws(
     () => selectDatabaseUrl("http://localhost:8000/", "?database=javascript:alert(1)"),
@@ -239,7 +244,7 @@ test("loopback development can select an HTTP fixture", () => {
 });
 
 test("index entry paths are exact descendants of the database prefix", () => {
-  const base = databaseBaseFor("https://example.test/database/index.json");
+  const base = databaseBaseFor("https://example.test/database/");
   assert.equal(
     entryRecordUrl(summary(), base).href,
     "https://example.test/database/entries/PALOMAR-2026-07-29-000123-v1.json",
@@ -255,18 +260,61 @@ test("index entry paths are exact descendants of the database prefix", () => {
   }
 });
 
-test("index validation rejects unsupported, rejected, and duplicate summaries", () => {
-  assert.throws(() => validateIndex(index([], { schema_version: 2 })), /unsupported index/);
+test("what is new is read from the database prefix and nowhere else", () => {
+  assert.equal(
+    recentUrl(databaseBaseFor("https://example.test/database/")).href,
+    "https://example.test/database/recent.json",
+  );
+});
+
+test("recent validation rejects unsupported, rejected, and malformed rows", () => {
+  assert.throws(() => validateRecent(recent([], { schema_version: 2 })), /unsupported recent/);
   assert.throws(
-    () => validateIndex(index([summary({ status: "draft" })])),
+    () => validateRecent(recent([recentRow({ status: "draft" })])),
     /status is not accepted/,
   );
-  assert.throws(() => validateIndex(index([summary(), summary()])), /duplicate index entry/);
-  assert.equal(validateIndex(index()).entries.length, 1);
+  assert.throws(
+    () => validateRecent(recent([recentRow({ published_at: "yesterday" })])),
+    /published_at is malformed/,
+  );
+  assert.equal(validateRecent(recent()).entries.length, 1);
+});
+
+test("what recent claims is coverage and ordering, so both are checked", () => {
+  // The rows would render perfectly well in any order, and a result listed
+  // twice under two versions is two well-formed rows. Nothing else on this
+  // side would notice either, which is exactly why this does.
+  const older = recentRow({
+    id: "PALOMAR-2026-07-29-000124",
+    path: "entries/PALOMAR-2026-07-29-000124-v1.json",
+    published_at: "2026-07-01T00:00:00Z",
+  });
+  const newer = recentRow({ published_at: "2026-08-01T00:00:00Z" });
+  assert.throws(() => validateRecent(recent([older, newer])), /newest-first/);
+  assert.equal(validateRecent(recent([newer, older])).entries.length, 2);
+  assert.throws(
+    () => validateRecent(recent([recentRow(), recentRow({ version: 2, path: "entries/PALOMAR-2026-07-29-000123-v2.json" })])),
+    /more than once/,
+  );
+});
+
+test("recent is bounded, because the document it replaced was the registry", () => {
+  // A reader that accepted an unbounded page would let the whole-registry
+  // document come back under another name with nothing failing to say so.
+  const page = recent(
+    Array.from({ length: 201 }, (_unused, position) => {
+      const serial = String(100000 + position);
+      return recentRow({
+        id: `PALOMAR-2026-07-29-${serial}`,
+        path: `entries/PALOMAR-2026-07-29-${serial}-v1.json`,
+      });
+    }),
+  );
+  assert.throws(() => validateRecent(page), /more rows than it may/);
 });
 
 test("exact tombstones are closed, date-only, and bound to their URL", () => {
-  const base = databaseBaseFor("https://example.test/database/index.json");
+  const base = databaseBaseFor("https://example.test/database/");
   const id = "PALOMAR-2026-07-29-000123";
   assert.equal(
     tombstoneUrl(id, 2, base).href,
