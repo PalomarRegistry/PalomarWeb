@@ -979,12 +979,12 @@ pre {
     max-height: none;
   }
 }
-.source-availability {
+.entry-page .source-availability {
   border: 1px solid var(--line, #d9d6cc);
   border-left: 0.35rem solid #52714f;
   border-radius: 0.45rem;
   margin: 1rem 0 1.5rem;
-  padding: 0.9rem 1rem;
+  padding: 1rem 1.25rem;
 }
 
 .source-availability p {
@@ -992,7 +992,8 @@ pre {
 }
 
 .source-availability.original-missing,
-.source-availability.archive-missing {
+.source-availability.archive-missing,
+.source-availability.legacy {
   border-left-color: #9a6700;
   background: #fff8df;
 }
