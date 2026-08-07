@@ -31,7 +31,8 @@ matching render tree is resolved beside the fixture by default; use
 honored only when the site itself runs on localhost or another loopback address.
 Use `&availability=/fixtures/source-availability.json` to supply a local health
 manifest.
-The deployed site always reads the canonical database and render origins.
+The deployed site always reads the canonical public-data and render origins;
+it never reads the private canonical database repository directly.
 
 Entry pages embed a rendered Challenge when the comparator names exactly one
 declaration and the recorded Challenge source is at most 100 lines and 32 KiB. Larger
