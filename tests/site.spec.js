@@ -219,7 +219,11 @@ test("an entry answers its reader's first three questions first", async ({ page 
       .map((section) => section.className.split(" ")[0])
       .filter(Boolean));
   const position = (name) => order.indexOf(name);
-  expect(position("challenge-presentation")).toBe(0);
+  // First, except for notices. A warning that the pinned source has moved or
+  // gone is the one thing that outranks the statement itself.
+  const NOTICES = ["source-availability", "version-notice"];
+  expect(order.slice(0, position("challenge-presentation")).every((name) => NOTICES.includes(name)))
+    .toBe(true);
   expect(position("challenge-presentation")).toBeLessThan(position("entry-evidence"));
   expect(position("entry-evidence")).toBeLessThan(position("entry-trust"));
   expect(position("entry-trust")).toBeLessThan(position("entry-classification"));
