@@ -819,9 +819,15 @@ function sourceAvailabilityNotice(entry, availability) {
   if (!location.archiveRepository) {
     notice.classList.add("legacy");
     notice.append(
-      el("strong", "", "Source recorded before automatic preservation"),
-      el("p", "", "This legacy entry links to its original pinned commit."),
-      externalLink("Recorded original location", original),
+      el("strong", "", "Palomar has no preservation copy of this source"),
+      el(
+        "p",
+        "",
+        "This record was accepted before Palomar began archiving source repositories. " +
+          "The link goes to the original repository at the exact commit that was reviewed, " +
+          "but it may stop working if that repository is removed.",
+      ),
+      externalLink("Open the reviewed source", original),
     );
     return notice;
   }

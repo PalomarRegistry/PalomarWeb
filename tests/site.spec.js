@@ -274,6 +274,30 @@ test("a missing original automatically switches source links to the Palomar copy
   );
 });
 
+test("an entry accepted before source archiving explains the limitation as a warning", async ({ page }) => {
+  await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", async (route) => {
+    const response = await route.fetch();
+    const legacy = await response.json();
+    legacy.schema_version = 1;
+    delete legacy.preservation;
+    await route.fulfill({ response, json: legacy });
+  });
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+
+  const notice = page.locator(".source-availability.legacy");
+  await expect(notice).toContainText("Palomar has no preservation copy of this source");
+  await expect(notice).toContainText("before Palomar began archiving source repositories");
+  await expect(notice).toContainText("may stop working if that repository is removed");
+  await expect(notice.getByRole("link", { name: "Open the reviewed source" })).toHaveAttribute(
+    "href",
+    /github\.com\/example\/challenge\/tree\/1{40}\/project$/,
+  );
+  await expect(notice).toHaveCSS("background-color", "rgb(255, 248, 223)");
+  await expect(notice).toHaveCSS("padding-left", "20px");
+});
+
 test("entry pages list immutable versions and flag superseded snapshots", async ({ page }) => {
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
