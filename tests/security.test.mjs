@@ -150,7 +150,6 @@ function entry(overrides = {}) {
       policy_commit: "5".repeat(40),
       verdict: "accept",
       report: { sha256: "e".repeat(64) },
-      scores: { clarity: 5 },
       reviewer_models: ["fixture:model"],
       warnings: [],
     },
@@ -413,16 +412,19 @@ test("entry schema, acceptance state, verdict, and selected identity fail closed
   );
 });
 
-test("the public review projection may omit private scores", () => {
-  const published = entry();
-  delete published.review.scores;
-  assert.equal(validateEntry(published, summary()), published);
-
-  published.review.scores = [];
+test("a record carrying review scores is refused, not rendered", () => {
+  // A record is served exactly as it was committed, and a committed record
+  // has no scores. While the release tooling stripped them on the way out,
+  // one forgotten call would have put them on the page; now the last thing
+  // between the numbers and a reader is this check.
+  const leaked = entry();
+  leaked.review.scores = { clarity: 5 };
   assert.throws(
-    () => validateEntry(published, summary()),
-    /entry\.review\.scores must be an object/,
+    () => validateEntry(leaked, summary()),
+    /entry\.review\.scores is not published/,
   );
+  const clean = entry();
+  assert.equal(validateEntry(clean, summary()), clean);
 });
 
 test("record evidence links must agree with their canonical values", () => {
