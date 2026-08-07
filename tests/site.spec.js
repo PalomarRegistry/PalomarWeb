@@ -228,6 +228,8 @@ test("an entry answers its reader's first three questions first", async ({ page 
   expect(position("entry-evidence")).toBeLessThan(position("entry-trust"));
   expect(position("entry-trust")).toBeLessThan(position("entry-classification"));
   expect(position("entry-trust")).toBeLessThan(position("entry-provenance"));
+  expect(position("source-availability")).toBeGreaterThan(position("entry-editorial"));
+  expect(position("source-availability") + 1).toBe(position("version-history"));
 
   // The dependencies are further down this page, so following the link scrolls
   // rather than loading anything. (The href is absolute either way, so what is
@@ -323,8 +325,12 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
   await expect(page.locator(".entry-heading h1")).toHaveText(
     "Fixture PALOMAR-2026-07-29-000123 version 1",
   );
-  await expect(page.locator(".machine-record a")).toHaveText(
-    "Open PALOMAR-2026-07-29-000123-v1.json",
+  await expect(page.locator(".machine-record")).toHaveCount(0);
+  const fullRecord = page.locator(".entry-evidence .detail-row", {
+    has: page.getByText("Full registry record", { exact: true }),
+  });
+  await expect(fullRecord.getByRole("link")).toHaveText(
+    "PALOMAR-2026-07-29-000123-v1.json",
   );
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
