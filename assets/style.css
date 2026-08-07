@@ -852,17 +852,6 @@ pre {
   color: var(--muted);
 }
 
-.machine-record pre {
-  max-height: 34rem;
-  overflow: auto;
-  padding: .75rem;
-  border: 1px solid var(--line);
-  background: var(--shade);
-  font-size: .75rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 [hidden] {
   display: none !important;
 }
@@ -953,9 +942,6 @@ pre {
     break-inside: avoid;
   }
 
-  .machine-record pre {
-    max-height: none;
-  }
 }
 .entry-page .source-availability {
   border: 1px solid var(--line, #d9d6cc);

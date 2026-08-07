@@ -1176,6 +1176,11 @@ async function renderEntry(
       `Actions run ${workflowRunId(entry.verification.workflow_url)}`,
       entry.verification.workflow_url,
     ),
+    dataDetailRow(
+      "Full registry record",
+      `${entry.id}-v${entry.version}.json`,
+      canonicalUrl.href,
+    ),
   );
   {
     details.append(
@@ -1286,20 +1291,16 @@ async function renderEntry(
     ),
   );
 
-  const machine = el("section", "machine-record");
-  machine.append(el("div", "eyebrow", "Full record"), el("h2", "", "Registry data"));
-  const machineLinks = el("p");
-  machineLinks.append(dataLink(`Open ${entry.id}-v${entry.version}.json`, canonicalUrl.href));
-  machine.append(machineLinks);
-  const pre = el("pre");
-  pre.append(el("code", "", JSON.stringify(entry, null, 2)));
-  machine.append(pre);
-
   const challenge = await challengePresentation(entry, renderBase, {
     dependenciesOnThisPage: true,
     availability,
   });
-  content.append(heading, sourceAvailabilityNotice(entry, availability));
+  const sourceNotice = sourceAvailabilityNotice(entry, availability);
+  content.append(heading);
+  // A broken or degraded source affects every link on the page and remains a
+  // warning at the top. The ordinary preservation confirmation is provenance,
+  // not an alert, so keep it with the registry history near the bottom.
+  if (!sourceNotice.classList.contains("preserved")) content.append(sourceNotice);
   const notice = versionNotice(entry, currentVersion);
   if (notice) content.append(notice);
   // The statement first, then what was checked about it, then what it rests
@@ -1314,8 +1315,8 @@ async function renderEntry(
     provenanceSection(entry, availability),
     classificationSection(entry),
     editorial,
+    ...(sourceNotice.classList.contains("preserved") ? [sourceNotice] : []),
     versionHistory(entry, versions, currentVersion),
-    machine,
   );
 }
 
