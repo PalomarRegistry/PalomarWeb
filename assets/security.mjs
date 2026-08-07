@@ -704,11 +704,12 @@ export function validateEntry(entry, summary) {
     safeExternalUrl(string(review.report.source_url, "entry.review.report.source_url"));
   }
   stringArray(review.reviewer_models, "entry.review.reviewer_models");
-  // Scores are required in the canonical registry record, but the public
-  // snapshot deliberately removes them. Accept both forms here so this
-  // validator describes the data the website actually receives. If scores
-  // are ever published, they must still have the canonical object shape.
-  if (review.scores !== undefined) object(review.scores, "entry.review.scores");
+  // A record is served exactly as it was committed, and a committed record has
+  // no scores: they are recorded beside the database, in a directory nothing
+  // stages. This tolerated them while the release tooling stripped them on the
+  // way out, which meant a release that forgot to strip would have rendered
+  // without complaint. Refusing them makes the browser the last check.
+  if (review.scores !== undefined) fail("entry.review.scores is not published");
   stringArray(review.warnings, "entry.review.warnings");
 
   const render = object(entry.challenge_render, "entry.challenge_render");

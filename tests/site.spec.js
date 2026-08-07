@@ -638,7 +638,8 @@ test("an entry shows the decision and the comments, never the scores", async ({ 
   const editorial = page.locator(".entry-editorial");
   await expect(editorial).toBeVisible();
 
-  // The scores decide acceptance and stay with the record. They are not shown:
+  // The scores decide acceptance and stay beside the database. Not shown, and
+  // as of the record-is-the-committed-file change, not served at all:
   // the same repository at the same commit scored 5 and then 4 on the same
   // axis across two runs, and a number that moves like that reads as a
   // judgement it cannot support.

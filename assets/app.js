@@ -1341,8 +1341,8 @@ async function renderEntry(
   editorialTitle.append(editorialBlock, el("span", "decision", "Accepted"));
   editorial.append(editorialTitle);
   // No scores. They decide whether a submission is accepted and they are kept
-  // with the record, but they are not shown: the same repository at the same
-  // commit has scored 5 and then 4 on the same axis across two runs, and a
+  // beside the database, but they never reach here: the same repository at
+  // the same commit has scored 5 and then 4 on the same axis across runs, and a
   // number that moves like that reads as a judgement it cannot support. What
   // it can support is the decision, which is above.
   editorial.append(
