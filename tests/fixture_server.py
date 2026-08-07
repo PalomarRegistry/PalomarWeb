@@ -105,13 +105,6 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "policy_commit": "5" * 40,
             "verdict": "accept",
             "reviewer_models": ["fixture:model"],
-            "scores": {
-                "statement_alignment": 5,
-                "definition_fidelity": 5,
-                "notability": 5,
-                "literature": 5,
-                "clarity": 5,
-            },
             "warnings": [],
             "report": {"sha256": "e" * 64},
         },

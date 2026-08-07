@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { publishState, publishedVersion } from "../scripts/check-published.mjs";
+import {
+  publicDataState,
+  publishState,
+  publishedVersion,
+} from "../scripts/check-published.mjs";
 
 const sha = "b500f02dec58268ea22de28332f63136dac092d9";
 const page = (version) =>
@@ -41,4 +45,47 @@ test("the stamp is read from the asset URL the build actually writes", async () 
   } finally {
     await rm(output, { recursive: true, force: true });
   }
+});
+
+test("live-data health fetches and validates every indexed public entry", async () => {
+  const calls = [];
+  const responses = new Map([
+    ["https://data.example/index.json", { entries: [{ path: "entries/one.json" }] }],
+    ["https://data.example/entries/one.json", { id: "one" }],
+  ]);
+  const fetcher = async (url) => {
+    calls.push(String(url));
+    return {
+      ok: true,
+      async json() { return responses.get(String(url)); },
+    };
+  };
+  const validated = [];
+  const state = await publicDataState("https://data.example", fetcher, {
+    validateIndex(index) {
+      validated.push("index");
+      return index;
+    },
+    validateEntry(value, summary) {
+      validated.push(`${value.id}:${summary.path}`);
+    },
+  });
+
+  assert.equal(state.healthy, true);
+  assert.deepEqual(calls, [
+    "https://data.example/index.json",
+    "https://data.example/entries/one.json",
+  ]);
+  assert.deepEqual(validated, ["index", "one:entries/one.json"]);
+});
+
+test("live-data health fails on the same contract error a visitor would see", async () => {
+  const fetcher = async () => ({ ok: true, async json() { return { entries: [] }; } });
+  const state = await publicDataState("https://data.example", fetcher, {
+    validateIndex() { throw new Error("entry.review.scores must be an object"); },
+    validateEntry() {},
+  });
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /entry\.review\.scores must be an object/);
 });
