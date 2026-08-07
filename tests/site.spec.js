@@ -613,3 +613,41 @@ test("an entry shows the decision and the comments, never the scores", async ({ 
   expect(await commentary.count() + await none.count()).toBeGreaterThan(0);
   await expect(editorial).not.toContainText("Permanent warnings");
 });
+
+test("what was checked is compressed without losing what it said", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const evidence = page.locator(".entry-evidence");
+  await expect(evidence).toBeVisible();
+
+  // Both kinds of assurance are named, and the names stand out from the prose.
+  await expect(evidence.locator("strong", { hasText: "Mechanical assurance" })).toBeVisible();
+  await expect(evidence.locator("strong", { hasText: "Editorial assurance" })).toBeVisible();
+
+  const labels = await evidence.locator(".details .detail-row dt").allTextContents();
+
+  // One date, to the minute. Acceptance and Lean verification were always the
+  // same day, so the second row said nothing the first did not.
+  expect(labels).toContain("Verified and accepted");
+  expect(labels).not.toContain("Acceptance date");
+  expect(labels).not.toContain("Lean verification date");
+  await expect(evidence).toContainText("UTC");
+
+  // A digest belongs with its file, not in a row two lines below it.
+  expect(labels).not.toContain("Challenge SHA-256");
+  expect(labels).not.toContain("Solution SHA-256");
+  expect(labels).not.toContain("Licence file SHA-256");
+  const notes = evidence.locator(".detail-note");
+  expect(await notes.count()).toBeGreaterThan(0);
+  await expect(notes.first()).toHaveAttribute("title", /^[0-9a-f]{64}$/);
+
+  // One licence row, not four.
+  expect(labels).toContain("Repository licence");
+  expect(labels).not.toContain("Declared repository licence");
+  expect(labels).not.toContain("Detected SPDX licence");
+
+  // And the project directory only when the project is somewhere.
+  const project = labels.filter((label) => label === "Project directory");
+  const rootOnly = await evidence.locator(".detail-row", { hasText: "Repository root" }).count();
+  expect(rootOnly).toBe(0);
+  expect(project.length).toBeLessThanOrEqual(1);
+});

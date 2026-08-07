@@ -200,6 +200,27 @@ function displayDate(value) {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
+/**
+ * A moment, to the minute, in UTC.
+ *
+ * The record is immutable and its timestamps are UTC, so they are shown in UTC
+ * rather than wherever the reader happens to be: two people quoting the same
+ * entry should quote the same time.
+ */
+function displayTimestamp(value) {
+  const when = new Date(value);
+  if (Number.isNaN(when.getTime())) return String(value);
+  return `${new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(when)} UTC`;
+}
+
 function latestVersions(entries) {
   const latest = new Map();
   for (const entry of entries) {
@@ -445,11 +466,28 @@ function detailRow(label, value) {
   return row;
 }
 
-function externalDetailRow(labelText, text, href) {
+/**
+ * A note beside a value, for facts that matter but do not deserve a row.
+ *
+ * A digest is worth publishing and almost never worth reading in full, so it
+ * is shown short, in a smaller face, with the whole of it one hover away.
+ */
+function annotation(text, full) {
+  const note = el("span", "detail-note", text);
+  if (full) note.title = full;
+  return note;
+}
+
+function digestNote(sha256) {
+  return annotation(`sha256 ${String(sha256).slice(0, 12)}\u2026`, sha256);
+}
+
+function externalDetailRow(labelText, text, href, note) {
   const row = el("div", "detail-row");
   row.append(el("dt", "", labelText));
   const value = el("dd");
   value.append(externalLink(text, href));
+  if (note) value.append(" ", note);
   row.append(value);
   return row;
 }
@@ -736,6 +774,42 @@ async function challengePresentation(
   return {section, metadata};
 }
 
+/** One kind of assurance, named so the two can be told apart at a glance. */
+function assurance(kind, sentence) {
+  const paragraph = el("p");
+  paragraph.append(el("strong", "", `${kind}: `), document.createTextNode(sentence));
+  return paragraph;
+}
+
+/**
+ * The repository licence, in one row rather than four.
+ *
+ * The four said: which file, what it declares, what was detected in it, and
+ * its digest. Three of those are the same fact when they agree, which is the
+ * ordinary case; the interesting case is when they disagree, and that is the
+ * one worth spelling out.
+ */
+function licenceRow(entry, availability) {
+  const licence = entry.source.license;
+  const declared = licence.declared_identifier;
+  const detected = licence.detected_identifier;
+  const agreed = String(declared) === String(detected);
+  const row = el("div", "detail-row");
+  row.append(el("dt", "", "Repository licence"));
+  const value = el("dd");
+  value.append(
+    agreed
+      ? el("span", "", String(declared))
+      : el("span", "licence-disagreement", `declared ${declared}, detected ${detected}`),
+    " ",
+    externalLink(licence.path, sourceFileUrl(entry, licence.path, availability)),
+    " ",
+    digestNote(licence.sha256),
+  );
+  row.append(value);
+  return row;
+}
+
 function acceptanceCallout(entry, databaseBase) {
   const callout = el("div", "acceptance-callout");
   const check = el("span", "acceptance-check", "✓");
@@ -764,15 +838,13 @@ function acceptanceCallout(entry, databaseBase) {
   }
   copy.append(
     el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
-    el(
-      "p",
-      "",
-      "Mechanical assurance: Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",
+    assurance(
+      "Mechanical assurance",
+      "Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",
     ),
-    el(
-      "p",
-      "",
-      "Editorial assurance: an AI-mediated review judged whether that formal Challenge matches the informal mathematical claim under the recorded policy. This is not human peer review or a novelty certificate.",
+    assurance(
+      "Editorial assurance",
+      "an AI-mediated review judged whether that formal Challenge matches the informal mathematical claim under the recorded policy. This is not human peer review or a novelty certificate.",
     ),
     evidenceLinks,
   );
@@ -1130,42 +1202,51 @@ async function renderEntry(
   const details = el("dl", "details");
   const location = topSourceLocation(entry, availability);
   details.append(
-    detailRow("Acceptance date", displayDate(acceptanceDate(entry))),
-    detailRow(
-      "Lean verification date",
-      displayDate(entry.verification.verified_at.slice(0, 10)),
-    ),
+    // One date, not two. Acceptance and Lean verification have always been the
+    // same day, so the second row said nothing the first did not; what it cost
+    // was the time of day, which is now here.
+    detailRow("Verified and accepted", displayTimestamp(entry.verification.verified_at)),
     externalDetailRow(
       "Fixed source version",
       `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`,
       pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit),
     ),
-    externalDetailRow(
-      "Project directory",
-      entry.source.project_path || "Repository root",
-      pinnedRepositoryDirectoryUrl(
-        location.repository,
-        entry.source.commit,
-        entry.source.project_path || ".",
+  );
+  // Only worth a row when it is somewhere. At the repository root it is the
+  // absence of a fact, and the fixed source version above already links there.
+  if (entry.source.project_path) {
+    details.append(
+      externalDetailRow(
+        "Project directory",
+        entry.source.project_path,
+        pinnedRepositoryDirectoryUrl(
+          location.repository,
+          entry.source.commit,
+          entry.source.project_path,
+        ),
       ),
-    ),
+    );
+  }
+  details.append(
+    // The digest belongs to the file, so it sits with the file rather than in
+    // a row of its own two lines further down.
     externalDetailRow(
       "Statement file",
       entry.formalization.challenge_path,
       sourceFileUrl(entry, entry.formalization.challenge_path, availability),
+      digestNote(entry.verification.challenge_sha256),
     ),
     externalDetailRow(
       "Proof file",
       entry.formalization.solution_path,
       sourceFileUrl(entry, entry.formalization.solution_path, availability),
+      digestNote(entry.verification.solution_sha256),
     ),
     externalDetailRow(
       "Formalization metadata",
       entry.formalization.formalization_metadata_path,
       sourceFileUrl(entry, entry.formalization.formalization_metadata_path, availability),
     ),
-    detailRow("Challenge SHA-256", entry.verification.challenge_sha256),
-    detailRow("Solution SHA-256", entry.verification.solution_sha256),
     detailRow("Lean version", entry.formalization.lean_toolchain),
     detailRow("Theorems checked", theoremNames(entry)),
     detailRow("Permitted axioms", entry.formalization.permitted_axioms.join(", ") || "none"),
@@ -1201,14 +1282,7 @@ async function renderEntry(
       ),
       detailRow("Verification workflow commit", entry.verification.workflow_commit),
       detailRow("Workflow run attempt", String(entry.verification.workflow_run_attempt)),
-      externalDetailRow(
-        "Repository licence file",
-        entry.source.license.path,
-        sourceFileUrl(entry, entry.source.license.path, availability),
-      ),
-      detailRow("Declared repository licence", entry.source.license.declared_identifier),
-      detailRow("Detected SPDX licence", entry.source.license.detected_identifier),
-      detailRow("Licence file SHA-256", entry.source.license.sha256),
+      licenceRow(entry, availability),
     );
   }
   evidence.append(details);
