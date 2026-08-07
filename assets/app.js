@@ -23,6 +23,8 @@ import {
   validateEntry,
   validateAvailability,
   validateIndex,
+  validateVersions,
+  versionsUrl,
   validateTombstone,
   workflowRunId,
 } from "./security.mjs";
@@ -1401,14 +1403,22 @@ async function renderEntry(
 async function loadEntry(id, requestedVersion) {
   const { databaseUrl, databaseBase, renderBase, availabilityUrl } = dataSource();
   const availabilityPromise = loadAvailability(availabilityUrl);
-  const index = validateIndex(await fetchJson(databaseUrl));
-  const versions = index.entries
-    .filter((item) => item.id === id)
-    .sort((left, right) => left.version - right.version);
+  // The versions of this one result, not the whole registry. Reading
+  // `index.json` here meant fetching every record ever registered to render
+  // one page, and paying for it again every time anyone else published.
+  let versions = [];
+  try {
+    versions = validateVersions(await fetchJson(versionsUrl(id, databaseBase)), id).entries;
+  } catch (error) {
+    // Absent means no active version of this result, which is either an
+    // unknown identifier or one withdrawn entirely. Both are answered below,
+    // by the tombstone if there is one and by "not found" if there is not.
+    if (error.status !== 404) throw error;
+  }
   const currentVersion = versions.length ? versions.at(-1).version : null;
   const version = requestedVersion ?? currentVersion;
-  if (version === null) throw new Error("entry not found");
-  const summary = index.entries.find((item) => item.id === id && item.version === version);
+  if (version === null && requestedVersion === undefined) throw new Error("entry not found");
+  const summary = versions.find((item) => item.version === version);
   if (!summary) {
     if (requestedVersion === null || requestedVersion === undefined) {
       throw new Error("entry not found");

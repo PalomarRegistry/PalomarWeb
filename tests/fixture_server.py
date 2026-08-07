@@ -258,6 +258,37 @@ class Handler(SimpleHTTPRequestHandler):
             }
             self.send_bytes(json.dumps(payload).encode(), "application/json")
             return
+        # The versions of one result, which is what an entry page reads instead
+        # of the whole index.
+        versions = re.fullmatch(
+            r"/database/versions/(PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})\.json",
+            path,
+        )
+        if versions:
+            identifier = versions.group(1)
+            rows = [
+                {
+                    "id": item["id"],
+                    "version": item["version"],
+                    "title": item["title"],
+                    "status": "accepted",
+                    "path": f"entries/{item['id']}-v{item['version']}.json",
+                }
+                for item in ENTRIES.values()
+                if item["id"] == identifier
+            ]
+            if not rows:
+                self.send_error(404)
+                return
+            self.send_bytes(
+                json.dumps({
+                    "schema_version": 1,
+                    "id": identifier,
+                    "entries": sorted(rows, key=lambda row: row["version"]),
+                }).encode(),
+                "application/json",
+            )
+            return
         tombstone = re.fullmatch(
             r"/database/tombstones/(PALOMAR-2026-07-29-000125)-v(1)\.json",
             path,
