@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRegistrySearch } from "../assets/searching.mjs";
+import { createRegistrySearch, SEARCH_TERM_LIMIT } from "../assets/searching.mjs";
 import { identifiedEntry } from "./registry-fixture.mjs";
 
 const BASE = "https://data.example.test/";
@@ -27,6 +27,42 @@ function page(term, number, postings) {
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
+
+test("the distinct-term limit is a hard head-request bound", async () => {
+  const terms = Array.from(
+    { length: SEARCH_TERM_LIMIT },
+    (_unused, index) => `word${String(index).padStart(2, "0")}`,
+  );
+  let headRequests = 0;
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path.endsWith("/head.json")) {
+      headRequests += 1;
+      const error = new Error("not indexed");
+      error.status = 404;
+      throw error;
+    }
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, { concurrency: 8, timeoutMs: 1_000 });
+
+  const atLimit = await search(terms.join(" "), BASE);
+
+  assert.equal(headRequests, SEARCH_TERM_LIMIT);
+  assert.deepEqual(atLimit.missing, terms);
+
+  let overLimitRequests = 0;
+  const rejectOverLimit = createRegistrySearch(async () => {
+    overLimitRequests += 1;
+    throw new Error("an over-limit query must not read registry data");
+  });
+  await assert.rejects(
+    rejectOverLimit([...terms, "onewordmore"].join(" "), BASE),
+    new RangeError(`Search queries may contain at most ${SEARCH_TERM_LIMIT} distinct words.`),
+  );
+  assert.equal(overLimitRequests, 0);
+});
 
 test("search pipelines I/O but retains validated publisher order", async () => {
   const postings = [1, 2, 3, 4].map(posting);

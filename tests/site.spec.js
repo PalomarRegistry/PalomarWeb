@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { SEARCH_TERM_LIMIT } from "../assets/searching.mjs";
+
 const database = encodeURIComponent("http://127.0.0.1:4173/database/");
 const missingAvailability = encodeURIComponent(
   "http://127.0.0.1:4173/database/source-availability-missing.json",
@@ -886,6 +888,39 @@ test("a search reads one postings sequence per word and confirms every hit", asy
   // nothing on top of that.
   expect(asked.filter((path) => path.startsWith("/database/entries/")))
     .toEqual(["/database/entries/PALOMAR-2026-07-29-000124-v1.json"]);
+});
+
+test("an over-limit linked or typed query starts no search or hidden landing work", async ({ page }) => {
+  const query = Array.from(
+    { length: SEARCH_TERM_LIMIT + 20 },
+    (_unused, index) => `word${String(index).padStart(2, "0")}`,
+  ).join(" ");
+  const asked = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/database/")) asked.push(path);
+  });
+
+  await page.goto(`/?database=${database}&q=${encodeURIComponent(query)}`);
+  await expect(page.locator("#query")).toHaveValue(query);
+  await expect(page.locator("#search-status")).toHaveText(
+    `The search could not be run: Search queries may contain at most ${SEARCH_TERM_LIMIT} distinct words.`,
+  );
+  await expect(page.locator("#search-status")).toHaveClass(/error/);
+  expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
+  expect(asked.filter((path) => path === "/database/recent.json")).toEqual([]);
+  await expect(page.locator("#entry-grid")).toBeHidden();
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+  asked.length = 0;
+  await page.locator("#query").fill(query);
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#query")).toHaveValue(query);
+  await expect(page.locator("#search-status")).toHaveText(
+    `The search could not be run: Search queries may contain at most ${SEARCH_TERM_LIMIT} distinct words.`,
+  );
+  expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
 });
 
 test("search cards retain posting order when posting pages finish out of order", async ({ page }) => {

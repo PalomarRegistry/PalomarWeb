@@ -12,8 +12,10 @@ import {
 } from "./security.mjs";
 
 // These are request bounds, not guesses about how large the registry will be.
-// A query can therefore become incomplete, but it cannot make browser work grow
-// without limit with either a common word or a large result set.
+// A query can therefore be rejected or become incomplete, but it cannot make
+// browser work grow without limit through many words, a common word, or a large
+// result set.
+export const SEARCH_TERM_LIMIT = 20;
 export const SEARCH_PAGE_BUDGET = 16;
 export const SEARCH_RESULT_LIMIT = 20;
 export const SEARCH_CANDIDATE_LIMIT = 60;
@@ -116,6 +118,11 @@ export function createRegistrySearch(
       throw new TypeError("signal must be an AbortSignal");
     }
     const asked = [...new Set(searchTerms(query))];
+    if (asked.length > SEARCH_TERM_LIMIT) {
+      throw new RangeError(
+        `Search queries may contain at most ${SEARCH_TERM_LIMIT} distinct words.`,
+      );
+    }
     const problems = [];
     const deadlineController = new AbortController();
     const deadlineError = new Error(`search deadline of ${timeoutMs}ms expired`);
