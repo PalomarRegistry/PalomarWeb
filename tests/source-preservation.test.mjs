@@ -155,6 +155,15 @@ test("source location rejects a repository revision absent from the preservation
   );
 });
 
+test("source location rejects a missing preservation receipt instead of falling back", () => {
+  const record = entry();
+  delete record.preservation;
+  assert.throws(
+    () => topSourceLocation(record, null),
+    /no canonical source preservation receipt/,
+  );
+});
+
 test("card decoration isolates a malformed entry and still decorates its peer", () => {
   withFakeDocument((warnings) => {
     const bad = entry();

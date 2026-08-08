@@ -47,11 +47,45 @@ test("the stamp is read from the asset URL the build actually writes", async () 
   }
 });
 
-test("live-data health fetches and validates every entry the landing page shows", async () => {
+test("live-data health traverses browse and history to validate every public permalink", async () => {
   const calls = [];
+  const first = {
+    id: "PALOMAR-2026-08-08-000001",
+    version: 1,
+    title: "One",
+    status: "accepted",
+    path: "entries/PALOMAR-2026-08-08-000001-v1.json",
+  };
+  const second = {
+    ...first,
+    version: 2,
+    title: "Two",
+    path: "entries/PALOMAR-2026-08-08-000001-v2.json",
+  };
   const responses = new Map([
-    ["https://data.example/recent.json", { entries: [{ path: "entries/one.json" }] }],
-    ["https://data.example/entries/one.json", { id: "one" }],
+    ["https://data.example/recent.json", { entries: [{ ...second, versions: 2 }] }],
+    ["https://data.example/browse/index.json", {
+      results: 1,
+      versions: 2,
+      years: [{ year: "2026", days: 1, results: 1, versions: 2 }],
+    }],
+    ["https://data.example/browse/2026.json", {
+      year: "2026",
+      days: [{
+        day: "2026-08-08",
+        first_page: 1,
+        last_page: 1,
+        results: 1,
+        versions: 2,
+      }],
+    }],
+    ["https://data.example/browse/2026-08-08/1.json", { entries: [first, second] }],
+    ["https://data.example/versions/PALOMAR-2026-08-08-000001.json", {
+      id: first.id,
+      entries: [first, second],
+    }],
+    ["https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json", { id: "one-v1" }],
+    ["https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json", { id: "one-v2" }],
   ]);
   const fetcher = async (url) => {
     calls.push(String(url));
@@ -66,6 +100,22 @@ test("live-data health fetches and validates every entry the landing page shows"
       validated.push("recent");
       return page;
     },
+    validateBrowseHead(page) {
+      validated.push("browse-head");
+      return page;
+    },
+    validateBrowseYear(page, expected) {
+      validated.push(`year:${expected.year}`);
+      return page;
+    },
+    validateBrowsePage(page, day, number) {
+      validated.push(`page:${day}:${number}`);
+      return page;
+    },
+    validateVersions(page, id) {
+      validated.push(`versions:${id}`);
+      return page;
+    },
     validateEntry(value, summary) {
       validated.push(`${value.id}:${summary.path}`);
     },
@@ -74,9 +124,73 @@ test("live-data health fetches and validates every entry the landing page shows"
   assert.equal(state.healthy, true);
   assert.deepEqual(calls, [
     "https://data.example/recent.json",
-    "https://data.example/entries/one.json",
+    "https://data.example/browse/index.json",
+    "https://data.example/browse/2026.json",
+    "https://data.example/browse/2026-08-08/1.json",
+    "https://data.example/versions/PALOMAR-2026-08-08-000001.json",
+    "https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json",
+    "https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json",
   ]);
-  assert.deepEqual(validated, ["recent", "one:entries/one.json"]);
+  assert.deepEqual(validated, [
+    "recent",
+    "browse-head",
+    "year:2026",
+    "page:2026-08-08:1",
+    `versions:${first.id}`,
+    `one-v1:${first.path}`,
+    `one-v2:${second.path}`,
+  ]);
+  assert.match(state.reason, /all 2 active entry versions across 1 results/);
+});
+
+test("live-data health fails closed when a version index omits or rewrites browse history", async () => {
+  const id = "PALOMAR-2026-08-08-000001";
+  const browseRow = {
+    id,
+    version: 1,
+    title: "Browse title",
+    status: "accepted",
+    path: `entries/${id}-v1.json`,
+  };
+  const responses = new Map([
+    ["https://data.example/recent.json", { entries: [] }],
+    ["https://data.example/browse/index.json", {
+      results: 1,
+      versions: 1,
+      years: [{ year: "2026", days: 1, results: 1, versions: 1 }],
+    }],
+    ["https://data.example/browse/2026.json", {
+      year: "2026",
+      days: [{
+        day: "2026-08-08",
+        first_page: 1,
+        last_page: 1,
+        results: 1,
+        versions: 1,
+      }],
+    }],
+    ["https://data.example/browse/2026-08-08/1.json", { entries: [browseRow] }],
+    ["https://data.example/versions/PALOMAR-2026-08-08-000001.json", {
+      id,
+      entries: [{ ...browseRow, title: "Rewritten title" }],
+    }],
+  ]);
+  const identityValidators = {
+    validateRecent: (value) => value,
+    validateBrowseHead: (value) => value,
+    validateBrowseYear: (value) => value,
+    validateBrowsePage: (value) => value,
+    validateVersions: (value) => value,
+    validateEntry() { assert.fail("an unreconciled permalink must not be accepted"); },
+  };
+  const state = await publicDataState(
+    "https://data.example",
+    async (url) => ({ ok: true, async json() { return responses.get(String(url)); } }),
+    identityValidators,
+  );
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /version index .* does not equal its browse history/);
 });
 
 test("live-data health fails on the same contract error a visitor would see", async () => {

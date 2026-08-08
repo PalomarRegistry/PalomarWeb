@@ -92,6 +92,10 @@ test("source URL is always the immutable canonical GitHub file", () => {
     `https://github.com/PalomarArchive/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
 
+  const unpreserved = entry();
+  delete unpreserved.preservation;
+  assert.throws(() => challengeSourceUrl(unpreserved), /no canonical source preservation metadata/);
+
   const traversal = entry();
   traversal.formalization.challenge_path = "../Task.lean";
   assert.throws(() => challengeSourceUrl(traversal), /canonical/);

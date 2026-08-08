@@ -33,6 +33,12 @@
   as soon as Database publication removed it. This consumer-first ordering is
   specific to deleting an artifact an old consumer still requests; shape
   changes to documents the browser reads remain producer-first as above.
+  The consumer-first claim must be proved by `check-published.mjs --data`, which
+  traverses every browse page and per-ID version index and validates every
+  active entry before Pages artifact upload. A recent-only sample is not enough.
+  `recent.json`, versions, browse/search, source availability, and independent
+  render/evidence metadata intentionally retain their schema-v1 protocols;
+  entry-schema cleanup must not rewrite them.
 
 - `source-availability.json` is normalized by PalomarDatabase's executable
   source-availability contract and consumed under the same per-endpoint

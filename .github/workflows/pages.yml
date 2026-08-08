@@ -48,6 +48,13 @@ jobs:
       - run: npm test
         env:
           PALOMAR_DATABASE_CHECKOUT: ${{ github.workspace }}/palomar-database
+      # A consumer-first schema deletion is safe only if every currently served
+      # version already satisfies the new consumer. Keep this before the Pages
+      # artifact is built or uploaded.
+      - name: Can Web read every currently published entry version
+        run: node scripts/check-published.mjs --data "$PUBLIC_DATA_ORIGIN"
+        env:
+          PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
       - name: Resolve previous deployment revision
         env:
           BEFORE: ${{ github.event.before }}

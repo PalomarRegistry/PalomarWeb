@@ -184,11 +184,19 @@ def recent_row(record: dict, versions: int) -> dict:
     """Project exactly the landing-card contract emitted by PalomarDatabase."""
     source = record["source"]
     mapping = next(
-        item
-        for item in record["preservation"]["repositories"]
-        if item["source_repository"].casefold() == source["repository"].casefold()
-        and item["commit"] == source["commit"]
+        (
+            item
+            for item in record["preservation"]["repositories"]
+            if item["source_repository"].casefold() == source["repository"].casefold()
+            and item["commit"] == source["commit"]
+        ),
+        None,
     )
+    if mapping is None:
+        raise ValueError(
+            "browser fixture has no preservation mapping for "
+            f"{source['repository']}@{source['commit']}"
+        )
     return {
         "id": record["id"],
         "version": record["version"],

@@ -20,6 +20,7 @@ import {
 import {
   AVAILABILITY_MAX_AGE_MS,
   AVAILABILITY_MAX_CLOCK_SKEW_MS,
+  BROWSE_SCHEMA_VERSION,
   DEFAULT_DATABASE,
   DEFAULT_AVAILABILITY,
   ENTRY_SCHEMA_VERSION,
@@ -28,6 +29,8 @@ import {
   availabilityRecord,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
+  RECENT_SCHEMA_VERSION,
+  VERSIONS_SCHEMA_VERSION,
   entryRecordUrl,
   isLoopbackHostname,
   pinnedSourceDirectoryUrl,
@@ -42,6 +45,9 @@ import {
   tombstoneUrl,
   validateEntry,
   validateAvailability,
+  validateBrowseHead,
+  validateBrowsePage,
+  validateBrowseYear,
   validateRecent,
   validateTombstone,
   validateVersions,
@@ -854,13 +860,39 @@ test("every provenance value the schema allows has an explicit label", async () 
   }
 });
 
-test("the site validates exactly the schema version the database publishes", async () => {
+test("the site requires the Database entry version and exact preservation shape", async () => {
   const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
     ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
   const schema = JSON.parse(
     await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
+  assert.ok(schema.required.includes("preservation"));
+  const preservation = schema.properties.preservation;
+  assert.equal(preservation.type, "object");
+  assert.equal(preservation.additionalProperties, false);
+  assert.deepEqual(
+    [...preservation.required].sort(),
+    ["archive_owner", "archived_at", "receipt_sha256", "repositories"].sort(),
+  );
+  assert.deepEqual(
+    Object.keys(preservation.properties).sort(),
+    ["archive_owner", "archived_at", "receipt_sha256", "repositories"].sort(),
+  );
+  assert.equal(preservation.properties.archive_owner.const, "PalomarArchive");
+  const repositories = preservation.properties.repositories;
+  assert.equal(repositories.type, "array");
+  assert.equal(repositories.minItems, 1);
+  assert.equal(repositories.items.type, "object");
+  assert.equal(repositories.items.additionalProperties, false);
+  assert.deepEqual(
+    [...repositories.items.required].sort(),
+    ["source_repository", "commit", "fork_repository", "ref"].sort(),
+  );
+  assert.deepEqual(
+    Object.keys(repositories.items.properties).sort(),
+    ["source_repository", "commit", "fork_repository", "ref"].sort(),
+  );
 });
 
 test("the favicon ships with the site and every page asks for it", async () => {
@@ -916,6 +948,50 @@ test("a version index URL cannot leave the database origin", () => {
     "https://data.example.org/versions/PALOMAR-2026-07-29-000123.json");
   assert.throws(() => versionsUrl("../../etc/passwd", base), /malformed/);
   assert.throws(() => versionsUrl("PALOMAR-2026-07-29-00012", base), /malformed/);
+});
+
+test("browse enumerates every schema-v1 history row without becoming an entry schema", () => {
+  assert.equal(RECENT_SCHEMA_VERSION, 1);
+  assert.equal(VERSIONS_SCHEMA_VERSION, 1);
+  assert.equal(BROWSE_SCHEMA_VERSION, 1);
+  const row = {
+    id: "PALOMAR-2026-07-29-000123",
+    version: 1,
+    title: "A result",
+    status: "accepted",
+    path: "entries/PALOMAR-2026-07-29-000123-v1.json",
+  };
+  const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
+  const head = { schema_version: 1, results: 1, versions: 1, years: [yearRow] };
+  const dayRow = {
+    day: "2026-07-29",
+    first_page: 1,
+    last_page: 1,
+    results: 1,
+    versions: 1,
+  };
+  const year = { schema_version: 1, year: "2026", days: [dayRow] };
+  const page = { schema_version: 1, day: dayRow.day, page: 1, entries: [row] };
+  assert.equal(validateBrowseHead(head), head);
+  assert.equal(validateBrowseYear(year, yearRow), year);
+  assert.equal(validateBrowsePage(page, dayRow.day, 1), page);
+
+  assert.throws(
+    () => validateBrowseHead({ ...head, versions: 2 }),
+    /counts do not equal/,
+  );
+  assert.throws(
+    () => validateBrowseYear({ ...year, year: "2027" }, yearRow),
+    /different year/,
+  );
+  assert.throws(
+    () => validateBrowsePage({ ...page, page: 2 }, dayRow.day, 1),
+    /identity does not match/,
+  );
+  assert.throws(
+    () => validateBrowsePage({ ...page, schema_version: 2 }, dayRow.day, 1),
+    /schema_version/,
+  );
 });
 
 const SEARCH_BASE = "https://data.example.test/";

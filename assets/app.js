@@ -290,15 +290,13 @@ function entryCard(
     ),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
-  if (location.archiveRepository) {
-    footer.append(
-      externalLink(
-        "Palomar preserved copy",
-        pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit),
-        "archive-link",
-      ),
-    );
-  }
+  footer.append(
+    externalLink(
+      "Palomar preserved copy",
+      pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit),
+      "archive-link",
+    ),
+  );
   if (versionCount > 1) {
     const historyLink = internalLink(
       `${versionCount} versions`,
@@ -1349,7 +1347,7 @@ function solutionMetadata(entry, renderMetadata, availability) {
         ),
         el("code", "", dependency.revision.slice(0, 12)),
       );
-      if (!location.useArchive && location.archiveRepository) {
+      if (!location.useArchive) {
         item.append(
           " · ",
           externalLink(

@@ -6,7 +6,11 @@ import {
 
 /** Resolve one immutable repository revision to its recorded or preserved copy. */
 export function sourceLocation(entry, availability, repository, commit) {
-  const mapping = entry.preservation.repositories.find(
+  const repositories = entry?.preservation?.repositories;
+  if (!Array.isArray(repositories)) {
+    throw new Error("entry has no canonical source preservation receipt");
+  }
+  const mapping = repositories.find(
     (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
       row.commit === commit,
   );

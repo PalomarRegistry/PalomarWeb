@@ -40,6 +40,12 @@ jobs:
       - run: npm test
         env:
           PALOMAR_DATABASE_CHECKOUT: ${{ github.workspace }}/palomar-database
+      # This is intentionally broader than a page load: traverse browse and
+      # every per-ID history, then validate every active public permalink.
+      - name: Can Web read every currently published entry version
+        run: node scripts/check-published.mjs --data "$PUBLIC_DATA_ORIGIN"
+        env:
+          PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
       # Against the live service, because the grammar of what it serves lives
       # in the canonical database and this repository cannot see it. A link to
       # a document the service has removed answers 404 to a reader, which is
