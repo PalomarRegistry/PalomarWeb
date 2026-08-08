@@ -257,6 +257,32 @@ test("matching versions of one result collapse to its newest matching version", 
   assert.equal(result.whole, true);
 });
 
+test("a version group reports broken postings in order and continues to an older match", async () => {
+  const id = "PALOMAR-2026-07-29-000001";
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/t/alpha/head.json") return head("alpha", 3, 3);
+    if (path === "/search/t/alpha/0.json") {
+      return page("alpha", 0, [`${id}-v10`, `${id}-v8`, `${id}-v9`]);
+    }
+    if (path.endsWith("-v10.json")) throw new Error("newest record unavailable");
+    if (path.endsWith("-v9.json")) return identifiedEntry(1, { version: 9, title: "" });
+    if (path.endsWith("-v8.json")) return identifiedEntry(1, { version: 8 });
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, { concurrency: 2, timeoutMs: 1_000 });
+
+  const result = await search("alpha", BASE);
+
+  assert.deepEqual(result.entries.map((entry) => [entry.id, entry.version]), [[id, 8]]);
+  assert.deepEqual(result.problems.map((problem) => problem.item), [
+    `${id}-v10`,
+    `${id}-v9`,
+  ]);
+  assert.equal(result.whole, false);
+});
+
 test("a complete postings sequence remains incomplete when the candidate cap truncates it", async () => {
   const postings = [posting(1), posting(2), posting(3)];
   let recordRequests = 0;
@@ -336,7 +362,7 @@ test("page, candidate, and concurrency limits remain hard bounds", async () => {
   assert.equal(result.whole, false);
 });
 
-test("the record window stops with at most concurrency minus one speculative requests", async () => {
+test("the record window stops with at most concurrency minus one speculative groups", async () => {
   const postings = Array.from({ length: 100 }, (_unused, index) => posting(index + 1));
   let recordRequests = 0;
   const fetchJson = async (url) => {
@@ -360,9 +386,35 @@ test("the record window stops with at most concurrency minus one speculative req
 
   const result = await search("alpha", BASE);
 
-  assert.equal(recordRequests, 27, "more than seven speculative records were fetched");
+  assert.equal(recordRequests, 27, "more than seven speculative groups were started");
   assert.equal(result.entries.length, 20);
   assert.equal(result.entries[0].id, "PALOMAR-2026-07-29-000100");
   assert.equal(result.entries.at(-1).id, "PALOMAR-2026-07-29-000081");
   assert.equal(result.whole, false);
+});
+
+test("the initial record window never exceeds the result limit", async () => {
+  const postings = Array.from({ length: 20 }, (_unused, index) => posting(index + 1));
+  let recordRequests = 0;
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/t/alpha/head.json") return head("alpha", 20, 20);
+    if (path === "/search/t/alpha/0.json") return page("alpha", 0, postings);
+    if (path.startsWith("/entries/")) {
+      recordRequests += 1;
+      return new Promise(() => {});
+    }
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, {
+    concurrency: 8,
+    timeoutMs: 30,
+    resultLimit: 2,
+  });
+
+  const result = await search("alpha", BASE);
+
+  assert.equal(recordRequests, 2);
+  assert.equal(result.timedOut, true);
 });

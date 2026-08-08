@@ -408,10 +408,31 @@ test("a card for a result accepted before archiving does not call its original u
 });
 
 test("a card says the original is unavailable exactly when the manifest says so", async ({ page }) => {
+  let releaseAvailability;
+  let noteAvailabilityRequest;
+  const availabilityRequested = new Promise((resolve) => { noteAvailabilityRequest = resolve; });
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    noteAvailabilityRequest();
+    await new Promise((resolve) => { releaseAvailability = resolve; });
+    await route.continue();
+  });
   await page.goto(`/?database=${database}&availability=${missingAvailability}`);
   const card = page.locator(".entry-card").first();
+  await expect(card).toHaveCount(1);
+  await availabilityRequested;
+  await page.locator("#search").fill("000123");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await page.locator("#search").evaluate((input) => input.focus());
+  await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
+  // Cards and filters are usable while availability is still pending.
+  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
+  releaseAvailability();
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
+  await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
+  await expect(page.locator("#search")).toBeFocused();
+  await expect(page.locator("#search")).toHaveValue("000123");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 
   await page.goto(`/?database=${database}`);
   await expect(page.locator(".entry-card .source-status")).toHaveCount(0);
@@ -901,7 +922,34 @@ test("a failed posting page leaves validated search cards and reports degradatio
   await expect(page.locator("#search-status")).toHaveClass(/warning/);
 });
 
-test("search cards render before availability and retry a failed decoration", async ({ page }) => {
+test("search availability decorates the existing focused card in place", async ({ page }) => {
+  let releaseAvailability;
+  let noteAvailabilityRequest;
+  const availabilityRequested = new Promise((resolve) => { noteAvailabilityRequest = resolve; });
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    noteAvailabilityRequest();
+    await new Promise((resolve) => { releaseAvailability = resolve; });
+    await route.continue();
+  });
+
+  await page.goto(
+    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
+  );
+  const card = page.locator("#search-results .entry-card");
+  await expect(card).toHaveCount(1);
+  await availabilityRequested;
+  await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
+  await card.locator(".repo-link").focus();
+  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
+
+  releaseAvailability();
+  await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
+  await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
+  await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
+  await expect(card.locator(".repo-link")).toBeFocused();
+});
+
+test("transient and invalid availability responses are both retried", async ({ page }) => {
   let availabilityRequests = 0;
   let releaseFirst;
   let noteFirstRequest;
@@ -915,6 +963,10 @@ test("search cards render before availability and retry a failed decoration", as
       noteFirstRequest();
       await new Promise((resolve) => { releaseFirst = resolve; });
       await route.fulfill({ status: 503, body: "temporarily unavailable" });
+      return;
+    }
+    if (availabilityRequests === 2) {
+      await route.fulfill({ status: 200, json: { schema_version: 1 } });
       return;
     }
     await route.continue();
@@ -933,11 +985,40 @@ test("search cards render before availability and retry a failed decoration", as
   releaseFirst();
   await firstFailureLogged;
 
+  const invalidLogged = page.waitForEvent("console", {
+    predicate: (message) => message.text().includes("Source availability is unavailable"),
+  });
   await page.getByRole("button", { name: "Search" }).click();
   await expect.poll(() => availabilityRequests).toBe(2);
+  await invalidLogged;
+  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
+
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect.poll(() => availabilityRequests).toBe(3);
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
   await expect(card.locator(".version-history-link")).toHaveCount(0);
+});
+
+test("a missing availability manifest is cached for the page", async ({ page }) => {
+  let availabilityRequests = 0;
+  await page.route("**/database/no-source-availability.json", async (route) => {
+    availabilityRequests += 1;
+    await route.fulfill({ status: 404, body: "not published" });
+  });
+  const absentAvailability = encodeURIComponent(
+    "http://127.0.0.1:4173/database/no-source-availability.json",
+  );
+
+  await page.goto(
+    `/?database=${database}&availability=${absentAvailability}&q=synthetically`,
+  );
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect.poll(() => availabilityRequests).toBe(1);
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await page.waitForTimeout(50);
+  expect(availabilityRequests).toBe(1);
 });
 
 test("a superseded slow search cannot repaint a newer query", async ({ page }) => {
@@ -965,26 +1046,52 @@ test("a superseded slow search cannot repaint a newer query", async ({ page }) =
   await expect(page).toHaveURL(/q=synthetically/);
 });
 
-test("a linked search defers the landing pipeline until it is cleared", async ({ page }) => {
+test("a linked search hides landing DOM and retries one failed landing load", async ({ page }) => {
   let recentRequests = 0;
-  page.on("request", (request) => {
-    if (new URL(request.url()).pathname === "/database/recent.json") recentRequests += 1;
+  let releaseFirstRecent;
+  let noteFirstRecent;
+  const firstRecent = new Promise((resolve) => { noteFirstRecent = resolve; });
+  await page.route("**/database/recent.json", async (route) => {
+    recentRequests += 1;
+    if (recentRequests === 1) {
+      noteFirstRecent();
+      await new Promise((resolve) => { releaseFirstRecent = resolve; });
+      await route.fulfill({ status: 503, body: "temporarily unavailable" });
+      return;
+    }
+    await route.continue();
   });
 
   await page.goto(`/?database=${database}&q=synthetically`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   expect(recentRequests).toBe(0);
-  await expect(page.locator("#status")).toBeHidden();
+  expect(await page.evaluate(() => ({
+    grid: document.querySelector("#entry-grid").hidden,
+    status: document.querySelector("#status").hidden,
+    toolbar: document.querySelector(".toolbar").hidden,
+  }))).toEqual({ grid: true, status: true, toolbar: true });
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
 
   await page.locator("#query").fill("");
   await page.getByRole("button", { name: "Search" }).click();
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-  expect(recentRequests).toBe(1);
+  await firstRecent;
+  expect(await page.evaluate(() => ({
+    grid: document.querySelector("#entry-grid").hidden,
+    status: document.querySelector("#status").hidden,
+    toolbar: document.querySelector(".toolbar").hidden,
+  }))).toEqual({ grid: false, status: false, toolbar: false });
 
+  // Clearing again while the first landing request is pending shares it.
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForTimeout(50);
   expect(recentRequests).toBe(1);
+  releaseFirstRecent();
+  await expect(page.locator("#status")).toContainText("could not be loaded");
+
+  // Once that attempt has settled as failed, clearing retries it.
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+  expect(recentRequests).toBe(2);
 });
 
 test("a search runs from a link, and says so when nothing carries the words", async ({ page }) => {

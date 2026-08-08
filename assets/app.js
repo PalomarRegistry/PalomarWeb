@@ -100,9 +100,13 @@ async function fetchJson(url, { signal } = {}) {
 
 const searchRegistry = createRegistrySearch(fetchJson);
 
+async function fetchAvailability(url, { signal } = {}) {
+  return validateAvailability(await fetchJson(url, { signal }));
+}
+
 async function loadAvailability(url, { signal } = {}) {
   try {
-    return validateAvailability(await fetchJson(url, { signal }));
+    return await fetchAvailability(url, { signal });
   } catch (error) {
     console.warn(`Source availability is unavailable: ${error.message}`);
     return null;
@@ -118,12 +122,21 @@ function loadAvailabilityBounded(url) {
   if (!availabilityLoads.has(key)) {
     const loading = loadSettledBounded(
       [url],
-      (selected, signal) => loadAvailability(selected, { signal }),
+      (selected, signal) => fetchAvailability(selected, { signal }),
       { concurrency: 1, timeoutMs: AVAILABILITY_TIMEOUT_MS },
     ).then(([loaded]) => {
-      const availability = loaded.status === "fulfilled" ? loaded.value : null;
-      if (availability === null) availabilityLoads.delete(key);
-      return availability;
+      if (loaded.status === "fulfilled") return loaded.value;
+      // A missing manifest is a stable legacy answer for this page load. A
+      // timeout, transport error, or invalid document may recover, so only
+      // those outcomes are evicted and retried by the next consumer.
+      if (loaded.reason?.status !== 404) {
+        availabilityLoads.delete(key);
+        console.warn(
+          `Source availability is unavailable: ` +
+            `${loaded.reason?.message || String(loaded.reason)}`,
+        );
+      }
+      return null;
     });
     availabilityLoads.set(key, loading);
   }
@@ -269,9 +282,53 @@ function trustBadge(entry) {
   return badge;
 }
 
+function decorateCardAvailability(card, entry, availability) {
+  const location = topSourceLocation(entry, availability);
+  const repositoryLink = card.querySelector(".repo-link");
+  if (!repositoryLink) throw new Error("card has no repository link");
+  repositoryLink.textContent = location.useArchive
+    ? "Palomar preserved copy"
+    : entry.source.repository;
+  repositoryLink.href = pinnedRepositoryDirectoryUrl(
+    location.repository,
+    entry.source.commit,
+  ).href;
+
+  const archiveLink = card.querySelector(".archive-link");
+  if (archiveLink) {
+    const archiveWasFocused = document.activeElement === archiveLink;
+    archiveLink.href = pinnedRepositoryDirectoryUrl(
+      location.archiveRepository,
+      entry.source.commit,
+    ).href;
+    archiveLink.hidden = location.useArchive;
+    let missing = card.querySelector(".source-status.missing");
+    if (location.useArchive && !missing) {
+      missing = el("span", "source-status missing", "Original unavailable");
+      archiveLink.insertAdjacentElement("afterend", missing);
+    }
+    if (!location.useArchive) missing?.remove();
+    if (archiveWasFocused && location.useArchive) repositoryLink.focus();
+  }
+}
+
+function decorateCardSet(cards, entries, availability, context) {
+  if (availability === null) return;
+  for (const [position, card] of cards.entries()) {
+    try {
+      decorateCardAvailability(card, entries[position], availability);
+    } catch (error) {
+      console.warn(
+        `${context} source availability could not be applied to ` +
+          `${entries[position].id} v${entries[position].version}: ${error.message}`,
+      );
+    }
+  }
+}
+
 function entryCard(
   entry,
-  { versionCount = null, availability = null, current = false } = {},
+  { versionCount = null, current = false } = {},
 ) {
   const categories = classification(entry);
   const card = el("article", "entry-card");
@@ -317,18 +374,18 @@ function entryCard(
     meta.append(project);
   }
   const footer = el("div", "card-footer");
-  const location = topSourceLocation(entry, availability);
+  const location = topSourceLocation(entry, null);
   const historyUrl = new URL(localPageUrl("entry.html", entry));
   historyUrl.hash = "version-history";
   footer.append(
     externalLink(
-      location.useArchive ? "Palomar preserved copy" : entry.source.repository,
-      pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit),
+      entry.source.repository,
+      pinnedRepositoryDirectoryUrl(entry.source.repository, entry.source.commit),
       "repo-link",
     ),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
-  if (!location.useArchive && location.archiveRepository) {
+  if (location.archiveRepository) {
     footer.append(
       externalLink(
         "Palomar preserved copy",
@@ -336,16 +393,6 @@ function entryCard(
         "archive-link",
       ),
     );
-  } else if (location.useArchive) {
-    // Reached only when the availability manifest says the original is
-    // missing, which is why the link above has switched to the preserved
-    // copy. A record with no preservation block predates archiving, so
-    // nothing has ever been checked about its repository at all; it used to
-    // fall through to here and be told, in public, that it is gone.
-    // `sourceAvailabilityNotice` says the accurate thing for that case on the
-    // entry page, which is that Palomar has no preserved copy. A card has no
-    // room to explain it, so it says nothing.
-    footer.append(el("span", "source-status missing", "Original unavailable"));
   }
   if (versionCount > 1) {
     const historyLink = internalLink(
@@ -390,10 +437,34 @@ async function loadEntries(page, databaseBase) {
   return { entries, failed };
 }
 
+let landingSuppressed = false;
+let landingStatusHidden = document.querySelector("#status")?.hidden ?? true;
+
+function setLandingStatusHidden(hidden) {
+  landingStatusHidden = hidden;
+  const status = document.querySelector("#status");
+  if (status) status.hidden = landingSuppressed || hidden;
+}
+
+function setLandingSuppressed(suppressed) {
+  landingSuppressed = suppressed;
+  document.body.classList.toggle("registry-searching", suppressed);
+  const toolbar = document.querySelector(".toolbar");
+  const status = document.querySelector("#status");
+  const grid = document.querySelector("#entry-grid");
+  if (toolbar) toolbar.hidden = suppressed;
+  if (grid) grid.hidden = suppressed;
+  if (status) status.hidden = suppressed || landingStatusHidden;
+}
+
 async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
   try {
+    status.className = "status";
+    status.textContent = "Reading the Palomar database…";
+    setLandingStatusHidden(false);
+    grid.replaceChildren();
     const { databaseBase, availabilityUrl } = dataSource();
     const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
     // What is new, not the whole registry. This page used to read a document
@@ -406,7 +477,6 @@ async function renderIndex() {
     const loaded = await loadEntries(recent, databaseBase);
     const { entries } = loaded;
     const recentTotal = recent.entries.length;
-    const availability = await availabilityPromise;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     // The validated summary still names every accepted result when an
@@ -418,36 +488,41 @@ async function renderIndex() {
       new Set(entries.map((entry) => entry.source.repository)).size,
     );
     if (!entries.length && !recentTotal) {
+      setLandingStatusHidden(false);
       status.textContent =
         "The telescope is ready. No entries have been published yet; the first accepted database PR will appear here automatically.";
       status.classList.add("empty");
-      return;
+      return true;
     }
     if (!entries.length) {
-      status.hidden = false;
+      setLandingStatusHidden(false);
       status.textContent =
         `No recent registry entries could be loaded (${loaded.failed} of ${recentTotal} failed). ` +
         "Try again later.";
       status.className = "status error";
-      return;
+      return false;
     }
     const degradedMessage = loaded.failed
       ? `The recent listing is incomplete: ${loaded.failed} of ${recentTotal} entries ` +
         "could not be loaded."
       : "";
-    status.hidden = !degradedMessage;
+    setLandingStatusHidden(!degradedMessage);
     status.textContent = degradedMessage;
     status.className = degradedMessage ? "status warning" : "status";
     // `loadEntries` keeps fulfilled values in recent.entries order even when
     // its bounded parallel fetches finish out of order, so render the
     // publisher's newest-first list.
-    for (const entry of entries) {
-      grid.append(entryCard(entry, {
+    const cards = entries.map((entry) =>
+      entryCard(entry, {
         versionCount: versionCounts.get(entry.id),
-        availability,
         current: true,
       }));
-    }
+    grid.append(...cards);
+    void availabilityPromise.then((availability) => {
+      decorateCardSet(cards, entries, availability, "Landing card");
+    }).catch((error) => {
+      console.warn(`Landing card source availability could not be applied: ${error.message}`);
+    });
     let trust = "all";
     const search = document.querySelector("#search");
     // The fallback selectors keep new JavaScript compatible with cached HTML
@@ -503,7 +578,7 @@ async function renderIndex() {
         card.hidden = !visible;
         if (visible) shown += 1;
       }
-      status.hidden = shown !== 0 && !degradedMessage;
+      setLandingStatusHidden(shown !== 0 && !degradedMessage);
       const classificationQuery = [
         arxivValue && `arXiv ${arxivValue}`,
         mscValue && `MSC2020 ${mscValue}`,
@@ -544,16 +619,24 @@ async function renderIndex() {
       });
     });
     update();
+    return true;
   } catch (error) {
-    status.hidden = false;
+    setLandingStatusHidden(false);
     status.textContent = `The registry could not be loaded: ${error.message}`;
     status.className = "status error";
+    return false;
   }
 }
 
 let landingLoad = null;
 function ensureLanding() {
-  if (!landingLoad) landingLoad = renderIndex();
+  if (!landingLoad) {
+    const active = renderIndex();
+    landingLoad = active;
+    void active.then((loaded) => {
+      if (!loaded && landingLoad === active) landingLoad = null;
+    });
+  }
   return landingLoad;
 }
 
@@ -570,8 +653,10 @@ function searchPageUrlFor(query) {
 let searchGeneration = 0;
 let activeSearchController = null;
 
-function renderSearchCards(results, entries, availability = null) {
-  results.replaceChildren(...entries.map((entry) => entryCard(entry, { availability })));
+function renderSearchCards(results, entries) {
+  const cards = entries.map((entry) => entryCard(entry));
+  results.replaceChildren(...cards);
+  return cards;
 }
 
 async function renderSearch(query) {
@@ -585,7 +670,7 @@ async function renderSearch(query) {
   results.replaceChildren();
   status.className = "status";
   const searching = Boolean(searchTerms(query).length);
-  document.body.classList.toggle("registry-searching", searching);
+  setLandingSuppressed(searching);
   if (!searching) {
     status.hidden = true;
     ensureLanding();
@@ -607,11 +692,15 @@ async function renderSearch(query) {
     }
     // Availability changes only where a source link points. It must never hold
     // verified registry results behind its own long timeout.
-    renderSearchCards(results, found.entries);
+    const cards = renderSearchCards(results, found.entries);
     if (found.entries.length) {
       void loadAvailabilityBounded(availabilityUrl).then((availability) => {
         if (availability !== null && generation === searchGeneration) {
-          renderSearchCards(results, found.entries, availability);
+          decorateCardSet(cards, found.entries, availability, "Search card");
+        }
+      }).catch((error) => {
+        if (generation === searchGeneration) {
+          console.warn(`Search card source availability could not be applied: ${error.message}`);
         }
       });
     }

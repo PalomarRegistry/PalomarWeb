@@ -162,7 +162,7 @@ export function createRegistrySearch(
       const dropped = asked.filter((term) => dropping.has(term));
       const terms = asked.filter((term) => !dropping.has(term));
       if (!terms.length) {
-        return result({ terms, dropped, entries: [], whole: !problems.length, examined: 0, missing: [] });
+        return result({ terms, dropped, entries: [], whole: !problems.length, missing: [] });
       }
 
       // Input order is retained by the loader. The explicit position tie-break
@@ -196,7 +196,6 @@ export function createRegistrySearch(
           dropped,
           entries: [],
           whole: Boolean(missing.length) && !problems.length,
-          examined: 0,
           missing,
         });
       }
@@ -257,7 +256,7 @@ export function createRegistrySearch(
       }
 
       if (postings === null) {
-        return result({ terms, dropped, entries: [], whole: false, examined: 0, missing });
+        return result({ terms, dropped, entries: [], whole: false, missing });
       }
 
       // Group the bounded page data before applying the record-read cap. That
@@ -267,7 +266,6 @@ export function createRegistrySearch(
       const candidatePlan = candidateGroups(postings, candidateLimit);
       const candidates = candidatePlan.groups;
       const entries = [];
-      let examined = 0;
       let next = 0;
       let position = 0;
       const pending = new Map();
@@ -277,26 +275,34 @@ export function createRegistrySearch(
           // Usually only the newest candidate is read. An older version is a
           // fallback only when the newer valid record does not carry every
           // term that could not safely be intersected from complete postings.
+          const failures = [];
           for (const posting of selected.postings) {
-            const record = await fetchJson(postingRecordUrl(posting, databaseBase), {
-              signal: loadSignal,
-            });
-            examined += 1;
-            const entry = validateEntry(record, postingSummary(posting, record));
-            if (carriesEveryTerm(entry, terms)) return entry;
+            try {
+              const record = await fetchJson(postingRecordUrl(posting, databaseBase), {
+                signal: loadSignal,
+              });
+              const entry = validateEntry(record, postingSummary(posting, record));
+              if (carriesEveryTerm(entry, terms)) return { entry, failures };
+            } catch (reason) {
+              failures.push({ posting, reason });
+              if (loadSignal.aborted) break;
+            }
           }
-          return null;
+          return { entry: null, failures };
         }).then(([loaded]) => loaded));
         next += 1;
       };
-      while (next < Math.min(concurrency, candidates.length)) start(next);
+      while (next < Math.min(concurrency, candidates.length, resultLimit)) start(next);
       while (position < candidates.length && entries.length < resultLimit) {
         const loaded = await pending.get(position);
         pending.delete(position);
         if (loaded.status === "rejected") {
           note("record", candidates[position].postings[0], loaded.reason);
-        } else if (loaded.value) {
-          entries.push(loaded.value);
+        } else {
+          for (const failure of loaded.value.failures) {
+            note("record", failure.posting, failure.reason);
+          }
+          if (loaded.value.entry) entries.push(loaded.value.entry);
         }
         position += 1;
         // Keep at most `concurrency - 1` speculative groups ahead of the
@@ -318,7 +324,6 @@ export function createRegistrySearch(
         missing,
         whole: driverWhole && candidatePlan.complete &&
           position === candidates.length && !problems.length,
-        examined,
       });
     } finally {
       clearTimeout(timer);
