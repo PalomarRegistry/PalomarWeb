@@ -72,6 +72,9 @@
   `assets/formalization-presentation.mjs` owns statement trust labels plus the
   statement and accepted-proof dependency DOM, while continuing to consume
   source locations and confined URLs from their existing owners;
+  `assets/entry-history-presentation.mjs` owns canonical entry links,
+  supersession notices, and the immutable version-history DOM, while consuming
+  validated records and the existing confined local-entry URL builder;
   `assets/app.js` owns data loading and remaining page composition. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed

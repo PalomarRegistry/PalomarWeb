@@ -28,6 +28,7 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
+import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import {
   decorateCardSet,
@@ -35,8 +36,6 @@ import {
   sourceLocation,
   topSourceLocation,
 } from "./source-preservation.mjs";
-
-const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
 const params = new URLSearchParams(window.location.search);
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
@@ -710,95 +709,11 @@ const challengePresentation = createChallengePresentation({
   localPageUrl,
 });
 
-function canonicalEntryPageUrl(entry) {
-  const target = new URL("entry.html", CANONICAL_WEB_BASE);
-  target.searchParams.set("id", entry.id);
-  target.searchParams.set("version", String(entry.version));
-  return safeExternalUrl(target);
-}
-
-function setCanonicalEntryPage(entry) {
-  let canonical = document.querySelector('link[rel="canonical"]');
-  if (!canonical) {
-    canonical = document.createElement("link");
-    canonical.rel = "canonical";
-    document.head.append(canonical);
-  }
-  canonical.href = canonicalEntryPageUrl(entry).href;
-}
-
-function versionNotice(entry, currentVersion) {
-  if (entry.version === currentVersion) return null;
-  const notice = el("aside", "version-notice");
-  const heading = el("h2", "", "Newer version available");
-  heading.id = "newer-version-heading";
-  notice.setAttribute("aria-labelledby", heading.id);
-  notice.append(
-    heading,
-    el(
-      "p",
-      "",
-      `You are viewing immutable version ${entry.version}. Version ${currentVersion} is the current version of this record.`,
-    ),
-  );
-  notice.append(
-    internalLink(
-      `View current version ${currentVersion}`,
-      localPageUrl("entry.html", { id: entry.id, version: currentVersion }),
-    ),
-  );
-  return notice;
-}
-
-function versionHistory(entry, versions, currentVersion) {
-  const section = el("section", "version-history");
-  section.id = "version-history";
-  section.setAttribute("aria-labelledby", "version-history-heading");
-  const heading = el("div", "section-heading");
-  const title = el("div");
-  title.append(
-    el("div", "eyebrow", "Registry history"),
-    el("h2", "", "Versions"),
-  );
-  title.querySelector("h2").id = "version-history-heading";
-  heading.append(title);
-  section.append(
-    heading,
-    el(
-      "p",
-      "version-history-intro",
-      "Every version is an immutable accepted snapshot. The authorship, statement, proof, review comments, and dependency information on this page belong to the selected version only.",
-    ),
-  );
-
-  const list = el("ol", "version-list");
-  list.reversed = true;
-  list.setAttribute("role", "list");
-  for (const summary of [...versions].reverse()) {
-    const item = el("li");
-    const label = `Version ${summary.version}`;
-    if (summary.version === entry.version) {
-      const selected = el("strong", "selected-version", label);
-      selected.setAttribute("aria-current", "true");
-      item.append(selected);
-    } else {
-      item.append(internalLink(label, localPageUrl("entry.html", summary)));
-    }
-    item.append(
-      el(
-        "span",
-        `version-state ${summary.version === currentVersion ? "current" : "superseded"}`,
-        summary.version === currentVersion ? "Current" : "Superseded",
-      ),
-    );
-    if (summary.version === entry.version) {
-      item.append(el("span", "viewing-version", "Viewing"));
-    }
-    list.append(item);
-  }
-  section.append(list);
-  return section;
-}
+const {
+  setCanonicalEntryPage,
+  versionHistory,
+  versionNotice,
+} = createEntryHistoryPresentation({ document, localPageUrl, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
 function assurance(kind, sentence) {
