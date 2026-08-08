@@ -58,6 +58,7 @@ import {
 
 // The website's own origin, for the cross-origin assertion below.
 const CANONICAL_WEB_BASE_FOR_TEST = "https://palomar-registry.org/";
+const AVAILABILITY_PRODUCER_COMMIT = "5288deae2cf6c537bdf56e9a54faf00393937119";
 
 test("production ignores every database query override", () => {
   for (const override of [
@@ -503,6 +504,10 @@ test("availability agrees with the Database producer contract", async () => {
     assert.equal(validateAvailability(fixture), fixture);
     return;
   }
+  assert.doesNotThrow(() => execFileSync(
+    "git",
+    ["-C", checkout, "merge-base", "--is-ancestor", AVAILABILITY_PRODUCER_COMMIT, "HEAD"],
+  ), "the Database checkout must include the reviewed source-availability contract");
   const raw = availabilityManifest([
     availabilityRow({
       original: availabilityEndpoint({
