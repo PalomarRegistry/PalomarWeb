@@ -5,7 +5,13 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
-const assetFiles = ["about.js", "app.js", "rendering.js", "security.mjs", "style.css"];
+const appModules = ["loading.mjs", "rendering.js", "security.mjs"];
+const assetFiles = [
+  "about.js",
+  "app.js",
+  ...appModules,
+  "style.css",
+];
 // Copied verbatim into assets/, keeping their subdirectory. Listed separately
 // because they are data rather than code: no version query, no rewriting.
 const assetDataFiles = ["data/msc2020-codes.json"];
@@ -79,14 +85,16 @@ export async function buildSite({ output, version }) {
 
   const appTarget = path.join(destination, "assets", "app.js");
   const app = await readFile(appTarget, "utf8");
-  const versionedImport = app
-    .replace('from "./rendering.js";', `from "./rendering.js?v=${version}";`)
-    .replace('from "./security.mjs";', `from "./security.mjs?v=${version}";`);
-  if (
-    !versionedImport.includes(`from "./rendering.js?v=${version}";`) ||
-    !versionedImport.includes(`from "./security.mjs?v=${version}";`)
-  ) {
-    throw new Error("could not version coupled browser imports");
+  let versionedImport = app;
+  for (const module of appModules) {
+    const source = `from "./${module}";`;
+    if (!versionedImport.includes(source)) {
+      throw new Error(`could not find coupled browser import ${module}`);
+    }
+    versionedImport = versionedImport.replace(
+      source,
+      `from "./${module}?v=${version}";`,
+    );
   }
   await writeFile(appTarget, versionedImport);
   await writeFile(path.join(destination, ".nojekyll"), "");
