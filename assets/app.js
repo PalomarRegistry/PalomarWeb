@@ -6,13 +6,11 @@ import {
 } from "./rendering.js";
 import {
   databaseBaseFor,
-  availabilityRecord,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
   entryRecordUrl,
   isLoopbackHostname,
   pinnedRepositoryDirectoryUrl,
-  pinnedRepositoryFileUrl,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
@@ -31,6 +29,13 @@ import {
 } from "./security.mjs";
 import { loadSettledBounded } from "./loading.mjs";
 import { createRegistrySearch, validateSearchQuery } from "./searching.mjs";
+import {
+  decorateCardSet,
+  sourceDirectoryUrl,
+  sourceFileUrl,
+  sourceLocation,
+  topSourceLocation,
+} from "./source-preservation.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
@@ -140,58 +145,6 @@ function loadAvailabilityBounded(url) {
   return availabilityLoads.get(key);
 }
 
-function sourceLocation(entry, availability, repository, commit) {
-  if (!entry.preservation) {
-    return {
-      repository,
-      originalRepository: repository,
-      archiveRepository: null,
-      commit,
-      originalStatus: "unknown",
-      archiveStatus: "unknown",
-      checkedAt: null,
-      useArchive: false,
-    };
-  }
-  const mapping = entry.preservation.repositories.find(
-    (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
-      row.commit === commit,
-  );
-  if (!mapping) throw new Error(`entry has no preserved copy of ${repository}@${commit}`);
-  const observed = availabilityRecord(availability, repository, commit);
-  const status = observed &&
-      observed.fork_repository.toLowerCase() === mapping.fork_repository.toLowerCase()
-    ? observed
-    : null;
-  const originalStatus = status?.original.status || "unknown";
-  const archiveStatus = status?.archive.status || "unknown";
-  const useArchive = originalStatus === "missing" && archiveStatus !== "missing";
-  return {
-    repository: useArchive ? mapping.fork_repository : repository,
-    originalRepository: repository,
-    archiveRepository: mapping.fork_repository,
-    commit,
-    originalStatus,
-    archiveStatus,
-    checkedAt: status?.original.checked_at || null,
-    useArchive,
-  };
-}
-
-function topSourceLocation(entry, availability) {
-  return sourceLocation(entry, availability, entry.source.repository, entry.source.commit);
-}
-
-function sourceFileUrl(entry, path, availability) {
-  const location = topSourceLocation(entry, availability);
-  return pinnedRepositoryFileUrl(location.repository, entry.source.commit, path);
-}
-
-function sourceDirectoryUrl(entry, path, availability) {
-  const location = topSourceLocation(entry, availability);
-  return pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit, path);
-}
-
 function authorNames(entry) {
   return entry.authors.map((author) => author.name).join(", ");
 }
@@ -276,50 +229,6 @@ function trustBadge(entry) {
     ? "Statement dependencies: Mathlib only"
     : "Statement dependencies: additional libraries";
   return badge;
-}
-
-function decorateCardAvailability(card, entry, availability) {
-  const location = topSourceLocation(entry, availability);
-  const repositoryLink = card.querySelector(".repo-link");
-  if (!repositoryLink) throw new Error("card has no repository link");
-  repositoryLink.textContent = location.useArchive
-    ? "Palomar preserved copy"
-    : entry.source.repository;
-  repositoryLink.href = pinnedRepositoryDirectoryUrl(
-    location.repository,
-    entry.source.commit,
-  ).href;
-
-  const archiveLink = card.querySelector(".archive-link");
-  if (archiveLink) {
-    const archiveWasFocused = document.activeElement === archiveLink;
-    archiveLink.href = pinnedRepositoryDirectoryUrl(
-      location.archiveRepository,
-      entry.source.commit,
-    ).href;
-    archiveLink.hidden = location.useArchive;
-    let missing = card.querySelector(".source-status.missing");
-    if (location.useArchive && !missing) {
-      missing = el("span", "source-status missing", "Original unavailable");
-      archiveLink.insertAdjacentElement("afterend", missing);
-    }
-    if (!location.useArchive) missing?.remove();
-    if (archiveWasFocused && location.useArchive) repositoryLink.focus();
-  }
-}
-
-function decorateCardSet(cards, entries, availability, context) {
-  if (availability === null) return;
-  for (const [position, card] of cards.entries()) {
-    try {
-      decorateCardAvailability(card, entries[position], availability);
-    } catch (error) {
-      console.warn(
-        `${context} source availability could not be applied to ` +
-          `${entries[position].id} v${entries[position].version}: ${error.message}`,
-      );
-    }
-  }
 }
 
 function entryCard(

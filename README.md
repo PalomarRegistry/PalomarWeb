@@ -69,6 +69,12 @@ manifest; if it arrives, their existing source controls are decorated in place.
 A linked `?q=` search does not also load the hidden recent listing; clearing the
 search starts one landing attempt, and a failed attempt can be retried.
 
+The browser code keeps the data boundary separate from presentation:
+`security.mjs` validates registry and availability documents and owns endpoint
+freshness, `source-preservation.mjs` matches validated manifest observations to
+the preservation receipt before resolving repository locations and decorating
+existing cards, and `app.js` composes the page-level views.
+
 Runtime reads use the browser's normal HTTP cache behavior. The public data
 service gives successful documents a 60-second browser/shared-cache lifetime,
 so repeat reads can be reused for that interval; missing and error responses are

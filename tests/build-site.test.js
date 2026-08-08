@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { init, parse } from "es-module-lexer";
 
-import { buildSite } from "../scripts/build-site.mjs";
+import {
+  buildSite,
+  shippedFiles,
+  versionBrowserImports,
+} from "../scripts/build-site.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -16,6 +22,18 @@ test("deployment build versions coupled browser assets", async () => {
     const index = await readFile(path.join(destination, "index.html"), "utf8");
     const about = await readFile(path.join(destination, "about.html"), "utf8");
     const app = await readFile(path.join(destination, "assets", "app.js"), "utf8");
+    const preservation = await readFile(
+      path.join(destination, "assets", "source-preservation.mjs"),
+      "utf8",
+    );
+    const rendering = await readFile(
+      path.join(destination, "assets", "rendering.js"),
+      "utf8",
+    );
+    const searching = await readFile(
+      path.join(destination, "assets", "searching.mjs"),
+      "utf8",
+    );
     assert.match(index, /assets\/style\.css\?v=0123456789abcdef/);
     assert.match(index, /assets\/app\.js\?v=0123456789abcdef/);
     assert.match(about, /assets\/style\.css\?v=0123456789abcdef/);
@@ -25,12 +43,92 @@ test("deployment build versions coupled browser assets", async () => {
     assert.match(app, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/loading\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/searching\.mjs\?v=0123456789abcdef/);
+    assert.match(app, /\.\/source-preservation\.mjs\?v=0123456789abcdef/);
+    assert.match(preservation, /\.\/security\.mjs\?v=0123456789abcdef/);
+    assert.match(rendering, /\.\/security\.mjs\?v=0123456789abcdef/);
+    assert.match(searching, /\.\/loading\.mjs\?v=0123456789abcdef/);
+    assert.match(searching, /\.\/security\.mjs\?v=0123456789abcdef/);
     await readFile(path.join(destination, "assets", "loading.mjs"), "utf8");
-    await readFile(path.join(destination, "assets", "searching.mjs"), "utf8");
     await readFile(path.join(destination, "assets", "security.mjs"), "utf8");
+
+    await init;
+    const browserModules = shippedFiles.filter(
+      (file) => file.startsWith("assets/") && /\.(?:js|mjs)$/.test(file),
+    );
+    const browserModulePaths = new Set(browserModules.map((file) => `/${file}`));
+    const intentionalExternalImports = new Set();
+    for (const file of browserModules) {
+      const source = await readFile(path.join(destination, file), "utf8");
+      for (const imported of parse(source, file)[0]) {
+        if (typeof imported.n === "string") {
+          const resolved = new URL(
+            imported.n,
+            new URL(`/${file}`, "https://browser.invalid/"),
+          );
+          if (resolved.origin !== "https://browser.invalid" ||
+              !browserModulePaths.has(resolved.pathname)) {
+            assert.ok(
+              intentionalExternalImports.has(imported.n),
+              `${file} has an undeclared external or package import: ${imported.n}`,
+            );
+            continue;
+          }
+          assert.equal(
+            resolved.searchParams.get("v"),
+            "0123456789abcdef",
+            `${file} retains an unversioned shipped-module import: ${imported.n}`,
+          );
+        }
+      }
+    }
   } finally {
     await rm(destination, { recursive: true, force: true });
   }
+});
+
+test("module versioning changes imports rather than lookalike strings or packages", async () => {
+  const source = [
+    'import helpers from "./security.mjs";',
+    'import rootHelpers from "/assets/rendering.js";',
+    'import parentHelpers from "../assets/searching.mjs";',
+    'const description = \'from "./loading.mjs";\';',
+    'import packageValue from "package-name";',
+    'const lazy = import("./loading.mjs");',
+  ].join("\n");
+  const versioned = await versionBrowserImports(source, "app.js", "release-1");
+
+  assert.match(versioned, /from "\.\/security\.mjs\?v=release-1"/);
+  assert.match(versioned, /from "\/assets\/rendering\.js\?v=release-1"/);
+  assert.match(versioned, /from "\.\.\/assets\/searching\.mjs\?v=release-1"/);
+  assert.match(versioned, /import\("\.\/loading\.mjs\?v=release-1"\)/);
+  assert.match(versioned, /const description = 'from "\.\/loading\.mjs";'/);
+  assert.match(versioned, /from "package-name"/);
+  await assert.rejects(
+    versionBrowserImports('import "/assets/not-shipped.mjs";', "app.js", "release-1"),
+    /not-shipped\.mjs resolves to \/assets\/not-shipped\.mjs/,
+  );
+});
+
+test("published-health metadata import does not resolve npm dependencies", () => {
+  const build = new URL("../scripts/build-site.mjs?dependency-free-health-test", import.meta.url);
+  const program = [
+    'import { registerHooks } from "node:module";',
+    'registerHooks({ resolve(specifier, context, nextResolve) {',
+    '  if (!specifier.startsWith("node:") && !specifier.startsWith("file:") &&',
+    '      !specifier.startsWith(".") && !specifier.startsWith("/")) {',
+    '    throw new Error(`unexpected package resolution: ${specifier}`);',
+    '  }',
+    '  return nextResolve(specifier, context);',
+    '} });',
+    `const module = await import(${JSON.stringify(build.href)});`,
+    'if (!module.shippedFiles.includes("assets/app.js")) process.exitCode = 2;',
+  ].join("\n");
+  const child = spawnSync(
+    process.execPath,
+    ["--input-type=module", "--eval", program],
+    { cwd: root, encoding: "utf8" },
+  );
+  assert.equal(child.status, 0, child.stderr || child.stdout);
 });
 
 test("deployment build refuses to remove a directory outside the repository", async () => {

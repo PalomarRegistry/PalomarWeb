@@ -8,6 +8,7 @@
     "test:browser": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1"
+    "@playwright/test": "1.62.1",
+    "es-module-lexer": "2.3.1"
   }
 }

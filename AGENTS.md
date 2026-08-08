@@ -34,6 +34,20 @@
   CI cannot read that private checkout, so it downloads the deployed object and
   requires the producer's declared freshness maximum to equal the consumer's.
 
+- Keep availability parsing and endpoint-freshness authority in
+  `assets/security.mjs`. `assets/source-preservation.mjs` consumes that
+  validated contract, matches manifest observations to preservation-receipt
+  mappings, and owns repository resolution plus in-place card decoration;
+  `assets/app.js` owns page composition. Do not duplicate validation across
+  those modules.
+
 - The browser suite needs `python3` on `PATH`, for the fixture server. Two of
   its tests want `PALOMAR_PREVIOUS_REF` and skip silently without it, which only
   CI sets.
+
+- The hourly published-site health job imports `shippedFiles` from
+  `scripts/build-site.mjs` without running `npm ci`. Keep build-only packages,
+  including the module lexer, behind lazy imports so this metadata-only path
+  remains dependency-free. The subprocess regression deliberately rejects npm
+  package resolution while importing that module; do not weaken it by adding
+  an install step to the health job.
