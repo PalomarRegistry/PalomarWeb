@@ -229,20 +229,32 @@ export function createRegistrySearch(
       }
 
       const candidates = postings.slice(0, candidateLimit);
-      const recordResults = await settle(candidates, async (posting, signal) => {
-        const record = await fetchJson(postingRecordUrl(posting, databaseBase), { signal });
-        return validateEntry(record, postingSummary(posting, record));
-      });
       const entries = [];
       let examined = 0;
-      for (const [position, loaded] of recordResults.entries()) {
-        if (entries.length >= resultLimit) break;
-        examined += 1;
-        if (loaded.status === "rejected") {
-          note("record", candidates[position], loaded.reason);
-        } else if (carriesEveryTerm(loaded.value, terms)) {
-          entries.push(loaded.value);
+      // Load one concurrency-sized wave at a time. This keeps several records
+      // in flight without eagerly fetching all sixty when the first twenty are
+      // already results. A wave settles in input order, so the output remains
+      // deterministic however its requests complete.
+      for (
+        let first = 0;
+        first < candidates.length && entries.length < resultLimit;
+        first += concurrency
+      ) {
+        const batch = candidates.slice(first, first + concurrency);
+        const loadedBatch = await settle(batch, async (posting, signal) => {
+          const record = await fetchJson(postingRecordUrl(posting, databaseBase), { signal });
+          return validateEntry(record, postingSummary(posting, record));
+        });
+        for (const [position, loaded] of loadedBatch.entries()) {
+          if (entries.length >= resultLimit) break;
+          examined += 1;
+          if (loaded.status === "rejected") {
+            note("record", batch[position], loaded.reason);
+          } else if (carriesEveryTerm(loaded.value, terms)) {
+            entries.push(loaded.value);
+          }
         }
+        if (deadlineController.signal.aborted) break;
       }
 
       return result({
