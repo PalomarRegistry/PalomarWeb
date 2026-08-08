@@ -9,6 +9,19 @@ const assetFiles = ["about.js", "app.js", "rendering.js", "security.mjs", "style
 // Copied verbatim into assets/, keeping their subdirectory. Listed separately
 // because they are data rather than code: no version query, no rewriting.
 const assetDataFiles = ["data/msc2020-codes.json"];
+/**
+ * Every file the deployment carries, as paths from the repository root.
+ *
+ * Exported because "what is shipped" is a question something other than the
+ * build asks: `check-published.mjs` reads these to find the registry documents
+ * the site sends readers to, and a file absent from this list is absent from
+ * the deployment however correct its markup is.
+ */
+export const shippedFiles = [
+  ...publicFiles,
+  ...assetFiles.map((name) => `assets/${name}`),
+  ...assetDataFiles.map((name) => `assets/${name}`),
+];
 
 function options(args) {
   const result = {
