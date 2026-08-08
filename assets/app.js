@@ -30,6 +30,10 @@ import {
 import { loadSettledBounded } from "./loading.mjs";
 import { createRegistrySearch, validateSearchQuery } from "./searching.mjs";
 import {
+  renderChallengePage,
+  renderEntryPage,
+} from "./entry-pages.mjs";
+import {
   decorateCardSet,
   sourceDirectoryUrl,
   sourceFileUrl,
@@ -40,8 +44,6 @@ import {
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
 const params = new URLSearchParams(window.location.search);
-const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
-const VERSION_PARAMETER = /^[1-9][0-9]*$/;
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
@@ -1648,115 +1650,40 @@ function renderExactTombstone(tombstone, content) {
   content.hidden = false;
 }
 
-async function renderEntryPage() {
-  const status = document.querySelector("#status");
-  const content = document.querySelector("#entry-content");
-  const id = params.get("id");
-  const versionParameter = params.get("version");
-  const version = versionParameter === null || !VERSION_PARAMETER.test(versionParameter)
-    ? null
-    : Number(versionParameter);
-  if (
-    !PALOMAR_ID.test(id || "") ||
-    (versionParameter !== null &&
-      (!VERSION_PARAMETER.test(versionParameter) || !Number.isSafeInteger(version)))
-  ) {
-    status.textContent = "This registry link has a missing or invalid Palomar ID or version.";
-    status.classList.add("error");
-    return;
-  }
-  try {
-    const requestedHash = window.location.hash;
-    const loaded = await loadEntry(id, version);
-    if (loaded.tombstone) {
-      status.hidden = true;
-      renderExactTombstone(loaded.tombstone, content);
-      return;
-    }
-    const {
-      entry,
-      canonicalUrl,
-      renderBase,
-      versions,
-      currentVersion,
-      availability,
-      databaseBase,
-    } = loaded;
-    if (version === null) {
-      const resolvedUrl = localPageUrl("entry.html", entry);
-      resolvedUrl.hash = requestedHash;
-      window.history.replaceState(null, "", resolvedUrl);
-    }
-    status.hidden = true;
-    content.hidden = false;
-    await renderEntry(
-      entry,
-      content,
-      canonicalUrl,
-      renderBase,
-      versions,
-      currentVersion,
-      availability,
-      databaseBase,
-    );
-    const anchorTarget = requestedHash.startsWith("#")
-      ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
-      : null;
-    if (anchorTarget) anchorTarget.scrollIntoView();
-  } catch (error) {
-    status.textContent = `The registry entry could not be loaded: ${error.message}`;
-    status.classList.add("error");
-  }
-}
-
-async function renderChallengePage() {
-  const status = document.querySelector("#status");
-  const content = document.querySelector("#render-content");
-  const id = params.get("id");
-  const versionParameter = params.get("version") || "";
-  const version = Number(versionParameter);
-  if (
-    !PALOMAR_ID.test(id || "") ||
-    !VERSION_PARAMETER.test(versionParameter) ||
-    !Number.isSafeInteger(version)
-  ) {
-    status.textContent = "This render link is missing a valid Palomar ID and version.";
-    status.classList.add("error");
-    return;
-  }
-  try {
-    const loaded = await loadEntry(id, version);
-    if (loaded.tombstone) {
-      status.hidden = true;
-      renderExactTombstone(loaded.tombstone, content);
-      return;
-    }
-    const { entry, renderBase, availability } = loaded;
-    document.title = `Named compared declarations — ${entry.title} — Palomar`;
-    const heading = el("header", "entry-heading");
-    heading.append(
-      el("div", "entry-id", `${entry.id} v${entry.version}`),
-      el("h1", "", entry.title),
-    );
-    const challenge = await challengePresentation(
-      entry,
-      renderBase,
-      { forceFrame: true, availability },
-    );
-    content.append(heading, challenge.section);
-    status.hidden = true;
-    content.hidden = false;
-  } catch (error) {
-    status.textContent = `The named compared declarations could not be loaded: ${error.message}`;
-    status.classList.add("error");
-  }
-}
-
 if (document.body.dataset.page === "index") {
   // A linked search is its own view. Avoid fetching and exposing a hidden
   // recent listing until the query is cleared; then load it exactly once.
   const hasInitialSearch = wireSearch();
   if (!hasInitialSearch) ensureLanding();
 }
-if (document.body.dataset.page === "entry") renderEntryPage();
-if (document.body.dataset.page === "render") renderChallengePage();
+if (document.body.dataset.page === "entry") {
+  renderEntryPage({
+    params,
+    document,
+    location: window.location,
+    history: window.history,
+    loadEntry,
+    localPageUrl,
+    renderEntry: (loaded, content) => renderEntry(
+      loaded.entry,
+      content,
+      loaded.canonicalUrl,
+      loaded.renderBase,
+      loaded.versions,
+      loaded.currentVersion,
+      loaded.availability,
+      loaded.databaseBase,
+    ),
+    renderExactTombstone,
+  });
+}
+if (document.body.dataset.page === "render") {
+  renderChallengePage({
+    params,
+    document,
+    loadEntry,
+    renderExactTombstone,
+    el,
+    challengePresentation,
+  });
+}

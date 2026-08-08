@@ -8,6 +8,7 @@ const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
 const browserModuleFiles = [
   "about.js",
   "app.js",
+  "entry-pages.mjs",
   "loading.mjs",
   "rendering.js",
   "searching.mjs",
