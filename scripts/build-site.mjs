@@ -10,6 +10,7 @@ const browserModuleFiles = [
   "app.js",
   "challenge-presentation.mjs",
   "entry-pages.mjs",
+  "formalization-presentation.mjs",
   "loading.mjs",
   "rendering.js",
   "searching.mjs",

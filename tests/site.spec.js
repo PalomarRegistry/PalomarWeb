@@ -836,6 +836,37 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   await expect(page.locator("#statement-dependencies")).toBeInViewport();
 });
 
+test("qualified statement and proof dependencies retain their distinct presentation", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`);
+
+  const statement = page.locator("#statement-dependencies");
+  await expect(statement.getByRole("heading", { name: "Depends on additional libraries" }))
+    .toBeVisible();
+  await expect(statement.locator(".trust-badge")).toHaveText(
+    "Statement dependencies: additional libraries",
+  );
+  await expect(statement.locator(".plain-list li")).toHaveText([
+    "leanprover-community/mathlib4",
+    "TauCetiProject/TauCeti",
+  ]);
+  await expect(statement.locator(".reason-list li")).toHaveText("Challenge imports Tau Ceti");
+
+  const proof = page.locator(".entry-solution");
+  await expect(proof.getByRole("heading", { name: "Verified proof" })).toBeVisible();
+  await expect(proof.locator(".solution-dependencies summary")).toHaveText(
+    "1 project dependencies used by the proof",
+  );
+  await proof.locator(".solution-dependencies summary").click();
+  await expect(proof.getByRole("link", { name: "example/dependency" })).toHaveAttribute(
+    "href",
+    `https://github.com/example/dependency/tree/${"3".repeat(40)}`,
+  );
+  await expect(proof.getByRole("link", { name: "Palomar preserved copy" })).toHaveAttribute(
+    "href",
+    `https://github.com/PalomarArchive/example--dependency/tree/${"3".repeat(40)}`,
+  );
+});
+
 test("current HTML remains compatible with cached JavaScript from the previous deployment", async ({ page }) => {
   test.skip(!previousRef, "PALOMAR_PREVIOUS_REF is only set in deployment and pull-request CI");
   test.skip(
