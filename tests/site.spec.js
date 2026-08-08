@@ -415,14 +415,41 @@ test("entry rendering demotes a stale original without discarding a fresh archiv
       `&availability=${missingAvailability}`,
   );
 
-  await expect(page.locator(".source-availability.archive-missing")).toContainText(
+  const notice = page.locator(".source-availability.archive-missing");
+  await expect(notice).toContainText(
     "Source preservation degraded",
   );
+  await expect(notice).toContainText("its current availability has not been confirmed");
+  await expect(notice).not.toContainText("still works");
+  await expect(notice.getByRole("link", { name: "Recorded original location" })).toBeVisible();
   await expect(page.locator(".source-availability.original-missing")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /View full pinned statement file/ })).toHaveAttribute(
     "href",
     /github\.com\/example\/challenge\/blob\/1{40}\/project\/Comparator\/Task\.lean$/,
   );
+});
+
+test("an archive warning says the original works only after a fresh confirmation", async ({ page }) => {
+  await page.route("**/database/source-availability.json", async (route) => {
+    const response = await route.fetch();
+    const availability = await response.json();
+    const fresh = new Date().toISOString().replace(/\.[0-9]{3}Z$/, "Z");
+    availability.generated_at = fresh;
+    for (const row of availability.repositories) {
+      row.original.status = "available";
+      row.original.checked_at = fresh;
+      row.archive.status = "missing";
+      row.archive.checked_at = fresh;
+    }
+    await route.fulfill({ response, json: availability });
+  });
+
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+
+  const notice = page.locator(".source-availability.archive-missing");
+  await expect(notice).toContainText("The original source still works");
+  await expect(notice).not.toContainText("has not been confirmed");
+  await expect(notice.getByRole("link", { name: "Original source" })).toBeVisible();
 });
 
 test("an entry accepted before source archiving explains the limitation as a warning", async ({ page }) => {

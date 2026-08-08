@@ -370,12 +370,6 @@ function availabilityEndpoint(value, field) {
   if (!["available", "missing", "unknown"].includes(endpoint.status)) {
     fail(`${field}.status is unsupported`);
   }
-  if (endpoint.checked_at !== null && endpoint.checked_at !== undefined) {
-    // A malformed observation time is not evidence for a known answer. The
-    // producer normalizes it to null, and availabilityRecord independently
-    // demotes the endpoint so one bad observation cannot hide fresh siblings.
-    if (typeof endpoint.checked_at !== "string") fail(`${field}.checked_at is malformed`);
-  }
   if (endpoint.last_attempt_at !== null && endpoint.last_attempt_at !== undefined &&
       availabilityTimestamp(endpoint.last_attempt_at) === null) {
     fail(`${field}.last_attempt_at is malformed`);
@@ -387,21 +381,34 @@ function availabilityEndpoint(value, field) {
       typeof endpoint.last_error !== "string") {
     fail(`${field}.last_error is malformed`);
   }
-  return endpoint;
+  // checked_at is evidence rather than structure. Whatever malformed value
+  // arrived, it says only that this endpoint has no trustworthy observation;
+  // do not let it invalidate fresh sibling endpoints or rows.
+  if (availabilityTimestamp(endpoint.checked_at) !== null) return endpoint;
+  return {
+    ...endpoint,
+    status: ["available", "missing"].includes(endpoint.status) ? "unknown" : endpoint.status,
+    checked_at: null,
+  };
 }
 
 export function validateAvailability(manifest) {
-  object(manifest, "availability");
-  if (manifest.schema_version !== 1) fail("availability schema_version is unsupported");
-  if (!TIMESTAMP_RE.test(manifest.generated_at) || Number.isNaN(Date.parse(manifest.generated_at))) {
+  const document = object(manifest, "availability");
+  if (document.schema_version !== 1) fail("availability schema_version is unsupported");
+  if (availabilityTimestamp(document.generated_at) === null) {
     fail("availability.generated_at is malformed");
   }
-  if (manifest.database_commit !== undefined) {
-    commit(manifest.database_commit, "availability.database_commit");
+  if (document.database_commit !== undefined) {
+    commit(document.database_commit, "availability.database_commit");
+  }
+  const coverage = object(document.coverage, "availability.coverage");
+  if (coverage.freshness_max_age_seconds !== AVAILABILITY_MAX_AGE_MS / 1_000) {
+    fail("availability.coverage.freshness_max_age_seconds disagrees with the consumer");
   }
   const seen = new Set();
+  const repositories = [];
   for (const [position, value] of array(
-    manifest.repositories,
+    document.repositories,
     "availability.repositories",
   ).entries()) {
     const row = object(value, `availability.repositories[${position}]`);
@@ -416,10 +423,19 @@ export function validateAvailability(manifest) {
     const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
     if (seen.has(key)) fail(`availability.repositories[${position}] is duplicated`);
     seen.add(key);
-    availabilityEndpoint(row.original, `availability.repositories[${position}].original`);
-    availabilityEndpoint(row.archive, `availability.repositories[${position}].archive`);
+    repositories.push({
+      ...row,
+      original: availabilityEndpoint(
+        row.original,
+        `availability.repositories[${position}].original`,
+      ),
+      archive: availabilityEndpoint(
+        row.archive,
+        `availability.repositories[${position}].archive`,
+      ),
+    });
   }
-  return manifest;
+  return { ...document, repositories };
 }
 
 export function availabilityRecord(manifest, repository, revision, now = Date.now()) {
@@ -439,14 +455,17 @@ export function availabilityRecord(manifest, repository, revision, now = Date.no
   // carried in it. Apply the same inclusive freshness window to each known
   // endpoint at the point all landing, search, and entry links consume it.
   const authoritativeEndpoint = (endpoint) => {
-    if (!["available", "missing"].includes(endpoint.status)) return endpoint;
     const checked = availabilityTimestamp(endpoint.checked_at);
+    const normalized = checked === null && endpoint.checked_at !== null
+      ? { ...endpoint, checked_at: null }
+      : endpoint;
+    if (!["available", "missing"].includes(endpoint.status)) return normalized;
     const age = checked === null ? null : now - checked;
     if (age !== null && age >= -AVAILABILITY_MAX_CLOCK_SKEW_MS &&
         age <= AVAILABILITY_MAX_AGE_MS) {
-      return endpoint;
+      return normalized;
     }
-    return { ...endpoint, status: "unknown", checked_at: checked === null ? null : endpoint.checked_at };
+    return { ...normalized, status: "unknown" };
   };
   return {
     ...record,

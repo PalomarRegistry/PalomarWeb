@@ -30,6 +30,9 @@
   in the future through eighteen hours old, inclusively; malformed or older
   observations become unknown without hiding valid siblings. Contract changes
   are deployed producer-first and the cross-repository unit test is mandatory.
+  With a canonical Database checkout the test invokes its executable contract;
+  CI cannot read that private checkout, so it downloads the deployed object and
+  requires the producer's declared freshness maximum to equal the consumer's.
 
 - The browser suite needs `python3` on `PATH`, for the fixture server. Two of
   its tests want `PALOMAR_PREVIOUS_REF` and skip silently without it, which only

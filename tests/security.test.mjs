@@ -420,26 +420,32 @@ test("legacy schema v1 records remain readable without an archive mapping", () =
 test("availability applies the inclusive freshness boundaries to each endpoint", () => {
   const now = Date.parse("2026-08-08T12:00:00Z");
   const stamp = (offset) => new Date(now + offset).toISOString().replace(".000Z", "Z");
-  const statusAt = (checkedAt) => availabilityRecord(validateAvailability(availabilityManifest([
+  const recordAt = (checkedAt) => availabilityRecord(validateAvailability(availabilityManifest([
     availabilityRow({
       original: availabilityEndpoint({ status: "missing", checked_at: checkedAt }),
     }),
-  ])), "example/challenge", COMMIT, now).original.status;
+  ])), "example/challenge", COMMIT, now).original;
 
-  assert.equal(statusAt(stamp(-AVAILABILITY_MAX_AGE_MS)), "missing");
-  assert.equal(statusAt(stamp(-AVAILABILITY_MAX_AGE_MS - 1_000)), "unknown");
-  assert.equal(statusAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS)), "missing");
-  assert.equal(statusAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS + 1_000)), "unknown");
+  assert.equal(recordAt(stamp(-AVAILABILITY_MAX_AGE_MS)).status, "missing");
+  const stale = recordAt(stamp(-AVAILABILITY_MAX_AGE_MS - 1_000));
+  assert.equal(stale.status, "unknown");
+  assert.equal(
+    stale.checked_at,
+    stamp(-AVAILABILITY_MAX_AGE_MS - 1_000),
+    "valid stale evidence is retained after its answer loses authority",
+  );
+  assert.equal(recordAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS)).status, "missing");
+  assert.equal(recordAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS + 1_000)).status, "unknown");
 });
 
-test("one malformed or stale endpoint cannot hide unrelated fresh observations", () => {
+test("one malformed endpoint cannot hide its fresh sibling or unrelated rows", () => {
   const now = Date.parse("2026-08-08T12:00:00Z");
   const manifest = validateAvailability(availabilityManifest([
     availabilityRow({
-      original: availabilityEndpoint({ status: "missing", checked_at: "not-a-timestamp" }),
+      original: availabilityEndpoint({ status: "missing", checked_at: 123 }),
       archive: availabilityEndpoint({
         status: "available",
-        checked_at: "2026-08-07T17:59:59Z",
+        checked_at: "2026-08-08T12:00:00Z",
         last_attempt_at: null,
       }),
     }),
@@ -453,7 +459,7 @@ test("one malformed or stale endpoint cannot hide unrelated fresh observations",
   const mixed = availabilityRecord(manifest, "EXAMPLE/challenge", COMMIT, now);
   assert.equal(mixed.original.status, "unknown", "malformed checked_at is not evidence");
   assert.equal(mixed.original.checked_at, null);
-  assert.equal(mixed.archive.status, "unknown", "one second beyond 18 hours is stale");
+  assert.equal(mixed.archive.status, "available", "the fresh sibling remains authoritative");
   assert.equal(mixed.archive.last_attempt_at, null, "never-attempted endpoints are valid");
   assert.deepEqual(
     [
@@ -464,24 +470,21 @@ test("one malformed or stale endpoint cannot hide unrelated fresh observations",
   );
 });
 
-test("availability demotes malformed timestamp strings but rejects non-string values", () => {
+test("availability normalizes every malformed endpoint timestamp without rejecting the document", () => {
   const now = Date.parse("2026-08-08T12:00:00Z");
-  const malformedString = validateAvailability(availabilityManifest([
-    availabilityRow({
-      original: availabilityEndpoint({ status: "missing", checked_at: "not-a-timestamp" }),
-    }),
-  ]));
-  assert.equal(
-    availabilityRecord(malformedString, "example/challenge", COMMIT, now).original.status,
-    "unknown",
-  );
-
-  assert.throws(
-    () => validateAvailability(availabilityManifest([
-      availabilityRow({ original: availabilityEndpoint({ checked_at: 123 }) }),
-    ])),
-    /checked_at is malformed/,
-  );
+  for (const checkedAt of ["not-a-timestamp", 123, {}, []]) {
+    const malformed = validateAvailability(availabilityManifest([
+      availabilityRow({
+        original: availabilityEndpoint({ status: "missing", checked_at: checkedAt }),
+        archive: availabilityEndpoint({ status: "unknown", checked_at: checkedAt }),
+      }),
+    ]));
+    const row = availabilityRecord(malformed, "example/challenge", COMMIT, now);
+    assert.deepEqual(
+      [row.original.status, row.original.checked_at, row.archive.status, row.archive.checked_at],
+      ["unknown", null, "unknown", null],
+    );
+  }
 });
 
 test("availability keeps whole-document freshness inclusive and fail-closed", () => {
@@ -496,6 +499,19 @@ test("availability keeps whole-document freshness inclusive and fail-closed", ()
   assert.equal(recordAt("2026-08-07T17:59:59Z"), null);
   assert.ok(recordAt("2026-08-08T12:05:00Z"));
   assert.equal(recordAt("2026-08-08T12:05:01Z"), null);
+  assert.throws(
+    () => validateAvailability(availabilityManifest([], { generated_at: "2026-02-30T00:00:00Z" })),
+    /generated_at is malformed/,
+  );
+  assert.throws(
+    () => validateAvailability(availabilityManifest([], {
+      coverage: { freshness_max_age_seconds: 86_400 },
+    })),
+    /freshness_max_age_seconds disagrees/,
+  );
+  const noCoverage = availabilityManifest([]);
+  delete noCoverage.coverage;
+  assert.throws(() => validateAvailability(noCoverage), /availability.coverage must be an object/);
   assert.throws(
     () => validateAvailability(availabilityManifest([
       availabilityRow({ original: availabilityEndpoint({ last_attempt_at: "never" }) }),
@@ -520,14 +536,26 @@ test("availability agrees with the Database producer contract", async () => {
       new URL("tests/fixtures/source-availability.json", `file://${checkout}/`),
       "utf8",
     ));
-    assert.ok(fixture.repositories.length > 0, "the published contract must exercise a row");
-    assert.equal(validateAvailability(fixture), fixture);
+    assert.ok(fixture.repositories.length > 0, "the deployed contract must exercise a row");
+    assert.equal(
+      fixture.coverage?.freshness_max_age_seconds,
+      AVAILABILITY_MAX_AGE_MS / 1_000,
+      "the deployed producer and consumer must share the freshness policy",
+    );
+    assert.deepEqual(validateAvailability(fixture), fixture);
     return;
   }
-  assert.doesNotThrow(() => execFileSync(
-    "git",
-    ["-C", checkout, "merge-base", "--is-ancestor", AVAILABILITY_PRODUCER_COMMIT, "HEAD"],
-  ), "the Database checkout must include the reviewed source-availability contract");
+  try {
+    execFileSync(
+      "git",
+      ["-C", checkout, "merge-base", "--is-ancestor", AVAILABILITY_PRODUCER_COMMIT, "HEAD"],
+    );
+  } catch {
+    assert.fail(
+      `PalomarDatabase checkout ${checkout} is older than the required ` +
+        `source-availability contract ${AVAILABILITY_PRODUCER_COMMIT}; fetch current main`,
+    );
+  }
   const raw = availabilityManifest([
     availabilityRow({
       original: availabilityEndpoint({
@@ -562,7 +590,7 @@ test("availability agrees with the Database producer contract", async () => {
   assert.equal(row.original.status, "unknown");
   assert.equal(row.archive.status, "available");
   assert.equal(row.archive.last_attempt_at, null);
-  assert.equal(produced.coverage.freshness_max_age_seconds, AVAILABILITY_MAX_AGE_MS / 1_000);
+  assert.equal(consumed.coverage.freshness_max_age_seconds, AVAILABILITY_MAX_AGE_MS / 1_000);
 });
 
 test("withdrawn palomar-indexed provenance is rejected", () => {
