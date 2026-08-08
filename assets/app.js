@@ -13,22 +13,15 @@ import {
   isLoopbackHostname,
   pinnedRepositoryDirectoryUrl,
   pinnedRepositoryFileUrl,
-  postingRecordUrl,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
-  searchHeadUrl,
-  searchPageUrl,
   searchTerms,
-  stopwordsUrl,
   selectDatabaseUrl,
   selectAvailabilityUrl,
   recentUrl,
   selectRenderBase,
   tombstoneUrl,
-  validateSearchHead,
-  validateSearchPage,
-  validateStopwords,
   validateEntry,
   validateAvailability,
   validateRecent,
@@ -38,6 +31,7 @@ import {
   workflowRunId,
 } from "./security.mjs";
 import { loadSettledBounded } from "./loading.mjs";
+import { createRegistrySearch } from "./searching.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
@@ -49,6 +43,7 @@ const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
 const RECENT_ENTRY_CONCURRENCY = 8;
 const RECENT_ENTRY_TIMEOUT_MS = 30_000;
+const AVAILABILITY_TIMEOUT_MS = 30_000;
 
 function dataSource() {
   const databaseBase = databaseBaseFor(
@@ -103,13 +98,49 @@ async function fetchJson(url, { signal } = {}) {
   return response.json();
 }
 
-async function loadAvailability(url) {
+const searchRegistry = createRegistrySearch(fetchJson);
+
+async function fetchAvailability(url, { signal } = {}) {
+  return validateAvailability(await fetchJson(url, { signal }));
+}
+
+async function loadAvailability(url, { signal } = {}) {
   try {
-    return validateAvailability(await fetchJson(url));
+    return await fetchAvailability(url, { signal });
   } catch (error) {
     console.warn(`Source availability is unavailable: ${error.message}`);
     return null;
   }
+}
+
+// The landing and search controllers can need the same manifest. Share a
+// successful bounded read, but never make one temporary failure or timeout the
+// page's answer for the rest of its lifetime.
+const availabilityLoads = new Map();
+function loadAvailabilityBounded(url) {
+  const key = url.href;
+  if (!availabilityLoads.has(key)) {
+    const loading = loadSettledBounded(
+      [url],
+      (selected, signal) => fetchAvailability(selected, { signal }),
+      { concurrency: 1, timeoutMs: AVAILABILITY_TIMEOUT_MS },
+    ).then(([loaded]) => {
+      if (loaded.status === "fulfilled") return loaded.value;
+      // A missing manifest is a stable legacy answer for this page load. A
+      // timeout, transport error, or invalid document may recover, so only
+      // those outcomes are evicted and retried by the next consumer.
+      if (loaded.reason?.status !== 404) {
+        availabilityLoads.delete(key);
+        console.warn(
+          `Source availability is unavailable: ` +
+            `${loaded.reason?.message || String(loaded.reason)}`,
+        );
+      }
+      return null;
+    });
+    availabilityLoads.set(key, loading);
+  }
+  return availabilityLoads.get(key);
 }
 
 function sourceLocation(entry, availability, repository, commit) {
@@ -251,7 +282,54 @@ function trustBadge(entry) {
   return badge;
 }
 
-function entryCard(entry, versionCount, availability) {
+function decorateCardAvailability(card, entry, availability) {
+  const location = topSourceLocation(entry, availability);
+  const repositoryLink = card.querySelector(".repo-link");
+  if (!repositoryLink) throw new Error("card has no repository link");
+  repositoryLink.textContent = location.useArchive
+    ? "Palomar preserved copy"
+    : entry.source.repository;
+  repositoryLink.href = pinnedRepositoryDirectoryUrl(
+    location.repository,
+    entry.source.commit,
+  ).href;
+
+  const archiveLink = card.querySelector(".archive-link");
+  if (archiveLink) {
+    const archiveWasFocused = document.activeElement === archiveLink;
+    archiveLink.href = pinnedRepositoryDirectoryUrl(
+      location.archiveRepository,
+      entry.source.commit,
+    ).href;
+    archiveLink.hidden = location.useArchive;
+    let missing = card.querySelector(".source-status.missing");
+    if (location.useArchive && !missing) {
+      missing = el("span", "source-status missing", "Original unavailable");
+      archiveLink.insertAdjacentElement("afterend", missing);
+    }
+    if (!location.useArchive) missing?.remove();
+    if (archiveWasFocused && location.useArchive) repositoryLink.focus();
+  }
+}
+
+function decorateCardSet(cards, entries, availability, context) {
+  if (availability === null) return;
+  for (const [position, card] of cards.entries()) {
+    try {
+      decorateCardAvailability(card, entries[position], availability);
+    } catch (error) {
+      console.warn(
+        `${context} source availability could not be applied to ` +
+          `${entries[position].id} v${entries[position].version}: ${error.message}`,
+      );
+    }
+  }
+}
+
+function entryCard(
+  entry,
+  { versionCount = null, current = false } = {},
+) {
   const categories = classification(entry);
   const card = el("article", "entry-card");
   card.dataset.trust = entry.trust.level;
@@ -272,7 +350,7 @@ function entryCard(entry, versionCount, availability) {
   const top = el("div", "card-top");
   const identity = el("div", "card-identity");
   identity.append(
-    el("span", "entry-id", `${entry.id} v${entry.version} · current`),
+    el("span", "entry-id", `${entry.id} v${entry.version}${current ? " · current" : ""}`),
     el("span", "entry-date", `Registered ${displayDate(registrationDate(entry))}`),
   );
   top.append(identity, trustBadge(entry));
@@ -296,18 +374,18 @@ function entryCard(entry, versionCount, availability) {
     meta.append(project);
   }
   const footer = el("div", "card-footer");
-  const location = topSourceLocation(entry, availability);
+  const location = topSourceLocation(entry, null);
   const historyUrl = new URL(localPageUrl("entry.html", entry));
   historyUrl.hash = "version-history";
   footer.append(
     externalLink(
-      location.useArchive ? "Palomar preserved copy" : entry.source.repository,
-      pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit),
+      entry.source.repository,
+      pinnedRepositoryDirectoryUrl(entry.source.repository, entry.source.commit),
       "repo-link",
     ),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
-  if (!location.useArchive && location.archiveRepository) {
+  if (location.archiveRepository) {
     footer.append(
       externalLink(
         "Palomar preserved copy",
@@ -315,16 +393,6 @@ function entryCard(entry, versionCount, availability) {
         "archive-link",
       ),
     );
-  } else if (location.useArchive) {
-    // Reached only when the availability manifest says the original is
-    // missing, which is why the link above has switched to the preserved
-    // copy. A record with no preservation block predates archiving, so
-    // nothing has ever been checked about its repository at all; it used to
-    // fall through to here and be told, in public, that it is gone.
-    // `sourceAvailabilityNotice` says the accurate thing for that case on the
-    // entry page, which is that Palomar has no preserved copy. A card has no
-    // room to explain it, so it says nothing.
-    footer.append(el("span", "source-status missing", "Original unavailable"));
   }
   if (versionCount > 1) {
     const historyLink = internalLink(
@@ -369,12 +437,36 @@ async function loadEntries(page, databaseBase) {
   return { entries, failed };
 }
 
+let landingSuppressed = false;
+let landingStatusHidden = document.querySelector("#status")?.hidden ?? true;
+
+function setLandingStatusHidden(hidden) {
+  landingStatusHidden = hidden;
+  const status = document.querySelector("#status");
+  if (status) status.hidden = landingSuppressed || hidden;
+}
+
+function setLandingSuppressed(suppressed) {
+  landingSuppressed = suppressed;
+  document.body.classList.toggle("registry-searching", suppressed);
+  const toolbar = document.querySelector(".toolbar");
+  const status = document.querySelector("#status");
+  const grid = document.querySelector("#entry-grid");
+  if (toolbar) toolbar.hidden = suppressed;
+  if (grid) grid.hidden = suppressed;
+  if (status) status.hidden = suppressed || landingStatusHidden;
+}
+
 async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
   try {
+    status.className = "status";
+    status.textContent = "Reading the Palomar database…";
+    setLandingStatusHidden(false);
+    grid.replaceChildren();
     const { databaseBase, availabilityUrl } = dataSource();
-    const availabilityPromise = loadAvailability(availabilityUrl);
+    const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
     // What is new, not the whole registry. This page used to read a document
     // naming every active version and then sort and filter it here, which was
     // tens of megabytes for a screen of cards and grew every time anybody else
@@ -385,7 +477,6 @@ async function renderIndex() {
     const loaded = await loadEntries(recent, databaseBase);
     const { entries } = loaded;
     const recentTotal = recent.entries.length;
-    const availability = await availabilityPromise;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     // The validated summary still names every accepted result when an
@@ -397,32 +488,41 @@ async function renderIndex() {
       new Set(entries.map((entry) => entry.source.repository)).size,
     );
     if (!entries.length && !recentTotal) {
+      setLandingStatusHidden(false);
       status.textContent =
         "The telescope is ready. No entries have been published yet; the first accepted database PR will appear here automatically.";
       status.classList.add("empty");
-      return;
+      return true;
     }
     if (!entries.length) {
-      status.hidden = false;
+      setLandingStatusHidden(false);
       status.textContent =
         `No recent registry entries could be loaded (${loaded.failed} of ${recentTotal} failed). ` +
         "Try again later.";
       status.className = "status error";
-      return;
+      return false;
     }
     const degradedMessage = loaded.failed
       ? `The recent listing is incomplete: ${loaded.failed} of ${recentTotal} entries ` +
         "could not be loaded."
       : "";
-    status.hidden = !degradedMessage;
+    setLandingStatusHidden(!degradedMessage);
     status.textContent = degradedMessage;
     status.className = degradedMessage ? "status warning" : "status";
     // `loadEntries` keeps fulfilled values in recent.entries order even when
     // its bounded parallel fetches finish out of order, so render the
     // publisher's newest-first list.
-    for (const entry of entries) {
-      grid.append(entryCard(entry, versionCounts.get(entry.id), availability));
-    }
+    const cards = entries.map((entry) =>
+      entryCard(entry, {
+        versionCount: versionCounts.get(entry.id),
+        current: true,
+      }));
+    grid.append(...cards);
+    void availabilityPromise.then((availability) => {
+      decorateCardSet(cards, entries, availability, "Landing card");
+    }).catch((error) => {
+      console.warn(`Landing card source availability could not be applied: ${error.message}`);
+    });
     let trust = "all";
     const search = document.querySelector("#search");
     // The fallback selectors keep new JavaScript compatible with cached HTML
@@ -478,7 +578,7 @@ async function renderIndex() {
         card.hidden = !visible;
         if (visible) shown += 1;
       }
-      status.hidden = shown !== 0 && !degradedMessage;
+      setLandingStatusHidden(shown !== 0 && !degradedMessage);
       const classificationQuery = [
         arxivValue && `arXiv ${arxivValue}`,
         mscValue && `MSC2020 ${mscValue}`,
@@ -519,198 +619,25 @@ async function renderIndex() {
       });
     });
     update();
+    return true;
   } catch (error) {
-    status.hidden = false;
+    setLandingStatusHidden(false);
     status.textContent = `The registry could not be loaded: ${error.message}`;
     status.className = "status error";
+    return false;
   }
 }
 
-// How much of a word's postings one query is allowed to pull. A common word
-// runs to hundreds of pages at a hundred thousand results, and a reader wants
-// the newest matches rather than all of them; the record check below is what
-// makes stopping early safe rather than merely cheap.
-const SEARCH_PAGE_BUDGET = 16;
-const SEARCH_RESULT_LIMIT = 20;
-const SEARCH_CANDIDATE_LIMIT = 60;
-const POSTING_RE = /^(PALOMAR-\d{4}-\d{2}-\d{2}-\d{6})-v([1-9]\d*)$/;
-
-// One editorial constant, fetched once per page rather than copied into this
-// repository, where it would drift from the indexer's across two deployments.
-let stopwords = null;
-
-/**
- * The words the indexer drops, so that a query can drop them too.
- *
- * Inferring them instead, from the fact that a dropped word has no head, was
- * wrong in a way a reader could not diagnose: a missing head is also what a
- * word nothing carries looks like, so "the ring" was answered against a record
- * whose text happens not to contain "the" by reporting that "the" is
- * unfindable. The list is published because it is a fixed choice of a few
- * hundred function words, which is nothing like the document naming every
- * known word that this index exists without.
- *
- * A list that cannot be fetched leaves every word in the query, which is the
- * behaviour this replaced: it narrows a search that should have been wider,
- * and never shows a result that does not match.
- */
-async function searchStopwords(databaseBase) {
-  if (stopwords) return stopwords;
-  try {
-    stopwords = validateStopwords(await fetchJson(stopwordsUrl(databaseBase)));
-  } catch (error) {
-    if (error.status !== 404) throw error;
-    stopwords = new Set();
+let landingLoad = null;
+function ensureLanding() {
+  if (!landingLoad) {
+    const active = renderIndex();
+    landingLoad = active;
+    void active.then((loaded) => {
+      if (!loaded && landingLoad === active) landingLoad = null;
+    });
   }
-  return stopwords;
-}
-
-async function searchHead(term, databaseBase) {
-  try {
-    return validateSearchHead(await fetchJson(searchHeadUrl(term, databaseBase)), term);
-  } catch (error) {
-    // A 404 is the only answer there is for a word nothing carries. There is
-    // no document to consult first: one that named every known word would grow
-    // with the registry and be rewritten on every publication, which is the
-    // whole reason this index is shaped the way it is.
-    if (error.status !== 404) throw error;
-    return null;
-  }
-}
-
-/**
- * One word's postings, newest first, for as many pages as the budget allows.
- *
- * The pages are in registration order, so the last page is the newest batch,
- * and within a page an identifier begins with its registration date. A page
- * the head says exists and that is not there is an error rather than an empty
- * answer: the head is the only account of which pages there are.
- */
-async function searchPostings(term, head, databaseBase, wanted) {
-  const postings = [];
-  const first = Math.max(0, head.pages - wanted);
-  for (let number = head.pages - 1; number >= first; number -= 1) {
-    const page = validateSearchPage(
-      await fetchJson(searchPageUrl(term, number, databaseBase)),
-      term,
-      number,
-      head,
-    );
-    postings.push(...[...page.postings].reverse());
-  }
-  return { postings, whole: first === 0 };
-}
-
-/**
- * Which results might match, in the order they would be shown.
- *
- * The rarest word drives, because its sequence is the shortest and every match
- * is somewhere in it. Another word joins the intersection only if the whole of
- * it fits in what is left of the budget: intersecting against half a word's
- * postings would drop genuine matches while looking like a narrower search.
- * Everything else is settled per record by `carriesEveryTerm`, which is exact
- * and costs nothing, since the record has to be fetched to be shown anyway.
- *
- * A word with no head is a word nothing carries, and it is that rather than a
- * word the indexer drops because the dropped ones have already left the query
- * by the time this runs. It leaves the intersection and stays in the
- * per-record check, which rejects every candidate, and it is named in what the
- * reader is told rather than guessed about.
- */
-async function searchCandidates(terms, databaseBase) {
-  const heads = [];
-  const missing = [];
-  for (const term of terms) {
-    const head = await searchHead(term, databaseBase);
-    if (head && head.results > 0) heads.push([term, head]);
-    else missing.push(term);
-  }
-  heads.sort((left, right) => left[1].results - right[1].results);
-  if (!heads.length) return { postings: [], whole: true, missing };
-
-  let budget = SEARCH_PAGE_BUDGET;
-  let found = null;
-  let whole = true;
-  for (const [term, head] of heads) {
-    if (found !== null && head.pages > budget) break;
-    const wanted = Math.min(head.pages, budget);
-    if (wanted === 0) break;
-    const pulled = await searchPostings(term, head, databaseBase, wanted);
-    budget -= wanted;
-    whole = whole && pulled.whole;
-    if (found === null) {
-      found = pulled.postings;
-    } else {
-      const carried = new Set(pulled.postings);
-      found = found.filter((posting) => carried.has(posting));
-    }
-    if (budget <= 0) break;
-  }
-  return { postings: found ?? [], whole, missing };
-}
-
-/**
- * Whether a record really carries every word of the query.
- *
- * This is the check the postings are an index *of*, made against the record
- * itself, so a posting that claims a result it should not is caught here
- * rather than shown. It is also what lets the intersection above stop early
- * and what lets a word with no head still be answered exactly.
- */
-function carriesEveryTerm(entry, terms) {
-  const words = new Set([
-    ...searchTerms(entry.title),
-    ...searchTerms(entry.abstract),
-    ...entry.authors.flatMap((author) => searchTerms(author.name)),
-  ]);
-  return terms.every((term) => words.has(term));
-}
-
-/**
- * The summary a fetched record is checked against.
- *
- * `index.json` is an independent claim about a record's title, which is why
- * `validateEntry` compares the two. A posting claims something else: that this
- * record carries these words. So the identity is checked here and the claim
- * itself is checked by `carriesEveryTerm`, against the record's own text.
- */
-function postingSummary(posting, entry) {
-  const match = POSTING_RE.exec(posting);
-  return {
-    id: match[1],
-    version: Number(match[2]),
-    title: entry.title,
-    status: entry.status,
-    path: `entries/${posting}.json`,
-  };
-}
-
-async function searchRegistry(query, databaseBase) {
-  const asked = [...new Set(searchTerms(query))];
-  const dropping = await searchStopwords(databaseBase);
-  const dropped = asked.filter((term) => dropping.has(term));
-  const terms = asked.filter((term) => !dropping.has(term));
-  if (!terms.length) {
-    return { terms, dropped, entries: [], whole: true, examined: 0, missing: [] };
-  }
-  const { postings, whole, missing } = await searchCandidates(terms, databaseBase);
-  const entries = [];
-  let examined = 0;
-  for (const posting of postings) {
-    if (entries.length >= SEARCH_RESULT_LIMIT || examined >= SEARCH_CANDIDATE_LIMIT) break;
-    examined += 1;
-    const record = await fetchJson(postingRecordUrl(posting, databaseBase));
-    const entry = validateEntry(record, postingSummary(posting, record));
-    if (carriesEveryTerm(entry, terms)) entries.push(entry);
-  }
-  return {
-    terms,
-    dropped,
-    entries,
-    missing,
-    whole: whole && examined === postings.length,
-    examined,
-  };
+  return landingLoad;
 }
 
 function searchPageUrlFor(query) {
@@ -723,27 +650,60 @@ function searchPageUrlFor(query) {
   return safeInternalUrl(target, window.location.href);
 }
 
+let searchGeneration = 0;
+let activeSearchController = null;
+
+function renderSearchCards(results, entries) {
+  const cards = entries.map((entry) => entryCard(entry));
+  results.replaceChildren(...cards);
+  return cards;
+}
+
 async function renderSearch(query) {
+  const generation = searchGeneration + 1;
+  searchGeneration = generation;
+  activeSearchController?.abort(new Error("superseded registry search"));
+  activeSearchController = null;
   const status = document.querySelector("#search-status");
   const results = document.querySelector("#search-results");
-  const grid = document.querySelector("#entry-grid");
-  const toolbar = document.querySelector(".toolbar");
   if (!status || !results) return;
   results.replaceChildren();
   status.className = "status";
   const searching = Boolean(searchTerms(query).length);
-  if (grid) grid.hidden = searching;
-  if (toolbar) toolbar.hidden = searching;
+  setLandingSuppressed(searching);
   if (!searching) {
     status.hidden = true;
+    ensureLanding();
     return;
   }
+  const controller = new AbortController();
+  activeSearchController = controller;
   status.hidden = false;
   status.textContent = "Searching the registry…";
   try {
-    const { databaseBase } = dataSource();
-    const found = await searchRegistry(query, databaseBase);
-    for (const entry of found.entries) results.append(entryCard(entry, 1, null));
+    const { databaseBase, availabilityUrl } = dataSource();
+    const found = await searchRegistry(query, databaseBase, { signal: controller.signal });
+    if (generation !== searchGeneration) return;
+    for (const problem of found.problems) {
+      console.warn(
+        `Search ${problem.stage} ${problem.item} could not be loaded: ` +
+          `${problem.reason?.message || String(problem.reason)}`,
+      );
+    }
+    // Availability changes only where a source link points. It must never hold
+    // verified registry results behind its own long timeout.
+    const cards = renderSearchCards(results, found.entries);
+    if (found.entries.length) {
+      void loadAvailabilityBounded(availabilityUrl).then((availability) => {
+        if (availability !== null && generation === searchGeneration) {
+          decorateCardSet(cards, found.entries, availability, "Search card");
+        }
+      }).catch((error) => {
+        if (generation === searchGeneration) {
+          console.warn(`Search card source availability could not be applied: ${error.message}`);
+        }
+      });
+    }
     if (!found.terms.length) {
       // Every word of the query is one the indexer drops, so there is nothing
       // to ask for. Saying which words those were is the difference between an
@@ -752,30 +712,45 @@ async function renderSearch(query) {
         `Every word of that search is too common to be indexed: ${found.dropped.join(", ")}.`;
       return;
     }
+    const degraded = found.problems.length
+      ? found.timedOut
+        ? "the search deadline expired before every request completed"
+        : `${found.problems.length} data request${found.problems.length === 1 ? "" : "s"} failed`
+      : "";
     if (!found.entries.length) {
       // Naming the words nothing carries is what turns "no results" into
       // something a reader can act on. The words the indexer drops are not
       // among them: they left the query before it was asked.
-      status.textContent = found.missing.length
+      status.textContent = degraded
+        ? `No verified results could be shown. The search is incomplete because ${degraded}. Try again.`
+        : found.missing.length
         ? `No result carries all of: ${found.terms.join(", ")}. Nothing is indexed under `
           + `${found.missing.join(", ")}.`
         : `No result carries all of: ${found.terms.join(", ")}.`;
+      status.classList.toggle("warning", Boolean(degraded));
       return;
     }
-    status.hidden = found.whole;
-    status.textContent = found.whole
+    status.hidden = found.whole && !degraded;
+    status.textContent = degraded
+      ? `Showing ${found.entries.length} verified result${found.entries.length === 1 ? "" : "s"}. `
+        + `The search is incomplete because ${degraded}.`
+      : found.whole
       ? ""
       : `Showing the newest ${found.entries.length} results; narrow the search for older ones.`;
+    status.classList.toggle("warning", Boolean(degraded));
   } catch (error) {
+    if (generation !== searchGeneration) return;
     status.textContent = `The search could not be run: ${error.message}`;
     status.classList.add("error");
+  } finally {
+    if (generation === searchGeneration) activeSearchController = null;
   }
 }
 
 function wireSearch() {
   const form = document.querySelector("#registry-search");
   const input = document.querySelector("#query");
-  if (!form || !input) return;
+  if (!form || !input) return false;
   const initial = params.get("q") || "";
   input.value = initial;
   form.addEventListener("submit", (event) => {
@@ -787,6 +762,7 @@ function wireSearch() {
     renderSearch(query);
   });
   if (initial) renderSearch(initial);
+  return Boolean(searchTerms(initial).length);
 }
 
 function detailRow(label, value) {
@@ -1896,10 +1872,10 @@ async function renderChallengePage() {
 }
 
 if (document.body.dataset.page === "index") {
-  // Wired first and run independently of the listing, so that arriving at a
-  // search link does not wait for every record on the landing page to load.
-  wireSearch();
-  renderIndex();
+  // A linked search is its own view. Avoid fetching and exposing a hidden
+  // recent listing until the query is cleared; then load it exactly once.
+  const hasInitialSearch = wireSearch();
+  if (!hasInitialSearch) ensureLanding();
 }
 if (document.body.dataset.page === "entry") renderEntryPage();
 if (document.body.dataset.page === "render") renderChallengePage();

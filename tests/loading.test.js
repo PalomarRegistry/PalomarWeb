@@ -61,3 +61,30 @@ test("the deadline settles a load that ignores its abort signal", async () => {
   assert.equal(results[0].status, "rejected");
   assert.match(results[0].reason.message, /deadline of 30ms expired/);
 });
+
+test("a parent deadline is shared across a sequence of bounded loads", async () => {
+  const controller = new AbortController();
+  const reason = new Error("overall search deadline expired");
+  const timer = setTimeout(() => controller.abort(reason), 30);
+  const before = Date.now();
+  try {
+    const first = await loadSettledBounded(
+      ["quick"],
+      async (value) => value,
+      { concurrency: 1, timeoutMs: 500, signal: controller.signal },
+    );
+    assert.equal(first[0].status, "fulfilled");
+
+    const second = await loadSettledBounded(
+      ["hung", "queued"],
+      () => new Promise(() => {}),
+      { concurrency: 1, timeoutMs: 500, signal: controller.signal },
+    );
+    assert.ok(Date.now() - before < 500, "the parent deadline did not bound both stages");
+    assert.deepEqual(second.map((result) => result.status), ["rejected", "rejected"]);
+    assert.equal(second[0].reason, reason);
+    assert.equal(second[1].reason, reason);
+  } finally {
+    clearTimeout(timer);
+  }
+});
