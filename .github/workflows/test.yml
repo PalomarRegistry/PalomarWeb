@@ -20,7 +20,7 @@ jobs:
       # public snapshot rather than cloning the canonical repository.
       - name: Download the published schemas
         env:
-          PUBLIC_DATA_ORIGIN: https://palomar-data.palomar-server.workers.dev
+          PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
         run: |
           mkdir palomar-database
           curl --fail --silent --show-error --retry 3 \
