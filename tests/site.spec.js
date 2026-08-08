@@ -119,6 +119,38 @@ test("landing cards show the registration date and dated identifier", async ({ p
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
 });
 
+test("landing cards preserve the publisher's newest-first order", async ({ page }) => {
+  const registeredAt = new Map([
+    ["PALOMAR-2026-07-29-000124", "2026-07-29T23:00:00Z"],
+    ["PALOMAR-2026-07-29-000123", "2026-07-29T22:00:00Z"],
+  ]);
+  await page.route("**/database/recent.json", async (route) => {
+    const response = await route.fetch();
+    const recent = await response.json();
+    const rows = new Map(recent.entries.map((row) => [row.id, row]));
+    recent.entries = [...registeredAt].map(([id, publishedAt]) => ({
+      ...rows.get(id),
+      published_at: publishedAt,
+    }));
+    await route.fulfill({ response, json: recent });
+  });
+  await page.route("**/database/entries/*.json", async (route) => {
+    const response = await route.fetch();
+    const entry = await response.json();
+    entry.registered_at = registeredAt.get(entry.id);
+    await route.fulfill({ response, json: entry });
+  });
+
+  await page.goto(`/?database=${database}`);
+
+  // Recency and identifier order deliberately disagree. The DOM must follow
+  // recent.json, whose order has already been validated as newest-first.
+  await expect(page.locator(".entry-card .entry-id")).toHaveText([
+    "PALOMAR-2026-07-29-000124 v1 · current",
+    "PALOMAR-2026-07-29-000123 v2 · current",
+  ]);
+});
+
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
