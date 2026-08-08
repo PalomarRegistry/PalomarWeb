@@ -6,19 +6,11 @@ import {
 
 /** Resolve one immutable repository revision to its recorded or preserved copy. */
 export function sourceLocation(entry, availability, repository, commit) {
-  if (!entry.preservation) {
-    return {
-      repository,
-      originalRepository: repository,
-      archiveRepository: null,
-      commit,
-      originalStatus: "unknown",
-      archiveStatus: "unknown",
-      checkedAt: null,
-      useArchive: false,
-    };
+  const repositories = entry?.preservation?.repositories;
+  if (!Array.isArray(repositories)) {
+    throw new Error("entry has no canonical source preservation receipt");
   }
-  const mapping = entry.preservation.repositories.find(
+  const mapping = repositories.find(
     (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
       row.commit === commit,
   );

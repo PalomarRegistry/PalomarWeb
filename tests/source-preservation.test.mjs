@@ -93,23 +93,6 @@ function withFakeDocument(run) {
   }
 }
 
-test("source location stays on the recorded repository without preservation evidence", () => {
-  const record = entry({ preservation: null });
-  assert.deepEqual(
-    sourceLocation(record, manifest({ original: "missing" }), record.source.repository, COMMIT),
-    {
-      repository: "example/challenge",
-      originalRepository: "example/challenge",
-      archiveRepository: null,
-      commit: COMMIT,
-      originalStatus: "unknown",
-      archiveStatus: "unknown",
-      checkedAt: null,
-      useArchive: false,
-    },
-  );
-});
-
 test("source location switches only from a confirmed missing original to its recorded archive", () => {
   const record = entry();
   const availability = manifest({ original: "missing", archive: "available" });
@@ -169,6 +152,15 @@ test("source location rejects a repository revision absent from the preservation
   assert.throws(
     () => sourceLocation(entry(), null, "example/other", COMMIT),
     /entry has no preserved copy of example\/other@/,
+  );
+});
+
+test("source location rejects a missing preservation receipt instead of falling back", () => {
+  const record = entry();
+  delete record.preservation;
+  assert.throws(
+    () => topSourceLocation(record, null),
+    /no canonical source preservation receipt/,
   );
 });
 

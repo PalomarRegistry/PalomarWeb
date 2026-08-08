@@ -39,11 +39,17 @@ export function challengeSourceUrl(entry, repositoryOverride = null) {
     throw new Error("entry has invalid canonical Challenge source metadata");
   }
   const selectedRepository = repositoryOverride || repository;
-  const isPreserved = entry?.preservation?.repositories?.some(
-    (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
-      row.commit === commit && row.fork_repository === selectedRepository,
+  const repositories = entry?.preservation?.repositories;
+  if (!Array.isArray(repositories)) {
+    throw new Error("entry has no canonical source preservation metadata");
+  }
+  const sourceMapping = repositories.find(
+    (row) => typeof row?.source_repository === "string" &&
+      row.source_repository.toLowerCase() === repository.toLowerCase() &&
+      row.commit === commit,
   );
-  if (selectedRepository !== repository && !isPreserved) {
+  if (!sourceMapping ||
+      (selectedRepository !== repository && sourceMapping.fork_repository !== selectedRepository)) {
     throw new Error("entry has invalid preserved Challenge source metadata");
   }
   return pinnedRepositoryFileUrl(selectedRepository, commit, challengePath).href;

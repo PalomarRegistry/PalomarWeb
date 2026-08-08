@@ -14,7 +14,16 @@
 import { readFile } from "node:fs/promises";
 
 import { shippedFiles } from "./build-site.mjs";
-import { validateEntry, validateRecent } from "../assets/security.mjs";
+import {
+  entryRecordUrl,
+  validateBrowseHead,
+  validateBrowsePage,
+  validateBrowseYear,
+  validateEntry,
+  validateRecent,
+  validateVersions,
+  versionsUrl,
+} from "../assets/security.mjs";
 
 const STAMP = /assets\/app\.js\?v=([A-Za-z0-9._-]+)/;
 
@@ -44,37 +53,193 @@ export function publishState(html, expected) {
 }
 
 /**
- * Can the current website contract load what the landing page shows?
+ * Can the current website contract load every active public entry permalink?
  *
- * This deliberately uses the same validators, and now the same document, as
- * the browser. It catches a valid publication whose shape has drifted away
- * from what the UI accepts. It asked about every active entry while there was
- * a document naming them all; there is not one any more, and asking about the
- * page a visitor actually loads is both the check that matters and the only
- * one whose cost does not grow with the registry.
+ * The browser normally reads one bounded surface at a time. Deployment and
+ * published-site health deliberately do the linear whole-public-tree check it
+ * should not make a visitor do: browse head to years to pages, every per-ID
+ * version index, then every active entry. Counts and row equality reconcile
+ * every row the producer advertises; they are not an independent proof that
+ * the producer omitted nothing. `recent.json` is also checked against each
+ * current history head and entry, because it is the landing page's separate
+ * exact projection.
  */
+const PUBLIC_DATA_CONCURRENCY = 8;
+const PUBLIC_REQUEST_POLICY = Object.freeze({
+  attempts: 3,
+  backoffMs: 200,
+  timeoutMs: 5_000,
+});
+
+async function mapBounded(items, task) {
+  const values = [...items];
+  const results = new Array(values.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < values.length) {
+      const position = next;
+      next += 1;
+      results[position] = await task(values[position], position);
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(PUBLIC_DATA_CONCURRENCY, values.length) },
+      () => worker(),
+    ),
+  );
+  return results;
+}
+
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function fetchJson(url, fetcher, policy) {
+  let lastError;
+  for (let attempt = 1; attempt <= policy.attempts; attempt += 1) {
+    const controller = new AbortController();
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`${url} timed out after ${policy.timeoutMs}ms`);
+        controller.abort(error);
+        reject(error);
+      }, policy.timeoutMs);
+    });
+    try {
+      const response = await Promise.race([
+        fetcher(url, { cache: "no-store", signal: controller.signal }),
+        timeout,
+      ]);
+      if (!response.ok) {
+        const error = new Error(`${url} responded ${response.status}`);
+        error.retryable = response.status === 408 || response.status === 425 ||
+          response.status === 429 || response.status >= 500;
+        throw error;
+      }
+      return await Promise.race([response.json(), timeout]);
+    } catch (error) {
+      lastError = error;
+      if (error.retryable === false || attempt === policy.attempts) throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+    await wait(policy.backoffMs * (2 ** (attempt - 1)));
+  }
+  throw lastError;
+}
+
+const PUBLIC_VALIDATORS = {
+  validateBrowseHead,
+  validateBrowsePage,
+  validateBrowseYear,
+  validateEntry,
+  validateRecent,
+  validateVersions,
+};
+
 export async function publicDataState(
   databaseUrl,
   fetcher = fetch,
-  validators = { validateRecent, validateEntry },
+  validators = PUBLIC_VALIDATORS,
+  requestPolicy = PUBLIC_REQUEST_POLICY,
 ) {
   const base = new URL(databaseUrl.endsWith("/") ? databaseUrl : `${databaseUrl}/`);
-  const pageUrl = new URL("recent.json", base);
+  const policy = { ...PUBLIC_REQUEST_POLICY, ...requestPolicy };
   try {
-    const pageResponse = await fetcher(pageUrl, { cache: "no-store" });
-    if (!pageResponse.ok) {
-      return { healthy: false, reason: `${pageUrl} responded ${pageResponse.status}` };
-    }
-    const recent = validators.validateRecent(await pageResponse.json());
-    await Promise.all(recent.entries.map(async (summary) => {
-      const entryUrl = new URL(summary.path, base);
-      const response = await fetcher(entryUrl, { cache: "no-store" });
-      if (!response.ok) throw new Error(`${entryUrl} responded ${response.status}`);
-      validators.validateEntry(await response.json(), summary);
+    const recent = validators.validateRecent(
+      await fetchJson(new URL("recent.json", base), fetcher, policy),
+    );
+    const browse = validators.validateBrowseHead(
+      await fetchJson(new URL("browse/index.json", base), fetcher, policy),
+    );
+    const years = await mapBounded(browse.years, async (year) => validators.validateBrowseYear(
+      await fetchJson(new URL(`browse/${year.year}.json`, base), fetcher, policy),
+      year,
+    ));
+    const pageTasks = years.flatMap((year) => year.days.flatMap((day) =>
+      Array.from(
+        { length: day.last_page - day.first_page + 1 },
+        (_unused, offset) => ({ day, page: day.first_page + offset }),
+      )));
+    const pages = await mapBounded(pageTasks, async ({ day, page }) => ({
+      day,
+      document: validators.validateBrowsePage(
+        await fetchJson(new URL(`browse/${day.day}/${page}.json`, base), fetcher, policy),
+        day.day,
+        page,
+      ),
     }));
+
+    const byDay = new Map();
+    for (const { day, document } of pages) {
+      const rows = byDay.get(day.day) ?? [];
+      rows.push(...document.entries);
+      byDay.set(day.day, rows);
+    }
+    for (const year of years) {
+      for (const day of year.days) {
+        const rows = byDay.get(day.day) ?? [];
+        if (rows.length !== day.versions || new Set(rows.map((row) => row.id)).size !== day.results) {
+          throw new Error(`browse counts do not equal the rows served for ${day.day}`);
+        }
+      }
+    }
+
+    const summaries = pages.flatMap(({ document }) => document.entries);
+    const identifiers = [...new Set(summaries.map((summary) => summary.id))].sort();
+    if (summaries.length !== browse.versions || identifiers.length !== browse.results) {
+      throw new Error("browse index counts do not equal the complete page traversal");
+    }
+    const paths = new Set(summaries.map((summary) => summary.path));
+    if (paths.size !== summaries.length) throw new Error("browse pages repeat an entry permalink");
+
+    const browsedById = new Map(identifiers.map((id) => [id, []]));
+    for (const summary of summaries) browsedById.get(summary.id).push(summary);
+    const histories = await mapBounded(identifiers, async (id) => {
+      const history = validators.validateVersions(
+        await fetchJson(versionsUrl(id, base), fetcher, policy),
+        id,
+      );
+      const browsed = browsedById.get(id);
+      const summariesEqual = history.entries.length === browsed.length &&
+        history.entries.every((row, position) => {
+          const other = browsed[position];
+          return row.id === other.id && row.version === other.version &&
+            row.title === other.title && row.status === other.status && row.path === other.path;
+        });
+      if (!summariesEqual) {
+        throw new Error(`version index for ${id} does not equal its browse history`);
+      }
+      return history;
+    });
+
+    const fetchedEntries = await mapBounded(
+      histories.flatMap((history) => history.entries),
+      async (summary) => {
+        const entry = await fetchJson(entryRecordUrl(summary, base), fetcher, policy);
+        validators.validateEntry(entry, summary);
+        return [summary.path, entry];
+      },
+    );
+    const entriesByPath = new Map(fetchedEntries);
+    const historiesById = new Map(histories.map((history) => [history.id, history.entries]));
+    for (const summary of recent.entries) {
+      const history = historiesById.get(summary.id);
+      const current = history?.at(-1);
+      if (!current || summary.version !== current.version || summary.title !== current.title ||
+          summary.status !== current.status || summary.path !== current.path ||
+          summary.versions !== history.length) {
+        throw new Error(`recent row for ${summary.id} does not equal its current version history`);
+      }
+      const entry = entriesByPath.get(summary.path);
+      if (!entry || summary.published_at !== entry.registered_at) {
+        throw new Error(`recent row for ${summary.id} does not match its entry registered_at`);
+      }
+    }
     return {
       healthy: true,
-      reason: `the website contract accepts all ${recent.entries.length} entries the landing page shows`,
+      reason: `the website contract accepts all ${browse.versions} active entry versions ` +
+        `across ${browse.results} results`,
     };
   } catch (error) {
     return { healthy: false, reason: `public registry data is incompatible: ${error.message}` };

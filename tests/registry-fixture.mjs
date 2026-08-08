@@ -25,7 +25,7 @@ export function secondVersion(overrides = {}) {
 
 export function recentRow(overrides = {}) {
   const record = entry();
-  const sourceMapping = record.preservation?.repositories.find(
+  const sourceMapping = record.preservation.repositories.find(
     (mapping) =>
       mapping.source_repository.toLowerCase() === record.source.repository.toLowerCase() &&
       mapping.commit === record.source.commit,
@@ -46,15 +46,13 @@ export function recentRow(overrides = {}) {
       commit: record.source.commit,
       project_path: record.source.project_path ?? null,
     },
-    preservation: sourceMapping
-      ? {
-          repositories: [{
-            source_repository: sourceMapping.source_repository,
-            commit: sourceMapping.commit,
-            fork_repository: sourceMapping.fork_repository,
-          }],
-        }
-      : null,
+    preservation: {
+      repositories: [{
+        source_repository: sourceMapping.source_repository,
+        commit: sourceMapping.commit,
+        fork_repository: sourceMapping.fork_repository,
+      }],
+    },
     published_at: record.registered_at,
     versions: 1,
     ...overrides,

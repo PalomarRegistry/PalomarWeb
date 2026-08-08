@@ -20,18 +20,16 @@ function fileAtPreviousDeployment(path) {
 }
 
 /**
- * Which entry schemas the previous deployment's validator would accept.
+ * Which entry schema the previous deployment's validator would accept.
  *
  * Cached JavaScript can only be compatible with records it can read. When the
  * published schema changes, cached JavaScript is deliberately incompatible,
  * and asserting otherwise would only be satisfiable by never changing it.
  */
-function entrySchemasAtPreviousDeployment() {
+function entrySchemaAtPreviousDeployment() {
   const source = fileAtPreviousDeployment("assets/security.mjs");
-  const set = /ENTRY_SCHEMA_VERSIONS = new Set\(\[([0-9,\s]*)\]\)/.exec(source);
-  if (set) return new Set(set[1].split(",").map((n) => Number(n.trim())));
   const single = /ENTRY_SCHEMA_VERSION = ([0-9]+)/.exec(source);
-  return single ? new Set([Number(single[1])]) : new Set();
+  return single ? Number(single[1]) : null;
 }
 
 const currentEntrySchema = Number(
@@ -452,53 +450,34 @@ test("an archive warning says the original works only after a fresh confirmation
   await expect(notice.getByRole("link", { name: "Original source" })).toBeVisible();
 });
 
-test("an entry accepted before source archiving explains the limitation as a warning", async ({ page }) => {
+test("entry schema v1 fails closed before rendering", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", async (route) => {
     const response = await route.fetch();
-    const legacy = await response.json();
-    legacy.schema_version = 1;
-    delete legacy.preservation;
-    await route.fulfill({ response, json: legacy });
+    const obsolete = await response.json();
+    obsolete.schema_version = 1;
+    await route.fulfill({ response, json: obsolete });
   });
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
   );
 
-  const notice = page.locator(".source-availability.legacy");
-  await expect(notice).toContainText("Palomar has no preservation copy of this source");
-  await expect(notice).toContainText("before Palomar began archiving source repositories");
-  await expect(notice).toContainText("may stop working if that repository is removed");
-  await expect(notice.getByRole("link", { name: "Open the reviewed source" })).toHaveAttribute(
-    "href",
-    /github\.com\/example\/challenge\/tree\/1{40}\/project$/,
-  );
-  await expect(notice).toHaveCSS("background-color", "rgb(255, 248, 223)");
-  await expect(notice).toHaveCSS("padding-left", "20px");
+  await expect(page.locator(".entry-heading")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveClass(/error/);
+  await expect(page.locator("#status")).toContainText("unsupported entry schema_version 1");
 });
 
-test("a card for a result accepted before archiving does not call its original unavailable", async ({ page }) => {
-  // A record with no preservation block was accepted before Palomar archived
-  // anything, so nothing has ever been checked about its repository. The card
-  // read that silence as a missing original and printed "Original unavailable"
-  // beside somebody else's repository, which is a published claim about a
-  // third party's work made on no evidence.
+test("a recent row without the required preservation mapping fails closed", async ({ page }) => {
   await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
     const recent = await response.json();
-    const legacy = recent.entries.find((row) => row.id === "PALOMAR-2026-07-29-000123");
-    legacy.preservation = null;
+    recent.entries[0].preservation = null;
     await route.fulfill({ response, json: recent });
   });
   await page.goto(`/?database=${database}`);
 
-  const legacyCard = page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000123" });
-  await expect(legacyCard).toHaveCount(1);
-  await expect(legacyCard.locator(".source-status")).toHaveCount(0);
-  await expect(legacyCard.locator(".archive-link")).toHaveCount(0);
-  // The other card is unpreserved by nothing: it still offers its copy.
-  await expect(
-    page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000124" }).locator(".archive-link"),
-  ).toHaveCount(1);
+  await expect(page.locator(".entry-card")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveClass(/error/);
+  await expect(page.locator("#status")).toContainText("preservation must be an object");
 });
 
 test("a card says the original is unavailable exactly when the manifest says so", async ({ page }) => {
@@ -825,7 +804,7 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
 test("current HTML remains compatible with cached JavaScript from the previous deployment", async ({ page }) => {
   test.skip(!previousRef, "PALOMAR_PREVIOUS_REF is only set in deployment and pull-request CI");
   test.skip(
-    !entrySchemasAtPreviousDeployment().has(currentEntrySchema),
+    entrySchemaAtPreviousDeployment() !== currentEntrySchema,
     "the published entry schema changed, so cached JavaScript cannot read current records",
   );
   // The same reasoning, one level up: a bundle that reads a document the

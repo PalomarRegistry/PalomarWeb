@@ -11,6 +11,69 @@ const sha = "b500f02dec58268ea22de28332f63136dac092d9";
 const page = (version) =>
   `<html><head><script type="module" src="assets/app.js?v=${version}"></script></head></html>`;
 
+const registryValidators = {
+  validateRecent: (value) => value,
+  validateBrowseHead: (value) => value,
+  validateBrowseYear: (value) => value,
+  validateBrowsePage: (value) => value,
+  validateVersions: (value) => value,
+  validateEntry() {},
+};
+
+function oneEntryRegistry() {
+  const id = "PALOMAR-2026-08-08-000001";
+  const row = {
+    id,
+    version: 1,
+    title: "One",
+    status: "accepted",
+    path: `entries/${id}-v1.json`,
+  };
+  const registeredAt = "2026-08-08T12:00:00Z";
+  const recent = { ...row, versions: 1, published_at: registeredAt };
+  const head = {
+    results: 1,
+    versions: 1,
+    years: [{ year: "2026", days: 1, results: 1, versions: 1 }],
+  };
+  const year = {
+    year: "2026",
+    days: [{
+      day: "2026-08-08",
+      first_page: 1,
+      last_page: 1,
+      results: 1,
+      versions: 1,
+    }],
+  };
+  const browsePage = { entries: [row] };
+  const history = { id, entries: [row] };
+  const entry = { id, registered_at: registeredAt };
+  return {
+    entry,
+    head,
+    history,
+    page: browsePage,
+    recent,
+    row,
+    year,
+    responses: new Map([
+      ["https://data.example/recent.json", { entries: [recent] }],
+      ["https://data.example/browse/index.json", head],
+      ["https://data.example/browse/2026.json", year],
+      ["https://data.example/browse/2026-08-08/1.json", browsePage],
+      [`https://data.example/versions/${id}.json`, history],
+      [`https://data.example/entries/${id}-v1.json`, entry],
+    ]),
+  };
+}
+
+const responseFrom = (responses) => async (url) => ({
+  ok: true,
+  status: 200,
+  async json() { return responses.get(String(url)); },
+});
+
 test("a page built from the expected commit is fresh", () => {
   const state = publishState(page(sha), sha);
   assert.equal(state.fresh, true);
@@ -47,11 +110,54 @@ test("the stamp is read from the asset URL the build actually writes", async () 
   }
 });
 
-test("live-data health fetches and validates every entry the landing page shows", async () => {
+test("live-data health traverses browse and history to validate every public permalink", async () => {
   const calls = [];
+  const registeredAt = "2026-08-08T12:00:00Z";
+  const first = {
+    id: "PALOMAR-2026-08-08-000001",
+    version: 1,
+    title: "One",
+    status: "accepted",
+    path: "entries/PALOMAR-2026-08-08-000001-v1.json",
+  };
+  const second = {
+    ...first,
+    version: 2,
+    title: "Two",
+    path: "entries/PALOMAR-2026-08-08-000001-v2.json",
+  };
   const responses = new Map([
-    ["https://data.example/recent.json", { entries: [{ path: "entries/one.json" }] }],
-    ["https://data.example/entries/one.json", { id: "one" }],
+    ["https://data.example/recent.json", {
+      entries: [{ ...second, versions: 2, published_at: registeredAt }],
+    }],
+    ["https://data.example/browse/index.json", {
+      results: 1,
+      versions: 2,
+      years: [{ year: "2026", days: 1, results: 1, versions: 2 }],
+    }],
+    ["https://data.example/browse/2026.json", {
+      year: "2026",
+      days: [{
+        day: "2026-08-08",
+        first_page: 1,
+        last_page: 1,
+        results: 1,
+        versions: 2,
+      }],
+    }],
+    ["https://data.example/browse/2026-08-08/1.json", { entries: [first, second] }],
+    ["https://data.example/versions/PALOMAR-2026-08-08-000001.json", {
+      id: first.id,
+      entries: [first, second],
+    }],
+    ["https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json", {
+      id: "one-v1",
+      registered_at: "2026-08-08T11:00:00Z",
+    }],
+    ["https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json", {
+      id: "one-v2",
+      registered_at: registeredAt,
+    }],
   ]);
   const fetcher = async (url) => {
     calls.push(String(url));
@@ -66,6 +172,22 @@ test("live-data health fetches and validates every entry the landing page shows"
       validated.push("recent");
       return page;
     },
+    validateBrowseHead(page) {
+      validated.push("browse-head");
+      return page;
+    },
+    validateBrowseYear(page, expected) {
+      validated.push(`year:${expected.year}`);
+      return page;
+    },
+    validateBrowsePage(page, day, number) {
+      validated.push(`page:${day}:${number}`);
+      return page;
+    },
+    validateVersions(page, id) {
+      validated.push(`versions:${id}`);
+      return page;
+    },
     validateEntry(value, summary) {
       validated.push(`${value.id}:${summary.path}`);
     },
@@ -74,9 +196,73 @@ test("live-data health fetches and validates every entry the landing page shows"
   assert.equal(state.healthy, true);
   assert.deepEqual(calls, [
     "https://data.example/recent.json",
-    "https://data.example/entries/one.json",
+    "https://data.example/browse/index.json",
+    "https://data.example/browse/2026.json",
+    "https://data.example/browse/2026-08-08/1.json",
+    "https://data.example/versions/PALOMAR-2026-08-08-000001.json",
+    "https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json",
+    "https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json",
   ]);
-  assert.deepEqual(validated, ["recent", "one:entries/one.json"]);
+  assert.deepEqual(validated, [
+    "recent",
+    "browse-head",
+    "year:2026",
+    "page:2026-08-08:1",
+    `versions:${first.id}`,
+    `one-v1:${first.path}`,
+    `one-v2:${second.path}`,
+  ]);
+  assert.match(state.reason, /all 2 active entry versions across 1 results/);
+});
+
+test("live-data health fails closed when a version index omits or rewrites browse history", async () => {
+  const id = "PALOMAR-2026-08-08-000001";
+  const browseRow = {
+    id,
+    version: 1,
+    title: "Browse title",
+    status: "accepted",
+    path: `entries/${id}-v1.json`,
+  };
+  const responses = new Map([
+    ["https://data.example/recent.json", { entries: [] }],
+    ["https://data.example/browse/index.json", {
+      results: 1,
+      versions: 1,
+      years: [{ year: "2026", days: 1, results: 1, versions: 1 }],
+    }],
+    ["https://data.example/browse/2026.json", {
+      year: "2026",
+      days: [{
+        day: "2026-08-08",
+        first_page: 1,
+        last_page: 1,
+        results: 1,
+        versions: 1,
+      }],
+    }],
+    ["https://data.example/browse/2026-08-08/1.json", { entries: [browseRow] }],
+    ["https://data.example/versions/PALOMAR-2026-08-08-000001.json", {
+      id,
+      entries: [{ ...browseRow, title: "Rewritten title" }],
+    }],
+  ]);
+  const identityValidators = {
+    validateRecent: (value) => value,
+    validateBrowseHead: (value) => value,
+    validateBrowseYear: (value) => value,
+    validateBrowsePage: (value) => value,
+    validateVersions: (value) => value,
+    validateEntry() { assert.fail("an unreconciled permalink must not be accepted"); },
+  };
+  const state = await publicDataState(
+    "https://data.example",
+    async (url) => ({ ok: true, async json() { return responses.get(String(url)); } }),
+    identityValidators,
+  );
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /version index .* does not equal its browse history/);
 });
 
 test("live-data health fails on the same contract error a visitor would see", async () => {
@@ -88,6 +274,136 @@ test("live-data health fails on the same contract error a visitor would see", as
 
   assert.equal(state.healthy, false);
   assert.match(state.reason, /entry\.review\.scores must be an object/);
+});
+
+test("live-data health retries a transient request and recovers", async () => {
+  const fixture = oneEntryRegistry();
+  let recentAttempts = 0;
+  const fetcher = async (url) => {
+    if (String(url).endsWith("/recent.json") && recentAttempts++ === 0) {
+      return { ok: false, status: 503 };
+    }
+    return responseFrom(fixture.responses)(url);
+  };
+  const state = await publicDataState(
+    "https://data.example",
+    fetcher,
+    registryValidators,
+    { attempts: 2, backoffMs: 0, timeoutMs: 100 },
+  );
+
+  assert.equal(state.healthy, true, state.reason);
+  assert.equal(recentAttempts, 2);
+});
+
+test("live-data health does not retry a permanent response", async () => {
+  let attempts = 0;
+  const state = await publicDataState(
+    "https://data.example",
+    async () => {
+      attempts += 1;
+      return { ok: false, status: 404 };
+    },
+    registryValidators,
+    { attempts: 3, backoffMs: 0, timeoutMs: 100 },
+  );
+
+  assert.equal(state.healthy, false);
+  assert.equal(attempts, 1);
+  assert.match(state.reason, /recent\.json responded 404/);
+});
+
+test("live-data health times out, aborts, and bounds every retry", async () => {
+  const signals = [];
+  const state = await publicDataState(
+    "https://data.example",
+    (_url, { signal }) => new Promise((_resolve, reject) => {
+      signals.push(signal);
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+    registryValidators,
+    { attempts: 2, backoffMs: 0, timeoutMs: 5 },
+  );
+
+  assert.equal(state.healthy, false);
+  assert.equal(signals.length, 2);
+  assert.ok(signals.every((signal) => signal.aborted));
+  assert.match(state.reason, /recent\.json timed out after 5ms/);
+});
+
+test("live-data health rejects day and global count mismatches", async () => {
+  const dayFixture = oneEntryRegistry();
+  dayFixture.year.days[0].versions = 2;
+  let state = await publicDataState(
+    "https://data.example",
+    responseFrom(dayFixture.responses),
+    registryValidators,
+  );
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /browse counts do not equal the rows served/);
+
+  const globalFixture = oneEntryRegistry();
+  globalFixture.head.versions = 2;
+  state = await publicDataState(
+    "https://data.example",
+    responseFrom(globalFixture.responses),
+    registryValidators,
+  );
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /index counts do not equal the complete page traversal/);
+});
+
+test("live-data health rejects duplicate permalinks before fetching histories", async () => {
+  const fixture = oneEntryRegistry();
+  const duplicate = {
+    ...fixture.row,
+    id: "PALOMAR-2026-08-08-000002",
+  };
+  fixture.page.entries.push(duplicate);
+  fixture.head.results = 2;
+  fixture.head.versions = 2;
+  fixture.year.days[0].results = 2;
+  fixture.year.days[0].versions = 2;
+  const state = await publicDataState(
+    "https://data.example",
+    responseFrom(fixture.responses),
+    registryValidators,
+  );
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /browse pages repeat an entry permalink/);
+});
+
+test("live-data health rejects a recent row absent from advertised history", async () => {
+  const fixture = oneEntryRegistry();
+  fixture.recent.id = "PALOMAR-2026-08-08-000002";
+  fixture.recent.path = "entries/PALOMAR-2026-08-08-000002-v1.json";
+  const state = await publicDataState(
+    "https://data.example",
+    responseFrom(fixture.responses),
+    registryValidators,
+  );
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /recent row .* does not equal its current version history/);
+});
+
+test("live-data health checks recent publication time against the already fetched entry", async () => {
+  const fixture = oneEntryRegistry();
+  fixture.recent.published_at = "2026-08-08T13:00:00Z";
+  let entryFetches = 0;
+  const state = await publicDataState(
+    "https://data.example",
+    async (url) => {
+      if (String(url) === `https://data.example/${fixture.row.path}`) entryFetches += 1;
+      return responseFrom(fixture.responses)(url);
+    },
+    registryValidators,
+  );
+
+  assert.equal(state.healthy, false);
+  assert.equal(entryFetches, 1);
+  assert.match(state.reason, /does not match its entry registered_at/);
 });
 
 test("every registry document the site links to is one the registry still serves", async () => {

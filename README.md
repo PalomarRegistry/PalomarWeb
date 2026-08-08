@@ -64,6 +64,13 @@ This is one exact closed producer/consumer contract, not an extensible summary:
 a shape change must be published by PalomarDatabase first and followed by the
 matching website deployment. The consumer deliberately has no old-row fallback
 or per-entry recovery path.
+The `browse/index.json`, `browse/<year>.json`, and
+`browse/<day>/<page>.json` hierarchy is another exact, closed contract owned by
+PalomarDatabase and consumed by Web. Its head declares years and aggregate
+counts, each year declares its days and page ranges, and each page carries exact
+entry-history rows. Changes to any of those three shapes are producer-first
+contract changes, even though these documents intentionally remain
+`schema_version: 1`.
 Landing and verified search cards render before the source-availability
 manifest; if it arrives, their existing source controls are decorated in place.
 A linked `?q=` search does not also load the hidden recent listing; clearing the
@@ -115,6 +122,30 @@ A record that arrives carrying review scores is refused rather than rendered.
 The scores are not published and are not in the record; a served record that had
 them would mean something upstream had gone wrong, and displaying it would be
 the worst moment to find out.
+
+The site accepts the sole current entry contract, `schema_version: 2`, and
+requires its source-preservation receipt. The unused pre-launch v1 draft has no
+browser fallback; an obsolete or malformed record fails closed.
+The deployed data already contains only v2 entries and preservation-backed
+recent projections. The pre-launch removal therefore deploys this Web cleanup
+first, so its workflows stop fetching `schema-v1.json`; Database can then stop
+publishing and serving that obsolete document without breaking Web deployment.
+That ordering is gated by a complete traversal of what the producer advertises:
+CI and Pages deployment walk the browse hierarchy, reconcile every advertised
+row with its per-result version index, and run the Web entry validator over each
+advertised active permalink before an artifact is uploaded. This catches drift
+between those public surfaces; it is not an independent proof that the producer
+omitted no row from all of them.
+The hourly published-site check repeats it. This is intentionally O(A) in
+active versions and is deployment/monitoring cost, not visitor page-load cost.
+It uses at most eight concurrent reads; each read gets at most three five-second
+attempts with short backoff. The hourly job has a fifteen-minute ceiling, and a
+new observation supersedes an older queued or stuck one.
+
+This cleanup does not renumber unrelated documents. `recent.json`, per-result
+version indexes, browse/search projections, and source availability remain
+their existing `schema_version: 1` protocols, as do independent render and
+evidence metadata formats. Only the accepted-entry contract is v2-only.
 
 The website is a presentation layer only. Public data and schemas live at the
 machine-readable data origin. A versioned ID

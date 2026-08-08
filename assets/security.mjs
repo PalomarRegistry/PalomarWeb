@@ -1,5 +1,6 @@
 export const VERSIONS_SCHEMA_VERSION = 1;
 export const RECENT_SCHEMA_VERSION = 1;
+export const BROWSE_SCHEMA_VERSION = 1;
 // A result with five hundred registered versions is a bug, not a history, and
 // this is the one read surface whose size is not bounded by anything else.
 const MAX_VERSIONS_PER_ID = 500;
@@ -7,8 +8,9 @@ const MAX_VERSIONS_PER_ID = 500;
 // document this replaced was the whole registry, and a reader that accepted an
 // unbounded one would let it come back without anything saying so.
 const RECENT_ITEMS = 200;
+const BROWSE_PAGE_SERIALS = 200;
+const BROWSE_MAX_PAGE = Math.ceil(999_999 / BROWSE_PAGE_SERIALS);
 export const ENTRY_SCHEMA_VERSION = 2;
-export const ENTRY_SCHEMA_VERSIONS = new Set([1, 2]);
 // The endpoint, not a document. There is no whole-registry document to name
 // any more: every surface is derived from this prefix by the function that
 // knows which one it wants.
@@ -74,6 +76,13 @@ function boundedString(value, field, maximum) {
 
 function integer(value, field) {
   if (!Number.isSafeInteger(value) || value < 1) fail(`${field} must be a positive integer`);
+  return value;
+}
+
+function nonnegativeInteger(value, field) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    fail(`${field} must be a non-negative integer`);
+  }
   return value;
 }
 
@@ -329,27 +338,25 @@ export function validateRecent(value) {
     commit(string(source.commit, `${field}.source.commit`), `${field}.source.commit`);
     if (source.project_path !== null) safeRepositoryPath(source.project_path, `${field}.source.project_path`);
 
-    if (summary.preservation !== null) {
-      const preservation = exactObject(
-        summary.preservation,
-        ["repositories"],
-        `${field}.preservation`,
-      );
-      const repositories = array(preservation.repositories, `${field}.preservation.repositories`);
-      if (repositories.length !== 1) fail(`${field}.preservation must contain one source mapping`);
-      const mapping = exactObject(repositories[0], [
-        "source_repository",
-        "commit",
-        "fork_repository",
-      ], `${field}.preservation.repositories[0]`);
-      if (typeof mapping.source_repository !== "string" ||
-          mapping.source_repository.toLowerCase() !== repository.toLowerCase() ||
-          mapping.commit !== source.commit ||
-          typeof mapping.fork_repository !== "string" ||
-          !REPOSITORY_RE.test(mapping.fork_repository) ||
-          !mapping.fork_repository.startsWith("PalomarArchive/")) {
-        fail(`${field}.preservation does not match source`);
-      }
+    const preservation = exactObject(
+      summary.preservation,
+      ["repositories"],
+      `${field}.preservation`,
+    );
+    const repositories = array(preservation.repositories, `${field}.preservation.repositories`);
+    if (repositories.length !== 1) fail(`${field}.preservation must contain one source mapping`);
+    const mapping = exactObject(repositories[0], [
+      "source_repository",
+      "commit",
+      "fork_repository",
+    ], `${field}.preservation.repositories[0]`);
+    if (typeof mapping.source_repository !== "string" ||
+        mapping.source_repository.toLowerCase() !== repository.toLowerCase() ||
+        mapping.commit !== source.commit ||
+        typeof mapping.fork_repository !== "string" ||
+        !REPOSITORY_RE.test(mapping.fork_repository) ||
+        !mapping.fork_repository.startsWith("PalomarArchive/")) {
+      fail(`${field}.preservation does not match source`);
     }
   }
   return document;
@@ -474,6 +481,22 @@ export function availabilityRecord(manifest, repository, revision, now = Date.no
   };
 }
 
+function validateEntrySummary(value, field) {
+  const summary = exactObject(
+    value,
+    ["id", "path", "status", "title", "version"],
+    field,
+  );
+  const id = string(summary.id, `${field}.id`);
+  if (!ID_RE.test(id)) fail(`${field}.id is malformed`);
+  const version = integer(summary.version, `${field}.version`);
+  boundedString(summary.title, `${field}.title`, 300);
+  if (summary.status !== "accepted") fail(`${field}.status is not accepted`);
+  const expectedPath = `entries/${id}-v${version}.json`;
+  if (summary.path !== expectedPath) fail(`${field}.path must be ${expectedPath}`);
+  return summary;
+}
+
 export function entryRecordUrl(summary, databaseBase) {
   object(summary, "entry summary");
   const id = string(summary.id, "entry summary id");
@@ -508,7 +531,7 @@ export function versionsUrl(id, databaseBase) {
  * result's name.
  */
 export function validateVersions(value, id) {
-  const document = object(value, "version index");
+  const document = exactObject(value, ["schema_version", "id", "entries"], "version index");
   if (document.schema_version !== VERSIONS_SCHEMA_VERSION) {
     fail(`unsupported version index schema_version ${String(document.schema_version)}`);
   }
@@ -518,19 +541,127 @@ export function validateVersions(value, id) {
   if (entries.length > MAX_VERSIONS_PER_ID) fail("version index is implausibly long");
   let previous = 0;
   for (const [position, row] of entries.entries()) {
-    const summary = object(row, `version index entries[${position}]`);
+    const field = `version index entries[${position}]`;
+    const summary = validateEntrySummary(row, field);
     if (summary.id !== id) fail(`version index entries[${position}] is a different result`);
-    const version = integer(summary.version, `version index entries[${position}].version`);
+    const version = summary.version;
     if (version <= previous) fail("version index is not in increasing version order");
     previous = version;
-    string(summary.title, `version index entries[${position}].title`);
-    if (summary.status !== "accepted") {
-      fail(`version index entries[${position}].status is not accepted`);
+  }
+  return document;
+}
+
+/** The bounded-by-years root of the complete public browse traversal. */
+export function validateBrowseHead(value) {
+  const document = exactObject(
+    value,
+    ["schema_version", "results", "versions", "years"],
+    "browse index",
+  );
+  if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
+    fail(`unsupported browse index schema_version ${String(document.schema_version)}`);
+  }
+  const results = nonnegativeInteger(document.results, "browse index results");
+  const versions = nonnegativeInteger(document.versions, "browse index versions");
+  if (results > versions) fail("browse index has more results than versions");
+  let previous = "";
+  let countedResults = 0;
+  let countedVersions = 0;
+  const years = array(document.years, "browse index years");
+  for (const [position, value] of years.entries()) {
+    const field = `browse index years[${position}]`;
+    const row = exactObject(value, ["days", "results", "versions", "year"], field);
+    const year = string(row.year, `${field}.year`);
+    if (!/^[0-9]{4}$/.test(year) || year <= previous) {
+      fail("browse index years are malformed or not in increasing order");
     }
-    const expectedPath = `entries/${id}-v${version}.json`;
-    if (summary.path !== expectedPath) {
-      fail(`version index entries[${position}].path must be ${expectedPath}`);
+    previous = year;
+    const days = integer(row.days, `${field}.days`);
+    if (days > 366) fail(`${field}.days exceeds one calendar year`);
+    const yearResults = nonnegativeInteger(row.results, `${field}.results`);
+    const yearVersions = nonnegativeInteger(row.versions, `${field}.versions`);
+    if (yearResults > yearVersions) fail(`${field} has more results than versions`);
+    countedResults += yearResults;
+    countedVersions += yearVersions;
+  }
+  if (countedResults !== results || countedVersions !== versions) {
+    fail("browse index counts do not equal its year rows");
+  }
+  return document;
+}
+
+/** Every day and page range belonging to one browse-index year row. */
+export function validateBrowseYear(value, expected) {
+  const document = exactObject(value, ["schema_version", "year", "days"], "browse year");
+  if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
+    fail(`unsupported browse year schema_version ${String(document.schema_version)}`);
+  }
+  if (document.year !== expected.year) fail("browse year is for a different year");
+  const days = array(document.days, "browse year days");
+  if (days.length !== expected.days) fail("browse year does not carry its declared number of days");
+  let previous = "";
+  let countedResults = 0;
+  let countedVersions = 0;
+  for (const [position, value] of days.entries()) {
+    const field = `browse year days[${position}]`;
+    const row = exactObject(
+      value,
+      ["day", "first_page", "last_page", "results", "versions"],
+      field,
+    );
+    const day = string(row.day, `${field}.day`);
+    const parsed = new Date(`${day}T00:00:00Z`);
+    if (!DATE_RE.test(day) || day.slice(0, 4) !== expected.year ||
+        Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day ||
+        day <= previous) {
+      fail("browse year days are malformed or not in increasing order");
     }
+    previous = day;
+    const first = integer(row.first_page, `${field}.first_page`);
+    const last = integer(row.last_page, `${field}.last_page`);
+    if (last < first) fail(`${field} has a reversed page range`);
+    if (last > BROWSE_MAX_PAGE) fail(`${field} exceeds the identifier page range`);
+    const dayResults = nonnegativeInteger(row.results, `${field}.results`);
+    const dayVersions = nonnegativeInteger(row.versions, `${field}.versions`);
+    if (dayResults > dayVersions) fail(`${field} has more results than versions`);
+    countedResults += dayResults;
+    countedVersions += dayVersions;
+  }
+  if (countedResults !== expected.results || countedVersions !== expected.versions) {
+    fail("browse year counts do not equal its index row");
+  }
+  return document;
+}
+
+/** Every active version whose identifier places it on one public browse page. */
+export function validateBrowsePage(value, day, page) {
+  const document = exactObject(
+    value,
+    ["schema_version", "day", "page", "entries"],
+    "browse page",
+  );
+  if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
+    fail(`unsupported browse page schema_version ${String(document.schema_version)}`);
+  }
+  if (document.day !== day || document.page !== page) {
+    fail("browse page identity does not match its URL");
+  }
+  let previousId = "";
+  let previousVersion = 0;
+  for (const [position, value] of array(document.entries, "browse page entries").entries()) {
+    const field = `browse page entries[${position}]`;
+    const summary = validateEntrySummary(value, field);
+    const match = ID_RE.exec(summary.id);
+    const expectedPage = Math.floor((Number(match[2]) - 1) / BROWSE_PAGE_SERIALS) + 1;
+    if (match[1] !== day || expectedPage !== page) {
+      fail(`${field} does not belong on this browse page`);
+    }
+    if (summary.id < previousId ||
+        (summary.id === previousId && summary.version <= previousVersion)) {
+      fail("browse page entries are not in increasing identity and version order");
+    }
+    previousId = summary.id;
+    previousVersion = summary.version;
   }
   return document;
 }
@@ -833,7 +964,7 @@ function validateCanonicalRecordLinks(entry) {
 export function validateEntry(entry, summary) {
   object(entry, "entry");
   object(summary, "entry summary");
-  if (!ENTRY_SCHEMA_VERSIONS.has(entry.schema_version)) {
+  if (entry.schema_version !== ENTRY_SCHEMA_VERSION) {
     fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
   }
   if (entry.status !== "accepted") fail("entry status is not accepted");
@@ -1054,58 +1185,56 @@ export function validateEntry(entry, summary) {
     }
   }
 
-  if (entry.schema_version >= 2 || entry.preservation !== undefined) {
-    const preservation = object(entry.preservation, "entry.preservation");
-    if (preservation.archive_owner !== "PalomarArchive") {
-      fail("entry.preservation.archive_owner is unsupported");
+  const preservation = object(entry.preservation, "entry.preservation");
+  if (preservation.archive_owner !== "PalomarArchive") {
+    fail("entry.preservation.archive_owner is unsupported");
+  }
+  if (!TIMESTAMP_RE.test(preservation.archived_at) ||
+      Number.isNaN(Date.parse(preservation.archived_at))) {
+    fail("entry.preservation.archived_at is malformed");
+  }
+  digest(preservation.receipt_sha256, "entry.preservation.receipt_sha256");
+  const expected = new Map();
+  const addExpected = (repository, revision) => {
+    expected.set(`${repository.toLowerCase()}\0${revision}`, [repository, revision]);
+  };
+  addExpected(source.repository, source.commit);
+  for (const dependency of formalization.project_dependencies) {
+    if (dependency.path === undefined) addExpected(dependency.repository, dependency.revision);
+  }
+  const substantive = entry.provenance.substantive_formalization;
+  if (substantive) addExpected(substantive.repository, substantive.commit);
+  const expectedRows = [...expected.values()].sort((left, right) => {
+    const leftKey = `${left[0].toLowerCase()}\0${left[1]}`;
+    const rightKey = `${right[0].toLowerCase()}\0${right[1]}`;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+  const actualRows = [];
+  const seen = new Set();
+  for (const [position, value] of array(
+    preservation.repositories,
+    "entry.preservation.repositories",
+  ).entries()) {
+    const row = object(value, `entry.preservation.repositories[${position}]`);
+    if (!REPOSITORY_RE.test(row.source_repository)) {
+      fail(`entry.preservation.repositories[${position}].source_repository is malformed`);
     }
-    if (!TIMESTAMP_RE.test(preservation.archived_at) ||
-        Number.isNaN(Date.parse(preservation.archived_at))) {
-      fail("entry.preservation.archived_at is malformed");
+    commit(row.commit, `entry.preservation.repositories[${position}].commit`);
+    if (!REPOSITORY_RE.test(row.fork_repository) ||
+        !row.fork_repository.startsWith("PalomarArchive/")) {
+      fail(`entry.preservation.repositories[${position}].fork_repository is malformed`);
     }
-    digest(preservation.receipt_sha256, "entry.preservation.receipt_sha256");
-    const expected = new Map();
-    const addExpected = (repository, revision) => {
-      expected.set(`${repository.toLowerCase()}\0${revision}`, [repository, revision]);
-    };
-    addExpected(source.repository, source.commit);
-    for (const dependency of formalization.project_dependencies) {
-      if (dependency.path === undefined) addExpected(dependency.repository, dependency.revision);
+    const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
+    if (seen.has(key)) fail(`entry.preservation.repositories[${position}] is duplicated`);
+    seen.add(key);
+    const expectedRef = `refs/tags/palomar/${entry.id}-v${entry.version}/${row.commit}`;
+    if (row.ref !== expectedRef) {
+      fail(`entry.preservation.repositories[${position}].ref is not canonical`);
     }
-    const substantive = entry.provenance.substantive_formalization;
-    if (substantive) addExpected(substantive.repository, substantive.commit);
-    const expectedRows = [...expected.values()].sort((left, right) => {
-      const leftKey = `${left[0].toLowerCase()}\0${left[1]}`;
-      const rightKey = `${right[0].toLowerCase()}\0${right[1]}`;
-      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-    });
-    const actualRows = [];
-    const seen = new Set();
-    for (const [position, value] of array(
-      preservation.repositories,
-      "entry.preservation.repositories",
-    ).entries()) {
-      const row = object(value, `entry.preservation.repositories[${position}]`);
-      if (!REPOSITORY_RE.test(row.source_repository)) {
-        fail(`entry.preservation.repositories[${position}].source_repository is malformed`);
-      }
-      commit(row.commit, `entry.preservation.repositories[${position}].commit`);
-      if (!REPOSITORY_RE.test(row.fork_repository) ||
-          !row.fork_repository.startsWith("PalomarArchive/")) {
-        fail(`entry.preservation.repositories[${position}].fork_repository is malformed`);
-      }
-      const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
-      if (seen.has(key)) fail(`entry.preservation.repositories[${position}] is duplicated`);
-      seen.add(key);
-      const expectedRef = `refs/tags/palomar/${entry.id}-v${entry.version}/${row.commit}`;
-      if (row.ref !== expectedRef) {
-        fail(`entry.preservation.repositories[${position}].ref is not canonical`);
-      }
-      actualRows.push([row.source_repository, row.commit]);
-    }
-    if (JSON.stringify(actualRows) !== JSON.stringify(expectedRows)) {
-      fail("entry.preservation.repositories does not exactly cover the source graph");
-    }
+    actualRows.push([row.source_repository, row.commit]);
+  }
+  if (JSON.stringify(actualRows) !== JSON.stringify(expectedRows)) {
+    fail("entry.preservation.repositories does not exactly cover the source graph");
   }
 
   const verification = object(entry.verification, "entry.verification");

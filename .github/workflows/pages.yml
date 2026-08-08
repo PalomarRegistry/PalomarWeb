@@ -32,9 +32,6 @@ jobs:
         run: |
           mkdir -p palomar-database/tests/fixtures
           curl --fail --silent --show-error --retry 3 \
-            "$PUBLIC_DATA_ORIGIN/schema-v1.json" \
-            --output palomar-database/schema-v1.json
-          curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/schema-v2.json" \
             --output palomar-database/schema-v2.json
           curl --fail --silent --show-error --retry 3 \
@@ -43,6 +40,18 @@ jobs:
           curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/source-availability.json" \
             --output palomar-database/tests/fixtures/source-availability.json
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/browse/index.json" \
+            --output tests/fixtures/public-browse/index.json
+          browse_year=$(jq -er '.years[-1].year' tests/fixtures/public-browse/index.json)
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/browse/$browse_year.json" \
+            --output tests/fixtures/public-browse/year.json
+          browse_day=$(jq -er '.days[-1].day' tests/fixtures/public-browse/year.json)
+          browse_page=$(jq -er '.days[-1].first_page' tests/fixtures/public-browse/year.json)
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/browse/$browse_day/$browse_page.json" \
+            --output tests/fixtures/public-browse/page.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.4.1"
@@ -51,6 +60,13 @@ jobs:
       - run: npm test
         env:
           PALOMAR_DATABASE_CHECKOUT: ${{ github.workspace }}/palomar-database
+      # A consumer-first schema deletion is safe only if every currently served
+      # version already satisfies the new consumer. Keep this before the Pages
+      # artifact is built or uploaded.
+      - name: Can Web read every currently published entry version
+        run: node scripts/check-published.mjs --data "$PUBLIC_DATA_ORIGIN"
+        env:
+          PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
       - name: Resolve previous deployment revision
         env:
           BEFORE: ${{ github.event.before }}

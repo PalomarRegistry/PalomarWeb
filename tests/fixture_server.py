@@ -183,21 +183,20 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
 def recent_row(record: dict, versions: int) -> dict:
     """Project exactly the landing-card contract emitted by PalomarDatabase."""
     source = record["source"]
-    preservation = record.get("preservation")
-    mapping = (
-        next(
-            (
-                item
-                for item in preservation["repositories"]
-                if item["source_repository"].casefold()
-                == source["repository"].casefold()
-                and item["commit"] == source["commit"]
-            ),
-            None,
-        )
-        if preservation
-        else None
+    mapping = next(
+        (
+            item
+            for item in record["preservation"]["repositories"]
+            if item["source_repository"].casefold() == source["repository"].casefold()
+            and item["commit"] == source["commit"]
+        ),
+        None,
     )
+    if mapping is None:
+        raise ValueError(
+            "browser fixture has no preservation mapping for "
+            f"{source['repository']}@{source['commit']}"
+        )
     return {
         "id": record["id"],
         "version": record["version"],
@@ -217,12 +216,14 @@ def recent_row(record: dict, versions: int) -> dict:
             "project_path": source.get("project_path"),
         },
         "preservation": {
-            "repositories": [{
-                "source_repository": mapping["source_repository"],
-                "commit": mapping["commit"],
-                "fork_repository": mapping["fork_repository"],
-            }]
-        } if mapping else None,
+            "repositories": [
+                {
+                    "source_repository": mapping["source_repository"],
+                    "commit": mapping["commit"],
+                    "fork_repository": mapping["fork_repository"],
+                }
+            ]
+        },
         "published_at": record["registered_at"],
         "versions": versions,
     }

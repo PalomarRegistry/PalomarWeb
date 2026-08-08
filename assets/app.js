@@ -290,15 +290,13 @@ function entryCard(
     ),
     internalLink("View record", localPageUrl("entry.html", entry)),
   );
-  if (location.archiveRepository) {
-    footer.append(
-      externalLink(
-        "Palomar preserved copy",
-        pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit),
-        "archive-link",
-      ),
-    );
-  }
+  footer.append(
+    externalLink(
+      "Palomar preserved copy",
+      pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit),
+      "archive-link",
+    ),
+  );
   if (versionCount > 1) {
     const historyLink = internalLink(
       `${versionCount} versions`,
@@ -1024,15 +1022,13 @@ function acceptanceCallout(entry, databaseBase) {
       evidenceDataUrl(entry, databaseBase, "review.json"),
     ),
   );
-  if (entry.preservation) {
-    evidenceLinks.append(
-      " · ",
-      dataLink(
-        "Source preservation receipt",
-        evidenceDataUrl(entry, databaseBase, "source-archive.json"),
-      ),
-    );
-  }
+  evidenceLinks.append(
+    " · ",
+    dataLink(
+      "Source preservation receipt",
+      evidenceDataUrl(entry, databaseBase, "source-archive.json"),
+    ),
+  );
   copy.append(
     el("strong", "", `Registered on ${displayDate(registrationDate(entry.registered_at))}`),
     assurance(
@@ -1085,21 +1081,6 @@ function sourceAvailabilityNotice(entry, availability) {
     location.commit,
     entry.source.project_path || ".",
   );
-  if (!location.archiveRepository) {
-    notice.classList.add("legacy");
-    notice.append(
-      el("strong", "", "Palomar has no preservation copy of this source"),
-      el(
-        "p",
-        "",
-        "This record was accepted before Palomar began archiving source repositories. " +
-          "The link goes to the original repository at the exact commit that was reviewed, " +
-          "but it may stop working if that repository is removed.",
-      ),
-      externalLink("Open the reviewed source", original),
-    );
-    return notice;
-  }
   const archived = pinnedRepositoryDirectoryUrl(
     location.archiveRepository,
     location.commit,
@@ -1366,7 +1347,7 @@ function solutionMetadata(entry, renderMetadata, availability) {
         ),
         el("code", "", dependency.revision.slice(0, 12)),
       );
-      if (!location.useArchive && location.archiveRepository) {
+      if (!location.useArchive) {
         item.append(
           " · ",
           externalLink(

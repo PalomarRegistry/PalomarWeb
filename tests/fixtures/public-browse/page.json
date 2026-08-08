@@ -1,0 +1,14 @@
+{
+  "day": "2026-08-08",
+  "entries": [
+    {
+      "id": "PALOMAR-2026-08-08-000001",
+      "path": "entries/PALOMAR-2026-08-08-000001-v1.json",
+      "status": "accepted",
+      "title": "kim-em/erdos-unit-distance-comparator",
+      "version": 1
+    }
+  ],
+  "page": 1,
+  "schema_version": 1
+}

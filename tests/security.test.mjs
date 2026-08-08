@@ -20,6 +20,7 @@ import {
 import {
   AVAILABILITY_MAX_AGE_MS,
   AVAILABILITY_MAX_CLOCK_SKEW_MS,
+  BROWSE_SCHEMA_VERSION,
   DEFAULT_DATABASE,
   DEFAULT_AVAILABILITY,
   ENTRY_SCHEMA_VERSION,
@@ -28,6 +29,8 @@ import {
   availabilityRecord,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
+  RECENT_SCHEMA_VERSION,
+  VERSIONS_SCHEMA_VERSION,
   entryRecordUrl,
   isLoopbackHostname,
   pinnedSourceDirectoryUrl,
@@ -42,6 +45,9 @@ import {
   tombstoneUrl,
   validateEntry,
   validateAvailability,
+  validateBrowseHead,
+  validateBrowsePage,
+  validateBrowseYear,
   validateRecent,
   validateTombstone,
   validateVersions,
@@ -203,11 +209,15 @@ test("recent is one exact complete projection, not a legacy summary shape", () =
     (page) => { page.entries[0].registered_at = page.entries[0].published_at; },
     (page) => { delete page.entries[0].source.project_path; },
     (page) => { page.entries[0].authors[0].github = "somebody"; },
+    (page) => { page.entries[0].preservation = null; },
     (page) => { page.entries[0].preservation.repositories = []; },
   ]) {
     const page = recent();
     mutate(page);
-    assert.throws(() => validateRecent(page), /invalid shape|must contain one source mapping/);
+    assert.throws(
+      () => validateRecent(page),
+      /invalid shape|preservation must be an object|must contain one source mapping/,
+    );
   }
 });
 
@@ -409,12 +419,6 @@ test("preservation must cover every immutable source", () => {
   const moving = entry();
   moving.preservation.repositories[0].ref = "refs/tags/latest";
   assert.throws(() => validateEntry(moving, summary()), /ref is not canonical/);
-});
-
-test("legacy schema v1 records remain readable without an archive mapping", () => {
-  const legacy = entry({ schema_version: 1 });
-  delete legacy.preservation;
-  assert.equal(validateEntry(legacy, summary()).schema_version, 1);
 });
 
 test("availability applies the inclusive freshness boundaries to each endpoint", () => {
@@ -620,7 +624,18 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 99 }), summary()), /unsupported entry/);
+  const unsupportedSchemas = [
+    entry({ schema_version: 1 }),
+    entry({ schema_version: 3 }),
+    entry({ schema_version: true }),
+    entry({ schema_version: "2" }),
+  ];
+  const missingSchema = entry();
+  delete missingSchema.schema_version;
+  unsupportedSchemas.push(missingSchema);
+  for (const record of unsupportedSchemas) {
+    assert.throws(() => validateEntry(record, summary()), /unsupported entry schema_version/);
+  }
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";
@@ -845,13 +860,39 @@ test("every provenance value the schema allows has an explicit label", async () 
   }
 });
 
-test("the site validates exactly the schema version the database publishes", async () => {
+test("the site requires the Database entry version and exact preservation shape", async () => {
   const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
     ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
   const schema = JSON.parse(
     await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
+  assert.ok(schema.required.includes("preservation"));
+  const preservation = schema.properties.preservation;
+  assert.equal(preservation.type, "object");
+  assert.equal(preservation.additionalProperties, false);
+  assert.deepEqual(
+    [...preservation.required].sort(),
+    ["archive_owner", "archived_at", "receipt_sha256", "repositories"].sort(),
+  );
+  assert.deepEqual(
+    Object.keys(preservation.properties).sort(),
+    ["archive_owner", "archived_at", "receipt_sha256", "repositories"].sort(),
+  );
+  assert.equal(preservation.properties.archive_owner.const, "PalomarArchive");
+  const repositories = preservation.properties.repositories;
+  assert.equal(repositories.type, "array");
+  assert.equal(repositories.minItems, 1);
+  assert.equal(repositories.items.type, "object");
+  assert.equal(repositories.items.additionalProperties, false);
+  assert.deepEqual(
+    [...repositories.items.required].sort(),
+    ["source_repository", "commit", "fork_repository", "ref"].sort(),
+  );
+  assert.deepEqual(
+    Object.keys(repositories.items.properties).sort(),
+    ["source_repository", "commit", "fork_repository", "ref"].sort(),
+  );
 });
 
 test("the favicon ships with the site and every page asks for it", async () => {
@@ -907,6 +948,69 @@ test("a version index URL cannot leave the database origin", () => {
     "https://data.example.org/versions/PALOMAR-2026-07-29-000123.json");
   assert.throws(() => versionsUrl("../../etc/passwd", base), /malformed/);
   assert.throws(() => versionsUrl("PALOMAR-2026-07-29-00012", base), /malformed/);
+});
+
+test("browse enumerates every schema-v1 history row without becoming an entry schema", () => {
+  assert.equal(RECENT_SCHEMA_VERSION, 1);
+  assert.equal(VERSIONS_SCHEMA_VERSION, 1);
+  assert.equal(BROWSE_SCHEMA_VERSION, 1);
+  const row = {
+    id: "PALOMAR-2026-07-29-000123",
+    version: 1,
+    title: "A result",
+    status: "accepted",
+    path: "entries/PALOMAR-2026-07-29-000123-v1.json",
+  };
+  const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
+  const head = { schema_version: 1, results: 1, versions: 1, years: [yearRow] };
+  const dayRow = {
+    day: "2026-07-29",
+    first_page: 1,
+    last_page: 1,
+    results: 1,
+    versions: 1,
+  };
+  const year = { schema_version: 1, year: "2026", days: [dayRow] };
+  const page = { schema_version: 1, day: dayRow.day, page: 1, entries: [row] };
+  assert.equal(validateBrowseHead(head), head);
+  assert.equal(validateBrowseYear(year, yearRow), year);
+  assert.equal(validateBrowsePage(page, dayRow.day, 1), page);
+
+  assert.throws(
+    () => validateBrowseHead({ ...head, versions: 2 }),
+    /counts do not equal/,
+  );
+  assert.throws(
+    () => validateBrowseYear({ ...year, year: "2027" }, yearRow),
+    /different year/,
+  );
+  assert.throws(
+    () => validateBrowsePage({ ...page, page: 2 }, dayRow.day, 1),
+    /identity does not match/,
+  );
+  assert.throws(
+    () => validateBrowsePage({ ...page, schema_version: 2 }, dayRow.day, 1),
+    /schema_version/,
+  );
+});
+
+test("the producer-supplied browse head, year, and page keep Web's exact contract", async () => {
+  // CI overwrites these checked snapshots from the live producer before this
+  // test. Keeping the three levels legible here makes an exactObject failure
+  // name the producer/consumer surface that drifted, rather than leaving that
+  // shape implicit inside the complete public traversal.
+  const fixture = (name) => new URL(`fixtures/public-browse/${name}.json`, import.meta.url);
+  const head = JSON.parse(await readFile(fixture("index"), "utf8"));
+  const expectedYear = head.years.at(-1);
+  assert.ok(expectedYear, "the producer browse head has no year to exercise");
+  const year = JSON.parse(await readFile(fixture("year"), "utf8"));
+  const expectedDay = year.days.at(-1);
+  assert.ok(expectedDay, "the producer browse year has no day to exercise");
+  const page = JSON.parse(await readFile(fixture("page"), "utf8"));
+
+  assert.equal(validateBrowseHead(head), head);
+  assert.equal(validateBrowseYear(year, expectedYear), year);
+  assert.equal(validateBrowsePage(page, expectedDay.day, expectedDay.first_page), page);
 });
 
 const SEARCH_BASE = "https://data.example.test/";
