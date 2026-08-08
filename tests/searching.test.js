@@ -126,6 +126,165 @@ test("one overall deadline bounds every search stage, including an abort-ignorin
   assert.deepEqual(result.problems.map((problem) => problem.stage), ["page"]);
 });
 
+test("a caller can abort the shared search deadline without reporting a timeout", async () => {
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/t/alpha/head.json") return head("alpha", 1, 1);
+    if (path === "/search/t/alpha/0.json") return new Promise(() => {});
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, { concurrency: 2, timeoutMs: 1_000 });
+  const controller = new AbortController();
+
+  const before = Date.now();
+  const pending = search("alpha", BASE, { signal: controller.signal });
+  setTimeout(() => controller.abort(new Error("query superseded")), 20);
+  const result = await pending;
+
+  assert.ok(Date.now() - before < 500, "caller abort did not settle the search promptly");
+  assert.equal(result.timedOut, false);
+  assert.equal(result.whole, false);
+  assert.deepEqual(result.problems.map((problem) => problem.stage), ["page"]);
+});
+
+test("one failed head degrades but does not discard exact results from a healthy driver", async () => {
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/t/alpha/head.json") throw new Error("head unavailable");
+    if (path === "/search/t/beta/head.json") return head("beta", 1, 1);
+    if (path === "/search/t/beta/0.json") return page("beta", 0, [posting(1)]);
+    if (path.startsWith("/entries/")) return identifiedEntry(1);
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, { concurrency: 2, timeoutMs: 1_000 });
+
+  const result = await search("alpha beta", BASE);
+
+  assert.deepEqual(result.entries.map((entry) => entry.id), [
+    "PALOMAR-2026-07-29-000001",
+  ]);
+  assert.deepEqual(result.problems.map((problem) => problem.stage), ["head"]);
+  assert.equal(result.whole, false);
+});
+
+test("a non-404 stopword failure is reported and retried by the next search", async () => {
+  let stopwordRequests = 0;
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") {
+      stopwordRequests += 1;
+      if (stopwordRequests === 1) {
+        const error = new Error("stopwords unavailable");
+        error.status = 503;
+        throw error;
+      }
+      return { schema_version: 1, stopwords: [] };
+    }
+    if (path === "/search/t/alpha/head.json") return head("alpha", 1, 1);
+    if (path === "/search/t/alpha/0.json") return page("alpha", 0, [posting(1)]);
+    if (path.startsWith("/entries/")) return identifiedEntry(1);
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, { concurrency: 2, timeoutMs: 1_000 });
+
+  const first = await search("alpha", BASE);
+  const second = await search("alpha", BASE);
+
+  assert.deepEqual(first.problems.map((problem) => problem.stage), ["stopwords"]);
+  assert.deepEqual(second.problems, []);
+  assert.equal(stopwordRequests, 2);
+});
+
+test("a secondary term that cannot fit the remaining page budget is not partly requested", async () => {
+  const requestedPages = [];
+  const postings = [posting(1), posting(2)];
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/t/alpha/head.json") return head("alpha", 2, 1);
+    if (path === "/search/t/beta/head.json") return head("beta", 2, 1);
+    const match = path.match(/^\/search\/t\/(alpha|beta)\/([0-9]+)\.json$/);
+    if (match) {
+      requestedPages.push(`${match[1]}/${match[2]}`);
+      const number = Number(match[2]);
+      return page(match[1], number, [postings[number]]);
+    }
+    if (path.startsWith("/entries/")) {
+      const serial = Number(path.match(/-([0-9]{6})-v1\.json$/)[1]);
+      return identifiedEntry(serial);
+    }
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, {
+    concurrency: 3,
+    timeoutMs: 1_000,
+    pageBudget: 3,
+  });
+
+  const result = await search("alpha beta", BASE);
+
+  assert.deepEqual(requestedPages, ["alpha/1", "alpha/0"]);
+  assert.equal(result.entries.length, 2);
+  assert.equal(result.whole, true);
+});
+
+test("matching versions of one result collapse to its newest matching version", async () => {
+  const id = "PALOMAR-2026-07-29-000001";
+  const requestedRecords = [];
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/t/alpha/head.json") return head("alpha", 2, 2);
+    if (path === "/search/t/alpha/0.json") {
+      // Publisher order is lexical, so the consumer must compare versions as
+      // integers rather than assuming the reversed posting sequence is enough.
+      return page("alpha", 0, [`${id}-v10`, `${id}-v9`]);
+    }
+    if (path.startsWith("/entries/")) {
+      requestedRecords.push(path);
+      return identifiedEntry(1, { version: Number(path.match(/-v([0-9]+)\.json$/)[1]) });
+    }
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, { concurrency: 2, timeoutMs: 1_000 });
+
+  const result = await search("alpha", BASE);
+
+  assert.deepEqual(requestedRecords, [`/entries/${id}-v10.json`]);
+  assert.deepEqual(result.entries.map((entry) => [entry.id, entry.version]), [[id, 10]]);
+  assert.equal(result.whole, true);
+});
+
+test("a complete postings sequence remains incomplete when the candidate cap truncates it", async () => {
+  const postings = [posting(1), posting(2), posting(3)];
+  let recordRequests = 0;
+  const fetchJson = async (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/t/alpha/head.json") return head("alpha", 3, 3);
+    if (path === "/search/t/alpha/0.json") return page("alpha", 0, postings);
+    if (path.startsWith("/entries/")) {
+      recordRequests += 1;
+      const serial = Number(path.match(/-([0-9]{6})-v1\.json$/)[1]);
+      return identifiedEntry(serial, { title: "Gamma", abstract: "Delta" });
+    }
+    throw new Error(`unexpected request ${path}`);
+  };
+  const search = createRegistrySearch(fetchJson, {
+    concurrency: 2,
+    timeoutMs: 1_000,
+    candidateLimit: 2,
+  });
+
+  const result = await search("alpha", BASE);
+
+  assert.equal(recordRequests, 2);
+  assert.equal(result.entries.length, 0);
+  assert.equal(result.whole, false);
+});
+
 test("page, candidate, and concurrency limits remain hard bounds", async () => {
   const postings = Array.from({ length: 100 }, (_unused, index) => posting(index + 1));
   let active = 0;
@@ -177,7 +336,7 @@ test("page, candidate, and concurrency limits remain hard bounds", async () => {
   assert.equal(result.whole, false);
 });
 
-test("record waves stop after the result limit instead of eagerly loading every candidate", async () => {
+test("the record window stops with at most concurrency minus one speculative requests", async () => {
   const postings = Array.from({ length: 100 }, (_unused, index) => posting(index + 1));
   let recordRequests = 0;
   const fetchJson = async (url) => {
@@ -201,7 +360,7 @@ test("record waves stop after the result limit instead of eagerly loading every 
 
   const result = await search("alpha", BASE);
 
-  assert.equal(recordRequests, 24, "more than the final partial wave was fetched");
+  assert.equal(recordRequests, 27, "more than seven speculative records were fetched");
   assert.equal(result.entries.length, 20);
   assert.equal(result.entries[0].id, "PALOMAR-2026-07-29-000100");
   assert.equal(result.entries.at(-1).id, "PALOMAR-2026-07-29-000081");

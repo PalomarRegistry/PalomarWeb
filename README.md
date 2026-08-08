@@ -28,10 +28,16 @@ on the page rather than searching everything; the search box does the latter,
 a word at a time, over titles, abstracts and author names.
 Search heads, posting pages and records load with bounded concurrency under one
 30-second deadline. A failed page or record leaves already validated results
-visible with an incomplete-search warning. Posting rows currently carry only a
-versioned identifier, so search cards do not call that version current or show
-a version-history count they cannot verify; landing cards get both facts from
-`recent.json`.
+visible with an incomplete-search warning. The record loader advances as a
+bounded sliding window, keeps publisher order however requests finish, and
+stops at the result limit with at most seven speculative record reads. Multiple
+matching versions of one Palomar ID collapse to the newest matching version in
+the bounded candidate set, so a result is not repeated. A posting still says
+neither that a version is current nor how many active versions exist, so search
+cards make neither claim; landing cards get both facts from `recent.json`.
+Verified search cards render before the source-availability manifest and are
+decorated if it arrives. A linked `?q=` search does not also load the hidden
+recent listing; clearing the search starts that landing load once.
 
 Local preview:
 

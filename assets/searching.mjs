@@ -41,6 +41,32 @@ function postingSummary(posting, entry) {
   };
 }
 
+/** Group postings by result under one record-read budget, newest version first. */
+function candidateGroups(postings, limit) {
+  const groups = new Map();
+  for (const [position, posting] of postings.entries()) {
+    const match = POSTING_RE.exec(posting);
+    const id = match[1];
+    const version = Number(match[2]);
+    if (!groups.has(id)) groups.set(id, { id, position, postings: new Map() });
+    groups.get(id).postings.set(version, posting);
+  }
+  const available = [...groups.values()]
+    .reduce((count, group) => count + group.postings.size, 0);
+  const selected = [];
+  let remaining = limit;
+  for (const group of [...groups.values()].sort((left, right) => left.position - right.position)) {
+    if (!remaining) break;
+    const candidates = [...group.postings.entries()]
+      .sort(([left], [right]) => right - left)
+      .slice(0, remaining)
+      .map(([, posting]) => posting);
+    selected.push({ ...group, postings: candidates });
+    remaining -= candidates.length;
+  }
+  return { groups: selected, complete: available <= limit };
+}
+
 /** Whether a record really carries every word of the query. */
 function carriesEveryTerm(entry, terms) {
   const words = new Set([
@@ -57,7 +83,8 @@ function carriesEveryTerm(entry, terms) {
  * Heads, posting pages and records each load concurrently through the same
  * bounded loader used by the landing page. Every stage shares one deadline,
  * so a sequence of slow stages cannot each claim a fresh timeout. Fulfilled
- * values retain publisher order even when requests complete out of order.
+ * values retain publisher order even when requests complete out of order. A
+ * caller signal joins that deadline so a new UI query can stop the old one.
  */
 export function createRegistrySearch(
   fetchJson,
@@ -84,13 +111,19 @@ export function createRegistrySearch(
   // cached, so a later query can recover without reloading the page.
   const stopwordsByBase = new Map();
 
-  return async function searchRegistry(query, databaseBase) {
+  return async function searchRegistry(query, databaseBase, { signal = null } = {}) {
+    if (signal !== null && !(signal instanceof AbortSignal)) {
+      throw new TypeError("signal must be an AbortSignal");
+    }
     const asked = [...new Set(searchTerms(query))];
     const problems = [];
     const deadlineController = new AbortController();
     const deadlineError = new Error(`search deadline of ${timeoutMs}ms expired`);
     deadlineError.name = "TimeoutError";
     const timer = setTimeout(() => deadlineController.abort(deadlineError), timeoutMs);
+    const abortFromCaller = () => deadlineController.abort(signal.reason);
+    if (signal?.aborted) abortFromCaller();
+    else signal?.addEventListener("abort", abortFromCaller, { once: true });
     const baseKey = new URL(databaseBase).href;
     const settle = (items, load) => loadSettledBounded(items, load, {
       concurrency,
@@ -99,7 +132,6 @@ export function createRegistrySearch(
     });
     const note = (stage, item, reason) => problems.push({ stage, item, reason });
     const result = (fields) => ({
-      asked,
       problems,
       timedOut: deadlineController.signal.reason === deadlineError,
       ...fields,
@@ -228,33 +260,55 @@ export function createRegistrySearch(
         return result({ terms, dropped, entries: [], whole: false, examined: 0, missing });
       }
 
-      const candidates = postings.slice(0, candidateLimit);
+      // Group the bounded page data before applying the record-read cap. That
+      // finds the numerically newest candidate even when v10 does not sort
+      // after v9 lexically, while the sum of every group's fallbacks remains
+      // capped at `candidateLimit`.
+      const candidatePlan = candidateGroups(postings, candidateLimit);
+      const candidates = candidatePlan.groups;
       const entries = [];
       let examined = 0;
-      // Load one concurrency-sized wave at a time. This keeps several records
-      // in flight without eagerly fetching all sixty when the first twenty are
-      // already results. A wave settles in input order, so the output remains
-      // deterministic however its requests complete.
-      for (
-        let first = 0;
-        first < candidates.length && entries.length < resultLimit;
-        first += concurrency
-      ) {
-        const batch = candidates.slice(first, first + concurrency);
-        const loadedBatch = await settle(batch, async (posting, signal) => {
-          const record = await fetchJson(postingRecordUrl(posting, databaseBase), { signal });
-          return validateEntry(record, postingSummary(posting, record));
-        });
-        for (const [position, loaded] of loadedBatch.entries()) {
-          if (entries.length >= resultLimit) break;
-          examined += 1;
-          if (loaded.status === "rejected") {
-            note("record", batch[position], loaded.reason);
-          } else if (carriesEveryTerm(loaded.value, terms)) {
-            entries.push(loaded.value);
+      let next = 0;
+      let position = 0;
+      const pending = new Map();
+      const start = (index) => {
+        const group = candidates[index];
+        pending.set(index, settle([group], async (selected, loadSignal) => {
+          // Usually only the newest candidate is read. An older version is a
+          // fallback only when the newer valid record does not carry every
+          // term that could not safely be intersected from complete postings.
+          for (const posting of selected.postings) {
+            const record = await fetchJson(postingRecordUrl(posting, databaseBase), {
+              signal: loadSignal,
+            });
+            examined += 1;
+            const entry = validateEntry(record, postingSummary(posting, record));
+            if (carriesEveryTerm(entry, terms)) return entry;
           }
+          return null;
+        }).then(([loaded]) => loaded));
+        next += 1;
+      };
+      while (next < Math.min(concurrency, candidates.length)) start(next);
+      while (position < candidates.length && entries.length < resultLimit) {
+        const loaded = await pending.get(position);
+        pending.delete(position);
+        if (loaded.status === "rejected") {
+          note("record", candidates[position].postings[0], loaded.reason);
+        } else if (loaded.value) {
+          entries.push(loaded.value);
+        }
+        position += 1;
+        // Keep at most `concurrency - 1` speculative groups ahead of the
+        // deterministic output cursor. Unlike fixed waves, one settled prefix
+        // position immediately admits the next candidate.
+        if (entries.length < resultLimit) {
+          while (next < candidates.length && next < position + concurrency) start(next);
         }
         if (deadlineController.signal.aborted) break;
+      }
+      if (entries.length === resultLimit && pending.size) {
+        deadlineController.abort(new Error("search result limit satisfied"));
       }
 
       return result({
@@ -262,11 +316,13 @@ export function createRegistrySearch(
         dropped,
         entries,
         missing,
-        whole: driverWhole && examined === postings.length && !problems.length,
+        whole: driverWhole && candidatePlan.complete &&
+          position === candidates.length && !problems.length,
         examined,
       });
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", abortFromCaller);
     }
   };
 }

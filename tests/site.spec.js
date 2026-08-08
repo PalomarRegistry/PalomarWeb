@@ -877,11 +877,10 @@ test("search cards retain posting order when posting pages finish out of order",
 
   await page.goto(`/?database=${database}&q=quasicoherent`);
 
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(3);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
   await expect(page.locator("#search-results .entry-id")).toHaveText([
     "PALOMAR-2026-07-29-000124 v1",
     "PALOMAR-2026-07-29-000123 v2",
-    "PALOMAR-2026-07-29-000123 v1",
   ]);
 });
 
@@ -892,33 +891,105 @@ test("a failed posting page leaves validated search cards and reports degradatio
 
   await page.goto(`/?database=${database}&q=quasicoherent`);
 
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-id")).toHaveText([
     "PALOMAR-2026-07-29-000123 v2",
-    "PALOMAR-2026-07-29-000123 v1",
   ]);
   await expect(page.locator("#search-status")).toContainText(
-    "Showing 2 verified results. The search is incomplete because 1 data request failed.",
+    "Showing 1 verified result. The search is incomplete because 1 data request failed.",
   );
   await expect(page.locator("#search-status")).toHaveClass(/warning/);
 });
 
-test("search cards use real availability without inventing version metadata", async ({ page }) => {
+test("search cards render before availability and retry a failed decoration", async ({ page }) => {
+  let availabilityRequests = 0;
+  let releaseFirst;
+  let noteFirstRequest;
+  const firstRequest = new Promise((resolve) => { noteFirstRequest = resolve; });
+  const firstFailureLogged = page.waitForEvent("console", {
+    predicate: (message) => message.text().includes("Source availability is unavailable"),
+  });
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    availabilityRequests += 1;
+    if (availabilityRequests === 1) {
+      noteFirstRequest();
+      await new Promise((resolve) => { releaseFirst = resolve; });
+      await route.fulfill({ status: 503, body: "temporarily unavailable" });
+      return;
+    }
+    await route.continue();
+  });
+
   await page.goto(
     `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
   );
 
   const card = page.locator("#search-results .entry-card");
   await expect(card).toHaveCount(1);
+  await firstRequest;
+  // The decorative manifest is still blocked, but the verified record is not.
+  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
   await expect(card.locator(".entry-id")).toHaveText("PALOMAR-2026-07-29-000124 v1");
+  releaseFirst();
+  await firstFailureLogged;
+
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect.poll(() => availabilityRequests).toBe(2);
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
   await expect(card.locator(".version-history-link")).toHaveCount(0);
 });
 
+test("a superseded slow search cannot repaint a newer query", async ({ page }) => {
+  let slowHeadRequests = 0;
+  await page.route("**/database/search/t/quasicoherent/head.json", async (route) => {
+    slowHeadRequests += 1;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue().catch(() => {});
+  });
+  await page.goto(`/?database=${database}`);
+
+  await page.locator("#query").fill("quasicoherent");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect.poll(() => slowHeadRequests).toBe(1);
+  await page.locator("#query").fill("synthetically");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.locator("#search-results .entry-id")).toHaveText(
+    "PALOMAR-2026-07-29-000124 v1",
+  );
+  await page.waitForTimeout(300);
+  await expect(page.locator("#search-results .entry-id")).toHaveText(
+    "PALOMAR-2026-07-29-000124 v1",
+  );
+  await expect(page).toHaveURL(/q=synthetically/);
+});
+
+test("a linked search defers the landing pipeline until it is cleared", async ({ page }) => {
+  let recentRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/database/recent.json") recentRequests += 1;
+  });
+
+  await page.goto(`/?database=${database}&q=synthetically`);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  expect(recentRequests).toBe(0);
+  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
+
+  await page.locator("#query").fill("");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+  expect(recentRequests).toBe(1);
+
+  await page.getByRole("button", { name: "Search" }).click();
+  await page.waitForTimeout(50);
+  expect(recentRequests).toBe(1);
+});
+
 test("a search runs from a link, and says so when nothing carries the words", async ({ page }) => {
   await page.goto(`/?database=${database}&q=quasicoherent`);
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(3);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
 
   await page.locator("#query").fill("quasicoherent unobtainium");
   await page.getByRole("button", { name: "Search" }).click();

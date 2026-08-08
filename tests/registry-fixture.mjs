@@ -151,18 +151,21 @@ export function entry(overrides = {}) {
 /** A complete valid record with a different identity, for ordered-list tests. */
 export function identifiedEntry(serial, overrides = {}) {
   const id = `PALOMAR-2026-07-29-${String(serial).padStart(6, "0")}`;
-  const value = entry({
+  const version = overrides.version ?? 1;
+  const values = {
     id,
     title: `Search fixture ${serial}`,
     abstract: "Alpha beta searchable fixture.",
     ...overrides,
-  });
+  };
+  const value = version === 1 ? entry(values) : secondVersion(values);
   value.submission.submission_id = String(serial).padStart(12, "0");
-  value.verification.evidence_path = `evidence/${id}-v1/${value.verification.evidence_tree_sha256}/`;
+  value.verification.evidence_path =
+    `evidence/${id}-v${version}/${value.verification.evidence_tree_sha256}/`;
   value.challenge_render.artifact_path =
-    `renders/${id}-v1/${value.challenge_render.artifact_tree_sha256}/`;
+    `renders/${id}-v${version}/${value.challenge_render.artifact_tree_sha256}/`;
   for (const repository of value.preservation.repositories) {
-    repository.ref = `refs/tags/palomar/${id}-v1/${repository.commit}`;
+    repository.ref = `refs/tags/palomar/${id}-v${version}/${repository.commit}`;
   }
   return value;
 }

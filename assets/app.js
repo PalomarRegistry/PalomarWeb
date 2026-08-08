@@ -109,21 +109,23 @@ async function loadAvailability(url, { signal } = {}) {
   }
 }
 
-// The landing and search controllers run independently, but they need the same
-// manifest. Share one bounded read rather than doubling a large request when a
-// reader arrives at a search URL.
+// The landing and search controllers can need the same manifest. Share a
+// successful bounded read, but never make one temporary failure or timeout the
+// page's answer for the rest of its lifetime.
 const availabilityLoads = new Map();
 function loadAvailabilityBounded(url) {
   const key = url.href;
   if (!availabilityLoads.has(key)) {
-    availabilityLoads.set(
-      key,
-      loadSettledBounded(
-        [url],
-        (selected, signal) => loadAvailability(selected, { signal }),
-        { concurrency: 1, timeoutMs: AVAILABILITY_TIMEOUT_MS },
-      ).then(([loaded]) => loaded.status === "fulfilled" ? loaded.value : null),
-    );
+    const loading = loadSettledBounded(
+      [url],
+      (selected, signal) => loadAvailability(selected, { signal }),
+      { concurrency: 1, timeoutMs: AVAILABILITY_TIMEOUT_MS },
+    ).then(([loaded]) => {
+      const availability = loaded.status === "fulfilled" ? loaded.value : null;
+      if (availability === null) availabilityLoads.delete(key);
+      return availability;
+    });
+    availabilityLoads.set(key, loading);
   }
   return availabilityLoads.get(key);
 }
@@ -549,6 +551,12 @@ async function renderIndex() {
   }
 }
 
+let landingLoad = null;
+function ensureLanding() {
+  if (!landingLoad) landingLoad = renderIndex();
+  return landingLoad;
+}
+
 function searchPageUrlFor(query) {
   const target = new URL("index.html", window.location.href);
   target.search = "";
@@ -559,35 +567,54 @@ function searchPageUrlFor(query) {
   return safeInternalUrl(target, window.location.href);
 }
 
+let searchGeneration = 0;
+let activeSearchController = null;
+
+function renderSearchCards(results, entries, availability = null) {
+  results.replaceChildren(...entries.map((entry) => entryCard(entry, { availability })));
+}
+
 async function renderSearch(query) {
+  const generation = searchGeneration + 1;
+  searchGeneration = generation;
+  activeSearchController?.abort(new Error("superseded registry search"));
+  activeSearchController = null;
   const status = document.querySelector("#search-status");
   const results = document.querySelector("#search-results");
-  const grid = document.querySelector("#entry-grid");
-  const toolbar = document.querySelector(".toolbar");
   if (!status || !results) return;
   results.replaceChildren();
   status.className = "status";
   const searching = Boolean(searchTerms(query).length);
-  if (grid) grid.hidden = searching;
-  if (toolbar) toolbar.hidden = searching;
+  document.body.classList.toggle("registry-searching", searching);
   if (!searching) {
     status.hidden = true;
+    ensureLanding();
     return;
   }
+  const controller = new AbortController();
+  activeSearchController = controller;
   status.hidden = false;
   status.textContent = "Searching the registry…";
   try {
     const { databaseBase, availabilityUrl } = dataSource();
-    const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
-    const found = await searchRegistry(query, databaseBase);
-    const availability = await availabilityPromise;
+    const found = await searchRegistry(query, databaseBase, { signal: controller.signal });
+    if (generation !== searchGeneration) return;
     for (const problem of found.problems) {
       console.warn(
         `Search ${problem.stage} ${problem.item} could not be loaded: ` +
           `${problem.reason?.message || String(problem.reason)}`,
       );
     }
-    for (const entry of found.entries) results.append(entryCard(entry, { availability }));
+    // Availability changes only where a source link points. It must never hold
+    // verified registry results behind its own long timeout.
+    renderSearchCards(results, found.entries);
+    if (found.entries.length) {
+      void loadAvailabilityBounded(availabilityUrl).then((availability) => {
+        if (availability !== null && generation === searchGeneration) {
+          renderSearchCards(results, found.entries, availability);
+        }
+      });
+    }
     if (!found.terms.length) {
       // Every word of the query is one the indexer drops, so there is nothing
       // to ask for. Saying which words those were is the difference between an
@@ -623,15 +650,18 @@ async function renderSearch(query) {
       : `Showing the newest ${found.entries.length} results; narrow the search for older ones.`;
     status.classList.toggle("warning", Boolean(degraded));
   } catch (error) {
+    if (generation !== searchGeneration) return;
     status.textContent = `The search could not be run: ${error.message}`;
     status.classList.add("error");
+  } finally {
+    if (generation === searchGeneration) activeSearchController = null;
   }
 }
 
 function wireSearch() {
   const form = document.querySelector("#registry-search");
   const input = document.querySelector("#query");
-  if (!form || !input) return;
+  if (!form || !input) return false;
   const initial = params.get("q") || "";
   input.value = initial;
   form.addEventListener("submit", (event) => {
@@ -643,6 +673,7 @@ function wireSearch() {
     renderSearch(query);
   });
   if (initial) renderSearch(initial);
+  return Boolean(searchTerms(initial).length);
 }
 
 function detailRow(label, value) {
@@ -1752,10 +1783,10 @@ async function renderChallengePage() {
 }
 
 if (document.body.dataset.page === "index") {
-  // Wired first and run independently of the listing, so that arriving at a
-  // search link does not wait for every record on the landing page to load.
-  wireSearch();
-  renderIndex();
+  // A linked search is its own view. Avoid fetching and exposing a hidden
+  // recent listing until the query is cleared; then load it exactly once.
+  const hasInitialSearch = wireSearch();
+  if (!hasInitialSearch) ensureLanding();
 }
 if (document.body.dataset.page === "entry") renderEntryPage();
 if (document.body.dataset.page === "render") renderChallengePage();
