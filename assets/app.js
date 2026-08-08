@@ -1,27 +1,15 @@
 import {
-  databaseBaseFor,
   RESULT_ORIGIN_LABELS,
   REPOSITORY_ROLE_LABELS,
-  entryRecordUrl,
   isLoopbackHostname,
   pinnedRepositoryDirectoryUrl,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
-  selectDatabaseUrl,
-  selectAvailabilityUrl,
   recentUrl,
-  selectRenderBase,
-  tombstoneUrl,
-  validateEntry,
-  validateAvailability,
   validateRecent,
-  validateVersions,
-  versionsUrl,
-  validateTombstone,
   workflowRunId,
 } from "./security.mjs";
-import { loadSettledBounded } from "./loading.mjs";
 import { createRegistrySearch, validateSearchQuery } from "./searching.mjs";
 import {
   renderChallengePage,
@@ -30,6 +18,7 @@ import {
 import { createChallengePresentation } from "./challenge-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
+import { createRegistryLoader } from "./registry-loading.mjs";
 import {
   decorateCardSet,
   sourceFileUrl,
@@ -41,20 +30,6 @@ const params = new URLSearchParams(window.location.search);
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
-const AVAILABILITY_TIMEOUT_MS = 30_000;
-
-function dataSource() {
-  const databaseBase = databaseBaseFor(
-    selectDatabaseUrl(window.location.href, window.location.search),
-  );
-  const renderBase = selectRenderBase(window.location.href, window.location.search, databaseBase);
-  const availabilityUrl = selectAvailabilityUrl(
-    window.location.href,
-    window.location.search,
-    databaseBase,
-  );
-  return { databaseBase, renderBase, availabilityUrl };
-}
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -86,60 +61,18 @@ function setOptionalText(selector, text) {
   if (node) node.textContent = text;
 }
 
-async function fetchJson(url, { signal } = {}) {
-  const response = await fetch(url, { signal });
-  if (!response.ok) {
-    const error = new Error(`${response.status} ${response.statusText}`);
-    error.status = response.status;
-    throw error;
-  }
-  return response.json();
-}
+const {
+  dataSource,
+  fetchJson,
+  loadAvailabilityBounded,
+  loadEntry,
+} = createRegistryLoader({
+  fetch: (...args) => fetch(...args),
+  location: window.location,
+  warn: (message) => console.warn(message),
+});
 
 const searchRegistry = createRegistrySearch(fetchJson);
-
-async function fetchAvailability(url, { signal } = {}) {
-  return validateAvailability(await fetchJson(url, { signal }));
-}
-
-async function loadAvailability(url, { signal } = {}) {
-  try {
-    return await fetchAvailability(url, { signal });
-  } catch (error) {
-    console.warn(`Source availability is unavailable: ${error.message}`);
-    return null;
-  }
-}
-
-// The landing and search controllers can need the same manifest. Share a
-// successful bounded read, but never make one temporary failure or timeout the
-// page's answer for the rest of its lifetime.
-const availabilityLoads = new Map();
-function loadAvailabilityBounded(url) {
-  const key = url.href;
-  if (!availabilityLoads.has(key)) {
-    const loading = loadSettledBounded(
-      [url],
-      (selected, signal) => fetchAvailability(selected, { signal }),
-      { concurrency: 1, timeoutMs: AVAILABILITY_TIMEOUT_MS },
-    ).then(([loaded]) => {
-      if (loaded.status === "fulfilled") return loaded.value;
-      // A missing manifest is a stable legacy answer for this page load. A
-      // timeout, transport error, or invalid document may recover, so only
-      // those outcomes are evicted and retried by the next consumer.
-      if (loaded.reason?.status !== 404) {
-        availabilityLoads.delete(key);
-        console.warn(
-          `Source availability is unavailable: ` +
-            `${loaded.reason?.message || String(loaded.reason)}`,
-        );
-      }
-      return null;
-    });
-    availabilityLoads.set(key, loading);
-  }
-  return availabilityLoads.get(key);
-}
 
 function authorNames(entry) {
   return entry.authors.map((author) => author.name).join(", ");
@@ -1211,55 +1144,6 @@ async function renderEntry(
     ...(sourceNotice.classList.contains("preserved") ? [sourceNotice] : []),
     versionHistory(entry, versions, currentVersion),
   );
-}
-
-async function loadEntry(id, requestedVersion) {
-  const { databaseBase, renderBase, availabilityUrl } = dataSource();
-  const availabilityPromise = loadAvailability(availabilityUrl);
-  // The versions of this one result, not the whole registry. Reading a
-  // whole-registry index here meant fetching every record ever registered to
-  // render one page, and paying for it again every time anyone else published.
-  let versions = [];
-  try {
-    versions = validateVersions(await fetchJson(versionsUrl(id, databaseBase)), id).entries;
-  } catch (error) {
-    // Absent means no active version of this result, which is either an
-    // unknown identifier or one withdrawn entirely. Both are answered below,
-    // by the tombstone if there is one and by "not found" if there is not.
-    if (error.status !== 404) throw error;
-  }
-  const currentVersion = versions.length ? versions.at(-1).version : null;
-  const version = requestedVersion ?? currentVersion;
-  if (version === null && requestedVersion === undefined) throw new Error("entry not found");
-  const summary = versions.find((item) => item.version === version);
-  if (!summary) {
-    if (requestedVersion === null || requestedVersion === undefined) {
-      throw new Error("entry not found");
-    }
-    try {
-      const tombstone = validateTombstone(
-        await fetchJson(tombstoneUrl(id, requestedVersion, databaseBase)),
-        id,
-        requestedVersion,
-      );
-      return { tombstone };
-    } catch (error) {
-      if (error.status === 404) throw new Error("entry not found");
-      throw error;
-    }
-  }
-  const canonicalUrl = entryRecordUrl(summary, databaseBase);
-  const entry = validateEntry(await fetchJson(canonicalUrl), summary);
-  const availability = await availabilityPromise;
-  return {
-    entry,
-    canonicalUrl,
-    renderBase,
-    versions,
-    currentVersion,
-    availability,
-    databaseBase,
-  };
 }
 
 function renderExactTombstone(tombstone, content) {

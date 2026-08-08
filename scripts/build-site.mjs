@@ -13,6 +13,7 @@ const browserModuleFiles = [
   "entry-pages.mjs",
   "formalization-presentation.mjs",
   "loading.mjs",
+  "registry-loading.mjs",
   "rendering.js",
   "searching.mjs",
   "security.mjs",
