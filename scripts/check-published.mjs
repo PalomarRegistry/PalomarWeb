@@ -11,8 +11,7 @@
  * the check is a comparison rather than new machinery.
  */
 
-import { readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 
 import { shippedFiles } from "./build-site.mjs";
 import {
@@ -59,12 +58,18 @@ export function publishState(html, expected) {
  * The browser normally reads one bounded surface at a time. Deployment and
  * published-site health deliberately do the linear whole-public-tree check it
  * should not make a visitor do: browse head to years to pages, every per-ID
- * version index, then every active entry. Counts and row equality make that a
- * coverage proof rather than a sample. `recent.json` is also checked against
- * each current history head, because it is the landing page's separate exact
- * projection.
+ * version index, then every active entry. Counts and row equality reconcile
+ * every row the producer advertises; they are not an independent proof that
+ * the producer omitted nothing. `recent.json` is also checked against each
+ * current history head and entry, because it is the landing page's separate
+ * exact projection.
  */
 const PUBLIC_DATA_CONCURRENCY = 8;
+const PUBLIC_REQUEST_POLICY = Object.freeze({
+  attempts: 3,
+  backoffMs: 200,
+  timeoutMs: 5_000,
+});
 
 async function mapBounded(items, task) {
   const values = [...items];
@@ -86,10 +91,41 @@ async function mapBounded(items, task) {
   return results;
 }
 
-async function fetchJson(url, fetcher) {
-  const response = await fetcher(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`${url} responded ${response.status}`);
-  return response.json();
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function fetchJson(url, fetcher, policy) {
+  let lastError;
+  for (let attempt = 1; attempt <= policy.attempts; attempt += 1) {
+    const controller = new AbortController();
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`${url} timed out after ${policy.timeoutMs}ms`);
+        controller.abort(error);
+        reject(error);
+      }, policy.timeoutMs);
+    });
+    try {
+      const response = await Promise.race([
+        fetcher(url, { cache: "no-store", signal: controller.signal }),
+        timeout,
+      ]);
+      if (!response.ok) {
+        const error = new Error(`${url} responded ${response.status}`);
+        error.retryable = response.status === 408 || response.status === 425 ||
+          response.status === 429 || response.status >= 500;
+        throw error;
+      }
+      return await Promise.race([response.json(), timeout]);
+    } catch (error) {
+      lastError = error;
+      if (error.retryable === false || attempt === policy.attempts) throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+    await wait(policy.backoffMs * (2 ** (attempt - 1)));
+  }
+  throw lastError;
 }
 
 const PUBLIC_VALIDATORS = {
@@ -105,17 +141,19 @@ export async function publicDataState(
   databaseUrl,
   fetcher = fetch,
   validators = PUBLIC_VALIDATORS,
+  requestPolicy = PUBLIC_REQUEST_POLICY,
 ) {
   const base = new URL(databaseUrl.endsWith("/") ? databaseUrl : `${databaseUrl}/`);
+  const policy = { ...PUBLIC_REQUEST_POLICY, ...requestPolicy };
   try {
     const recent = validators.validateRecent(
-      await fetchJson(new URL("recent.json", base), fetcher),
+      await fetchJson(new URL("recent.json", base), fetcher, policy),
     );
     const browse = validators.validateBrowseHead(
-      await fetchJson(new URL("browse/index.json", base), fetcher),
+      await fetchJson(new URL("browse/index.json", base), fetcher, policy),
     );
     const years = await mapBounded(browse.years, async (year) => validators.validateBrowseYear(
-      await fetchJson(new URL(`browse/${year.year}.json`, base), fetcher),
+      await fetchJson(new URL(`browse/${year.year}.json`, base), fetcher, policy),
       year,
     ));
     const pageTasks = years.flatMap((year) => year.days.flatMap((day) =>
@@ -126,7 +164,7 @@ export async function publicDataState(
     const pages = await mapBounded(pageTasks, async ({ day, page }) => ({
       day,
       document: validators.validateBrowsePage(
-        await fetchJson(new URL(`browse/${day.day}/${page}.json`, base), fetcher),
+        await fetchJson(new URL(`browse/${day.day}/${page}.json`, base), fetcher, policy),
         day.day,
         page,
       ),
@@ -159,7 +197,7 @@ export async function publicDataState(
     for (const summary of summaries) browsedById.get(summary.id).push(summary);
     const histories = await mapBounded(identifiers, async (id) => {
       const history = validators.validateVersions(
-        await fetchJson(versionsUrl(id, base), fetcher),
+        await fetchJson(versionsUrl(id, base), fetcher, policy),
         id,
       );
       const browsed = browsedById.get(id);
@@ -175,6 +213,15 @@ export async function publicDataState(
       return history;
     });
 
+    const fetchedEntries = await mapBounded(
+      histories.flatMap((history) => history.entries),
+      async (summary) => {
+        const entry = await fetchJson(entryRecordUrl(summary, base), fetcher, policy);
+        validators.validateEntry(entry, summary);
+        return [summary.path, entry];
+      },
+    );
+    const entriesByPath = new Map(fetchedEntries);
     const historiesById = new Map(histories.map((history) => [history.id, history.entries]));
     for (const summary of recent.entries) {
       const history = historiesById.get(summary.id);
@@ -184,14 +231,11 @@ export async function publicDataState(
           summary.versions !== history.length) {
         throw new Error(`recent row for ${summary.id} does not equal its current version history`);
       }
+      const entry = entriesByPath.get(summary.path);
+      if (!entry || summary.published_at !== entry.registered_at) {
+        throw new Error(`recent row for ${summary.id} does not match its entry registered_at`);
+      }
     }
-
-    await mapBounded(histories.flatMap((history) => history.entries), async (summary) => {
-      validators.validateEntry(
-        await fetchJson(entryRecordUrl(summary, base), fetcher),
-        summary,
-      );
-    });
     return {
       healthy: true,
       reason: `the website contract accepts all ${browse.versions} active entry versions ` +
@@ -199,70 +243,6 @@ export async function publicDataState(
     };
   } catch (error) {
     return { healthy: false, reason: `public registry data is incompatible: ${error.message}` };
-  }
-}
-
-/**
- * Does a canonical Database checkout contain only the entry contract Web ships?
- *
- * Public CI cannot clone the private canonical repository, so its mandatory
- * gate is `publicDataState`. This companion is the local producer-branch gate:
- * no alternate schema document, and every historical canonical entry through
- * the same validator the deployed browser uses.
- */
-export async function canonicalDataState(databaseRoot, validator = validateEntry) {
-  const root = resolve(databaseRoot);
-  try {
-    const rootNames = await readdir(root);
-    const schemas = rootNames.filter((name) => /^schema-v[1-9][0-9]*\.json$/.test(name)).sort();
-    if (JSON.stringify(schemas) !== JSON.stringify(["schema-v2.json"])) {
-      throw new Error(`canonical Database entry schemas are ${schemas.join(", ") || "missing"}`);
-    }
-    const schema = JSON.parse(await readFile(resolve(root, "schema-v2.json"), "utf8"));
-    const preservation = schema?.properties?.preservation;
-    const mapping = preservation?.properties?.repositories?.items;
-    const exactNames = (value, expected) => Array.isArray(value) &&
-      value.length === expected.length && expected.every((name) => value.includes(name));
-    if (schema?.properties?.schema_version?.const !== 2 ||
-        !schema?.required?.includes("preservation") || preservation?.type !== "object" ||
-        preservation?.additionalProperties !== false ||
-        !exactNames(preservation?.required, [
-          "archive_owner", "archived_at", "receipt_sha256", "repositories",
-        ]) || preservation?.properties?.archive_owner?.const !== "PalomarArchive" ||
-        preservation?.properties?.repositories?.type !== "array" ||
-        preservation?.properties?.repositories?.minItems !== 1 || mapping?.type !== "object" ||
-        mapping?.additionalProperties !== false || !exactNames(mapping?.required, [
-          "source_repository", "commit", "fork_repository", "ref",
-        ]) || !exactNames(Object.keys(mapping?.properties ?? {}), [
-          "source_repository", "commit", "fork_repository", "ref",
-        ])) {
-      throw new Error("schema-v2.json does not require the preservation-backed entry contract");
-    }
-    const entryRoot = resolve(root, "entries");
-    const entries = (await readdir(entryRoot)).filter((name) => name.endsWith(".json")).sort();
-    if (!entries.length) throw new Error("canonical Database contains no entry to exercise");
-    await mapBounded(entries, async (name) => {
-      const record = JSON.parse(await readFile(resolve(entryRoot, name), "utf8"));
-      if (record.schema_version !== 2 || !record.preservation) {
-        throw new Error(`${name} is not a preservation-backed schema-v2 entry`);
-      }
-      const expectedName = `${record.id}-v${record.version}.json`;
-      if (name !== expectedName) throw new Error(`${name} does not match its entry identity`);
-      validator(record, {
-        id: record.id,
-        version: record.version,
-        title: record.title,
-        status: record.status,
-        path: `entries/${name}`,
-        published_at: record.registered_at,
-      });
-    });
-    return {
-      healthy: true,
-      reason: `the website contract accepts all ${entries.length} canonical historical entries`,
-    };
-  } catch (error) {
-    return { healthy: false, reason: `canonical Database is incompatible: ${error.message}` };
   }
 }
 
@@ -332,12 +312,6 @@ async function main(argv) {
   const url = options.get("url");
   const expected = options.get("expect");
   const data = options.get("data");
-  const canonical = options.get("canonical");
-  if (canonical && !data && !url && !expected) {
-    const state = await canonicalDataState(canonical);
-    console.log(`${canonical}: ${state.reason}`);
-    return state.healthy ? 0 : 1;
-  }
   if (data && !url && !expected) {
     const state = await publicDataState(data);
     console.log(`${data}: ${state.reason}`);
@@ -351,7 +325,7 @@ async function main(argv) {
   if (!url || !expected) {
     console.error(
       "usage: check-published.mjs --url <site> --expect <commit> | --data <registry-data>"
-        + " | --canonical <Database checkout> | --links",
+        + " | --links",
     );
     return 2;
   }

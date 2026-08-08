@@ -994,6 +994,25 @@ test("browse enumerates every schema-v1 history row without becoming an entry sc
   );
 });
 
+test("the producer-supplied browse head, year, and page keep Web's exact contract", async () => {
+  // CI overwrites these checked snapshots from the live producer before this
+  // test. Keeping the three levels legible here makes an exactObject failure
+  // name the producer/consumer surface that drifted, rather than leaving that
+  // shape implicit inside the complete public traversal.
+  const fixture = (name) => new URL(`fixtures/public-browse/${name}.json`, import.meta.url);
+  const head = JSON.parse(await readFile(fixture("index"), "utf8"));
+  const expectedYear = head.years.at(-1);
+  assert.ok(expectedYear, "the producer browse head has no year to exercise");
+  const year = JSON.parse(await readFile(fixture("year"), "utf8"));
+  const expectedDay = year.days.at(-1);
+  assert.ok(expectedDay, "the producer browse year has no day to exercise");
+  const page = JSON.parse(await readFile(fixture("page"), "utf8"));
+
+  assert.equal(validateBrowseHead(head), head);
+  assert.equal(validateBrowseYear(year, expectedYear), year);
+  assert.equal(validateBrowsePage(page, expectedDay.day, expectedDay.first_page), page);
+});
+
 const SEARCH_BASE = "https://data.example.test/";
 
 function searchHead(overrides = {}) {

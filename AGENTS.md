@@ -24,6 +24,14 @@
   the matching Web deployment. Do not add an old-shape or per-entry fallback;
   invalid projections are supposed to fail closed.
 
+- The three browse surfaces—`browse/index.json`, `browse/<year>.json`, and
+  `browse/<day>/<page>.json`—are also exact closed producer/consumer contracts.
+  PalomarDatabase owns their head, year, page, count, and summary-row shapes;
+  change those producer-first. CI downloads one live head/year/page chain into
+  the named producer-contract fixture test, then the predeploy check traverses
+  every row the producer advertises. The traversal reconciles those surfaces;
+  it cannot independently prove that their common producer omitted nothing.
+
 - Entry records have one contract: `schema_version: 2` in `schema-v2.json`.
   Version 1 was an unused pre-launch draft; do not restore its validator,
   preservation fallback, public schema download, or legacy presentation.
@@ -34,8 +42,9 @@
   specific to deleting an artifact an old consumer still requests; shape
   changes to documents the browser reads remain producer-first as above.
   The consumer-first claim must be proved by `check-published.mjs --data`, which
-  traverses every browse page and per-ID version index and validates every
-  active entry before Pages artifact upload. A recent-only sample is not enough.
+  traverses every advertised browse page and per-ID version index and validates
+  every advertised active entry before Pages artifact upload. A recent-only
+  sample is not enough.
   `recent.json`, versions, browse/search, source availability, and independent
   render/evidence metadata intentionally retain their schema-v1 protocols;
   entry-schema cleanup must not rewrite them.
