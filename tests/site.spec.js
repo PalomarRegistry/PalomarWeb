@@ -300,6 +300,41 @@ test("an entry accepted before source archiving explains the limitation as a war
   await expect(notice).toHaveCSS("padding-left", "20px");
 });
 
+test("a card for a result accepted before archiving does not call its original unavailable", async ({ page }) => {
+  // A record with no preservation block was accepted before Palomar archived
+  // anything, so nothing has ever been checked about its repository. The card
+  // read that silence as a missing original and printed "Original unavailable"
+  // beside somebody else's repository, which is a published claim about a
+  // third party's work made on no evidence.
+  await page.route("**/entries/PALOMAR-2026-07-29-000123-v2.json", async (route) => {
+    const response = await route.fetch();
+    const legacy = await response.json();
+    legacy.schema_version = 1;
+    delete legacy.preservation;
+    await route.fulfill({ response, json: legacy });
+  });
+  await page.goto(`/?database=${database}`);
+
+  const legacyCard = page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000123" });
+  await expect(legacyCard).toHaveCount(1);
+  await expect(legacyCard.locator(".source-status")).toHaveCount(0);
+  await expect(legacyCard.locator(".archive-link")).toHaveCount(0);
+  // The other card is unpreserved by nothing: it still offers its copy.
+  await expect(
+    page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000124" }).locator(".archive-link"),
+  ).toHaveCount(1);
+});
+
+test("a card says the original is unavailable exactly when the manifest says so", async ({ page }) => {
+  await page.goto(`/?database=${database}&availability=${missingAvailability}`);
+  const card = page.locator(".entry-card").first();
+  await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
+  await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card .source-status")).toHaveCount(0);
+});
+
 test("entry pages list immutable versions and flag superseded snapshots", async ({ page }) => {
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
