@@ -91,13 +91,16 @@ test("every formalization.yaml mention on the About page links to its standard",
   expect(result.unlinked).toEqual([]);
 });
 
-test("landing cards show the acceptance date and dated identifier", async ({ page }) => {
+test("landing cards show the registration date and dated identifier", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) => route.abort());
   await page.goto(`/?database=${database}`);
   const first = page.locator(".entry-card").first();
   await expect(first.locator(".entry-id")).toContainText("PALOMAR-2026-07-29-");
   await expect(first.locator(".entry-id")).toContainText("v2 · current");
-  await expect(first.locator(".entry-date")).toHaveText("Accepted 29 July 2026");
+  // The card is dated by the version it shows, so the current version of this
+  // result is dated by its own registration and not by its v1's day. The page
+  // is ordered by the same instant, so the visible dates run in page order.
+  await expect(first.locator(".entry-date")).toHaveText("Registered 2 August 2026");
   await expect(first.locator(".trust-badge")).toHaveText("Statement dependencies: Mathlib only");
   await expect(first.getByRole("link", { name: "2 versions" })).toHaveAttribute(
     "href",
@@ -521,7 +524,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(iframe).toHaveAttribute("data-height-adjusted", "true");
   const box = await iframe.boundingBox();
   expect(box.height).toBe(672);
-  await expect(page.locator(".acceptance-callout")).toContainText("Accepted");
+  await expect(page.locator(".acceptance-callout")).toContainText("Registered on");
   await expect(page.locator(".acceptance-callout")).toContainText("29 July 2026");
   await expect(page.locator(".acceptance-callout")).toContainText("Mechanical assurance");
   await expect(page.locator(".acceptance-callout")).toContainText(

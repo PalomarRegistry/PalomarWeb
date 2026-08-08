@@ -58,6 +58,17 @@ function summary(overrides = {}) {
   };
 }
 
+/** The same record as a second version, with every path that names the version moved. */
+function secondVersion(overrides = {}) {
+  const value = entry({ version: 2, ...overrides });
+  value.challenge_render.artifact_path = `renders/${value.id}-v2/${DIGEST}/`;
+  value.verification.evidence_path = `evidence/${value.id}-v2/${"c".repeat(64)}/`;
+  for (const repository of value.preservation.repositories) {
+    repository.ref = `refs/tags/palomar/${value.id}-v2/${repository.commit}`;
+  }
+  return value;
+}
+
 function recentRow(overrides = {}) {
   return { ...summary(), published_at: "2026-07-29T08:53:02Z", versions: 1, ...overrides };
 }
@@ -72,6 +83,7 @@ function entry(overrides = {}) {
     schema_version: 2,
     id: "PALOMAR-2026-07-29-000123",
     accepted_at: "2026-07-29",
+    registered_at: "2026-07-29T09:14:07Z",
     version: 1,
     status: "accepted",
     title: "Fixture theorem",
@@ -285,7 +297,56 @@ test("recent validation rejects unsupported, rejected, and malformed rows", () =
     () => validateRecent(recent([recentRow({ published_at: "yesterday" })])),
     /published_at is malformed/,
   );
+  // A date, not an instant. Every row carries the record's `registered_at`,
+  // which the schema requires of every version, and a date read as an instant
+  // is midnight: such a row would sort ahead of everything registered that day
+  // and no reader could tell why.
+  assert.throws(
+    () => validateRecent(recent([recentRow({ published_at: "2026-07-29" })])),
+    /published_at is malformed/,
+  );
   assert.equal(validateRecent(recent()).entries.length, 1);
+});
+
+test("a record must say when the version was registered, and agree with its result date", () => {
+  // The two are one fact written twice, in two repositories. `accepted_at` is
+  // the result's date: the identifier carries it, browsing pages by it, and
+  // every later version inherits it. `registered_at` is the version's own
+  // instant and is what the landing page, the feeds and the subject pages
+  // order by. A record where they have come apart is well formed and renders,
+  // and is browsed under one day while being ordered under another.
+  const missing = entry();
+  delete missing.registered_at;
+  assert.throws(() => validateEntry(missing, summary()), /entry\.registered_at/);
+
+  assert.throws(
+    () => validateEntry(entry({ registered_at: "2026-07-29" }), summary()),
+    /entry\.registered_at is malformed/,
+  );
+  assert.throws(
+    () => validateEntry(entry({ registered_at: "2026-07-30T09:14:07Z" }), summary()),
+    /accepted_at is not the day version 1 was registered/,
+  );
+  assert.throws(
+    () => validateEntry(entry({ registered_at: "2026-07-28T09:14:07Z" }), summary()),
+    /accepted_at is not the day version 1 was registered/,
+  );
+
+  // A later version brings its own instant and inherits its result's date,
+  // which is what keeps it on its v1's browse page while sorting it as news.
+  const secondSummary = summary({
+    version: 2,
+    path: "entries/PALOMAR-2026-07-29-000123-v2.json",
+  });
+  const second = secondVersion({ registered_at: "2027-04-01T09:00:00Z" });
+  assert.equal(validateEntry(second, secondSummary), second);
+
+  // And it cannot be older than the result it supersedes. That row would sort
+  // behind rows for versions it replaced, on every page that carries it.
+  assert.throws(
+    () => validateEntry(secondVersion({ registered_at: "2026-07-28T09:00:00Z" }), secondSummary),
+    /registered_at is before the result entered the registry/,
+  );
 });
 
 test("what recent claims is coverage and ordering, so both are checked", () => {
