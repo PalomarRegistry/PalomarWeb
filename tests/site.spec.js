@@ -709,3 +709,114 @@ test("what was checked is compressed without losing what it said", async ({ page
   expect(rootOnly).toBe(0);
   expect(project.length).toBeLessThanOrEqual(1);
 });
+
+test("a search reads one postings sequence per word and confirms every hit", async ({ page }) => {
+  const asked = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/database/")) asked.push(path);
+  });
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card")).toHaveCount(2);
+
+  asked.length = 0;
+  await page.locator("#query").fill("quasicoherent 000124");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect(page.locator("#search-results .entry-card")).toContainText("000124");
+  // The listing is a different question, and answering both at once would show
+  // one reader two sets of results with nothing saying which was which.
+  await expect(page.locator("#entry-grid")).toBeHidden();
+  // Two words, two heads, and the pages of each; the rarer word drives, and
+  // the pages are walked newest first.
+  expect(asked).toContain("/database/search/t/quasicoherent/head.json");
+  expect(asked.filter((path) => path.startsWith("/database/search/t/000124/")))
+    .toEqual(["/database/search/t/000124/head.json", "/database/search/t/000124/0.json"]);
+  expect(asked.filter((path) => /quasicoherent\/[0-9]/.test(path)))
+    .toEqual([
+      "/database/search/t/quasicoherent/1.json",
+      "/database/search/t/quasicoherent/0.json",
+    ]);
+  // One record, because the intersection settled the rest. The record is
+  // fetched to be shown, and checking that it really carries every word costs
+  // nothing on top of that.
+  expect(asked.filter((path) => path.startsWith("/database/entries/")))
+    .toEqual(["/database/entries/PALOMAR-2026-07-29-000124-v1.json"]);
+});
+
+test("a search runs from a link, and says so when nothing carries the words", async ({ page }) => {
+  await page.goto(`/?database=${database}&q=quasicoherent`);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(3);
+
+  await page.locator("#query").fill("quasicoherent unobtainium");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  // The words with no postings are named rather than guessed about. They are
+  // words nothing carries and not words the indexer drops, because the dropped
+  // ones left the query before it was asked.
+  await expect(page.locator("#search-status")).toContainText("Nothing is indexed under unobtainium");
+  await expect(page).toHaveURL(/q=quasicoherent\+unobtainium/);
+});
+
+test("a hostile query cannot construct a path outside the postings grammar", async ({ page }) => {
+  const asked = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await page.goto(`/?database=${database}`);
+
+  asked.length = 0;
+  await page.locator("#query").fill("../../etc/passwd?x=1 <script>");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#search-status")).toContainText("No result carries all of");
+
+  // The stopword list is at a fixed path and is the only request under
+  // `/search/` that the query has no part in building. Every other one is
+  // constructed from what somebody typed, with no dictionary to check it
+  // against first, which is why the grammar is the whole defence.
+  const searched = asked.filter(
+    (path) => path.includes("/search/") && path !== "/database/search/stopwords.json",
+  );
+  expect(searched.length).toBeGreaterThan(0);
+  for (const path of searched) {
+    expect(path).toMatch(/^\/database\/search\/t\/[a-z0-9]{2,32}\/(?:head|[0-9]{1,4})\.json$/);
+  }
+});
+
+test("a query with no word in it leaves the listing alone", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator("#query").fill("a !");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#entry-grid")).toBeVisible();
+  await expect(page.locator("#search-status")).toBeHidden();
+});
+
+test("a word the indexer drops leaves the query instead of failing it", async ({ page }) => {
+  // The hole the published list closes. "the" has no head, which from a
+  // browser is indistinguishable from a word nothing carries, so a query
+  // containing it used to be answered against each record's own text -- and
+  // this record's text does not contain "the". Fetching the list is what turns
+  // that from a wrong answer nobody could diagnose into no question at all.
+  const asked = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await page.goto(`/?database=${database}`);
+
+  asked.length = 0;
+  await page.locator("#query").fill("the quasicoherent sheaves");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect(page.locator("#search-results .entry-card")).toContainText("000124");
+  expect(asked).toContain("/database/search/stopwords.json");
+  expect(asked.filter((path) => path.startsWith("/database/search/t/the/"))).toEqual([]);
+});
+
+test("a search made only of words the indexer drops says which they were", async ({ page }) => {
+  // Otherwise this is a registry that appears to hold nothing.
+  await page.goto(`/?database=${database}`);
+  await page.locator("#query").fill("the of and");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.locator("#search-status")).toContainText("too common to be indexed");
+  await expect(page.locator("#search-status")).toContainText("the");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+});

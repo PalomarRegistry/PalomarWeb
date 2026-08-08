@@ -31,6 +31,14 @@ import {
   validateTombstone,
   validateVersions,
   versionsUrl,
+  postingRecordUrl,
+  searchHeadUrl,
+  searchPageUrl,
+  searchTerms,
+  stopwordsUrl,
+  validateSearchHead,
+  validateSearchPage,
+  validateStopwords,
 } from "../assets/security.mjs";
 
 // The website's own origin, for the cross-origin assertion below.
@@ -706,4 +714,155 @@ test("a version index URL cannot leave the database origin", () => {
     "https://data.example.org/versions/PALOMAR-2026-07-29-000123.json");
   assert.throws(() => versionsUrl("../../etc/passwd", base), /malformed/);
   assert.throws(() => versionsUrl("PALOMAR-2026-07-29-00012", base), /malformed/);
+});
+
+const SEARCH_BASE = "https://data.example.test/";
+
+function searchHead(overrides = {}) {
+  return {
+    schema_version: 1,
+    term: "ring",
+    page_size: 128,
+    pages: 2,
+    results: 130,
+    ...overrides,
+  };
+}
+
+test("a query becomes a path only when every word could be one", () => {
+  // There is no dictionary to check a word against before asking for it: a
+  // document naming every known word would grow with the registry and be
+  // rewritten on every publication. So the grammar is the whole defence, and
+  // it has to refuse everything a word cannot be.
+  assert.equal(
+    searchHeadUrl("ring", SEARCH_BASE).href,
+    "https://data.example.test/search/t/ring/head.json",
+  );
+  assert.equal(
+    searchPageUrl("ring", 17, SEARCH_BASE).href,
+    "https://data.example.test/search/t/ring/17.json",
+  );
+  for (const hostile of ["", "a", "Ring", "ring!", "../entries/x", "ring/0", "r".repeat(33), 7]) {
+    assert.throws(() => searchHeadUrl(hostile, SEARCH_BASE), /search term/, String(hostile));
+  }
+  for (const page of [-1, 1.5, 2048, Number.MAX_SAFE_INTEGER, "0"]) {
+    assert.throws(() => searchPageUrl("ring", page, SEARCH_BASE), /page number/, String(page));
+  }
+});
+
+test("the words of a query are folded exactly as the indexer folded them", () => {
+  // Three steps in one order: decompose, drop the combining marks, lowercase.
+  // A query folded any other way asks for a word that was never written, which
+  // from here is indistinguishable from no results.
+  assert.deepEqual(searchTerms("Erdős–Kähler rings"), ["erdos", "kahler", "rings"]);
+  assert.deepEqual(searchTerms("../../etc/passwd %2e%2e"), ["etc", "passwd", "2e", "2e"]);
+  // Nothing is stemmed: `ring` and `rings` are different questions in a
+  // registry of mathematics.
+  assert.deepEqual(searchTerms("ring rings"), ["ring", "rings"]);
+  // Dropped rather than escaped, so nothing outside the grammar can reach a path.
+  assert.deepEqual(searchTerms("a \u{1f600} <script>"), ["script"]);
+  assert.deepEqual(searchTerms("x".repeat(33)), []);
+});
+
+test("a postings head must account for the pages it sends a reader after", () => {
+  // The head is an instruction, not data: its numbers become the next requests.
+  // One claiming more pages than its sequence has sends a reader after pages
+  // that are not there; one claiming fewer hides results while staying a
+  // perfectly well-formed document.
+  assert.equal(validateSearchHead(searchHead(), "ring").results, 130);
+  assert.equal(validateSearchHead(searchHead({ pages: 0, results: 0 }), "ring").pages, 0);
+
+  assert.throws(() => validateSearchHead(searchHead(), "field"), /different word/);
+  assert.throws(() => validateSearchHead(searchHead({ pages: 3 }), "ring"), /does not cover/);
+  assert.throws(() => validateSearchHead(searchHead({ pages: 1 }), "ring"), /does not cover/);
+  assert.throws(
+    () => validateSearchHead(searchHead({ page_size: 1, pages: 2049, results: 2049 }), "ring"),
+    /more pages/,
+  );
+  assert.throws(() => validateSearchHead(searchHead({ page_size: 1025 }), "ring"), /page_size/);
+  assert.throws(() => validateSearchHead(searchHead({ schema_version: 2 }), "ring"), /schema_version/);
+});
+
+test("a postings page must be the page it was asked for, in order, and no longer", () => {
+  const head = searchHead({ page_size: 4, pages: 2, results: 8 });
+  const page = (postings, overrides = {}) => ({
+    schema_version: 1,
+    term: "ring",
+    page: 1,
+    postings,
+    ...overrides,
+  });
+  const rows = [
+    "PALOMAR-2026-07-29-000001-v1",
+    "PALOMAR-2026-07-29-000002-v1",
+  ];
+  assert.equal(validateSearchPage(page(rows), "ring", 1, head).postings.length, 2);
+
+  assert.throws(() => validateSearchPage(page(rows), "field", 1, head), /different word/);
+  assert.throws(() => validateSearchPage(page(rows), "ring", 0, head), /not the page/);
+  assert.throws(() => validateSearchPage(page(rows, { page: 2 }), "ring", 2, head), /past the end/);
+  // A page that repeated a posting, or padded itself with the same result over
+  // and over, would be a well-formed page that showed one reader the same work
+  // several times under a search it may not match at all.
+  assert.throws(
+    () => validateSearchPage(page([rows[1], rows[0]]), "ring", 1, head),
+    /increasing order/,
+  );
+  assert.throws(() => validateSearchPage(page([rows[0], rows[0]]), "ring", 1, head), /increasing order/);
+  assert.throws(
+    () => validateSearchPage(page([...rows, ...rows.map((row) => row.replace("-v1", "-v2"))
+      .concat("PALOMAR-2026-07-29-000003-v1")]), "ring", 1, head),
+    /longer than the head allows/,
+  );
+  assert.throws(() => validateSearchPage(page(["PALOMAR-2026-07-29-000001"]), "ring", 1, head),
+    /malformed/);
+  assert.throws(() => validateSearchPage(page(rows, { schema_version: 2 }), "ring", 1, head),
+    /schema_version/);
+});
+
+test("a posting resolves straight to the record it names", () => {
+  // The whole reason postings carry the identifier rather than a position:
+  // there is no second surface between a hit and the record.
+  assert.equal(
+    postingRecordUrl("PALOMAR-2026-07-29-000123-v2", SEARCH_BASE).href,
+    "https://data.example.test/entries/PALOMAR-2026-07-29-000123-v2.json",
+  );
+  for (const hostile of ["PALOMAR-2026-07-29-000123", "../index", "PALOMAR-2026-07-29-000123-v0", 1]) {
+    assert.throws(() => postingRecordUrl(hostile, SEARCH_BASE), /posting is malformed/);
+  }
+});
+
+test("the published stopword list is read, and refused if it becomes a dictionary", () => {
+  // The one document in this surface that names words. It is not the term
+  // dictionary the index exists without: a fixed editorial choice of function
+  // words is the same size at a hundred thousand results, where a document
+  // naming every known word grows with the vocabulary and is rewritten on
+  // every publication. So the bound is what keeps the two apart, and it is
+  // checked here rather than assumed.
+  assert.equal(
+    stopwordsUrl(SEARCH_BASE).href,
+    "https://data.example.test/search/stopwords.json",
+  );
+  const dropped = validateStopwords({ schema_version: 1, stopwords: ["the", "of"] });
+  assert.ok(dropped.has("the") && !dropped.has("ring"));
+
+  assert.throws(
+    () => validateStopwords({ schema_version: 1, stopwords: ["The"] }),
+    /not a word/,
+  );
+  assert.throws(
+    () => validateStopwords({ schema_version: 1, stopwords: [7] }),
+    /must be a non-empty string/,
+  );
+  assert.throws(
+    () => validateStopwords({
+      schema_version: 1,
+      stopwords: Array.from({ length: 2001 }, (_unused, index) => `w${index}`),
+    }),
+    /term dictionary/,
+  );
+  assert.throws(
+    () => validateStopwords({ schema_version: 2, stopwords: [] }),
+    /schema_version/,
+  );
 });
