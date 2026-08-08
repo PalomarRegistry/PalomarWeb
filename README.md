@@ -51,6 +51,10 @@ that complete closed shape and renders it directly. A normal landing load is
 therefore exactly two dynamic data requests—`recent.json` and the optional
 source-availability manifest—with no per-card entry reads. Invalid or partial
 projections fail closed before any card is rendered.
+This is one exact closed producer/consumer contract, not an extensible summary:
+a shape change must be published by PalomarDatabase first and followed by the
+matching website deployment. The consumer deliberately has no old-row fallback
+or per-entry recovery path.
 Landing and verified search cards render before the source-availability
 manifest; if it arrives, their existing source controls are decorated in place.
 A linked `?q=` search does not also load the hidden recent listing; clearing the

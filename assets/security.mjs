@@ -61,6 +61,16 @@ function string(value, field) {
   return value;
 }
 
+function boundedString(value, field, maximum) {
+  const text = string(value, field);
+  let length = 0;
+  for (const _character of text) {
+    length += 1;
+    if (length > maximum) fail(`${field} is longer than ${maximum} characters`);
+  }
+  return text;
+}
+
 function integer(value, field) {
   if (!Number.isSafeInteger(value) || value < 1) fail(`${field} must be a positive integer`);
   return value;
@@ -242,8 +252,8 @@ export function validateRecent(value) {
     const id = string(summary.id, `${field}.id`);
     if (!ID_RE.test(id)) fail(`recent.entries[${position}].id is malformed`);
     const version = integer(summary.version, `${field}.version`);
-    string(summary.title, `${field}.title`);
-    string(summary.abstract, `${field}.abstract`);
+    boundedString(summary.title, `${field}.title`, 300);
+    boundedString(summary.abstract, `${field}.abstract`, 10_000);
     if (summary.status !== "accepted") fail(`recent.entries[${position}].status is not accepted`);
     const expectedPath = `entries/${id}-v${version}.json`;
     if (summary.path !== expectedPath) {
@@ -287,8 +297,18 @@ export function validateRecent(value) {
       ["arxiv", "msc2020"],
       `${field}.classification`,
     );
-    distinctStringArray(classification.arxiv, `${field}.classification.arxiv`, ARXIV_RE);
-    distinctStringArray(classification.msc2020, `${field}.classification.msc2020`, MSC2020_RE);
+    const arxiv = distinctStringArray(
+      classification.arxiv,
+      `${field}.classification.arxiv`,
+      ARXIV_RE,
+    );
+    if (arxiv.length > 2) fail(`${field}.classification.arxiv has more than 2 codes`);
+    const msc2020 = distinctStringArray(
+      classification.msc2020,
+      `${field}.classification.msc2020`,
+      MSC2020_RE,
+    );
+    if (msc2020.length > 8) fail(`${field}.classification.msc2020 has more than 8 codes`);
     const formalization = exactObject(
       summary.formalization,
       ["theorem_names"],

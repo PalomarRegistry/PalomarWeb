@@ -19,6 +19,11 @@
   agrees with everything. Without a checkout you get hard failures and no hint
   why, so this is the first thing to check.
 
+- `recent.json` is an exact closed producer/consumer contract. Shape changes
+  require a coordinated producer-first deployment from PalomarDatabase before
+  the matching Web deployment. Do not add an old-shape or per-entry fallback;
+  invalid projections are supposed to fail closed.
+
 - The browser suite needs `python3` on `PATH`, for the fixture server. Two of
   its tests want `PALOMAR_PREVIOUS_REF` and skip silently without it, which only
   CI sets.

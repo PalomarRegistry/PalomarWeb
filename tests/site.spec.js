@@ -919,6 +919,33 @@ test("a search reads one postings sequence per word and confirms every hit", asy
     .toEqual(["/database/entries/PALOMAR-2026-07-29-000124-v1.json"]);
 });
 
+test("runtime data reads reuse a fresh HTTP response", async ({ page }) => {
+  const headUrl = "http://127.0.0.1:4173/database/search/t/cacheprobe/head.json";
+  const timings = () => page.evaluate((url) =>
+    performance.getEntriesByName(url).map((entry) => ({
+      decodedBodySize: entry.decodedBodySize,
+      transferSize: entry.transferSize,
+    })), headUrl);
+
+  await page.goto(`/?database=${database}`);
+  await page.evaluate(() => performance.clearResourceTimings());
+  await page.locator("#query").fill("cacheprobe");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect.poll(async () => (await timings()).length).toBe(1);
+
+  // The fixture gives this otherwise ordinary postings document max-age=60.
+  // Submitting the same search still calls fetch, but the browser should
+  // satisfy it from its HTTP cache rather than transferring it again.
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect.poll(async () => (await timings()).length).toBe(2);
+  const [network, cached] = await timings();
+  expect(network.transferSize).toBeGreaterThan(0);
+  expect(network.decodedBodySize).toBeGreaterThan(0);
+  expect(cached.transferSize).toBe(0);
+  expect(cached.decodedBodySize).toBe(network.decodedBodySize);
+});
+
 test("an over-limit term count is an accessible warning and can be corrected", async ({ page }) => {
   const query = Array.from(
     { length: SEARCH_TERM_LIMIT + 1 },

@@ -183,11 +183,20 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
 def recent_row(record: dict, versions: int) -> dict:
     """Project exactly the landing-card contract emitted by PalomarDatabase."""
     source = record["source"]
-    mapping = next(
-        item
-        for item in record["preservation"]["repositories"]
-        if item["source_repository"].casefold() == source["repository"].casefold()
-        and item["commit"] == source["commit"]
+    preservation = record.get("preservation")
+    mapping = (
+        next(
+            (
+                item
+                for item in preservation["repositories"]
+                if item["source_repository"].casefold()
+                == source["repository"].casefold()
+                and item["commit"] == source["commit"]
+            ),
+            None,
+        )
+        if preservation
+        else None
     )
     return {
         "id": record["id"],
@@ -213,7 +222,7 @@ def recent_row(record: dict, versions: int) -> dict:
                 "commit": mapping["commit"],
                 "fork_repository": mapping["fork_repository"],
             }]
-        },
+        } if mapping else None,
         "published_at": record["registered_at"],
         "versions": versions,
     }
@@ -281,7 +290,7 @@ ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
 # case the published stopword list exists for: a query containing "the" has to
 # find it anyway, and inferring stopwords from a missing head could not.
 ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["abstract"] = (
-    "Quasicoherent sheaves, synthetically."
+    "Quasicoherent sheaves, synthetically. Cacheprobe."
 )
 SEARCH_INDEX = search_index(ENTRIES)
 
@@ -290,11 +299,16 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
-    def send_bytes(self, payload: bytes, content_type: str) -> None:
+    def send_bytes(
+        self,
+        payload: bytes,
+        content_type: str,
+        cache_control: str = "no-store",
+    ) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -429,7 +443,13 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self.send_error(404)
                 return
-            self.send_bytes(json.dumps(payload).encode(), "application/json")
+            self.send_bytes(
+                json.dumps(payload).encode(),
+                "application/json",
+                cache_control=(
+                    "public, max-age=60" if term == "cacheprobe" else "no-store"
+                ),
+            )
             return
         tombstone = re.fullmatch(
             r"/database/tombstones/(PALOMAR-2026-07-29-000125)-v(1)\.json",
