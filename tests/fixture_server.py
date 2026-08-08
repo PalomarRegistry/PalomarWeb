@@ -180,6 +180,45 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
     return record
 
 
+def recent_row(record: dict, versions: int) -> dict:
+    """Project exactly the landing-card contract emitted by PalomarDatabase."""
+    source = record["source"]
+    mapping = next(
+        item
+        for item in record["preservation"]["repositories"]
+        if item["source_repository"].casefold() == source["repository"].casefold()
+        and item["commit"] == source["commit"]
+    )
+    return {
+        "id": record["id"],
+        "version": record["version"],
+        "status": record["status"],
+        "title": record["title"],
+        "path": f"entries/{record['id']}-v{record['version']}.json",
+        "abstract": record["abstract"],
+        "authors": [{"name": author["name"]} for author in record["authors"]],
+        "classification": record["classification"],
+        "formalization": {
+            "theorem_names": record["formalization"]["theorem_names"],
+        },
+        "trust": {"level": record["trust"]["level"]},
+        "source": {
+            "repository": source["repository"],
+            "commit": source["commit"],
+            "project_path": source.get("project_path"),
+        },
+        "preservation": {
+            "repositories": [{
+                "source_repository": mapping["source_repository"],
+                "commit": mapping["commit"],
+                "fork_repository": mapping["fork_repository"],
+            }]
+        },
+        "published_at": record["registered_at"],
+        "versions": versions,
+    }
+
+
 ENTRIES = {
     ("PALOMAR-2026-07-29-000123", 1): entry(
         "PALOMAR-2026-07-29-000123", 100, 1
@@ -307,18 +346,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if previous is None or item["version"] > previous["version"]:
                     current[item["id"]] = item
             versions = collections.Counter(item["id"] for item in ENTRIES.values())
-            rows = [
-                {
-                    "id": item["id"],
-                    "version": item["version"],
-                    "title": item["title"],
-                    "status": "accepted",
-                    "path": f"entries/{item['id']}-v{item['version']}.json",
-                    "published_at": item["registered_at"],
-                    "versions": versions[item["id"]],
-                }
-                for item in current.values()
-            ]
+            rows = [recent_row(item, versions[item["id"]]) for item in current.values()]
             # Newest first, ties broken by identifier descending, exactly as
             # `selection.latest_entries` orders them in the publisher.
             rows.sort(key=lambda row: (row["published_at"], row["id"]), reverse=True)

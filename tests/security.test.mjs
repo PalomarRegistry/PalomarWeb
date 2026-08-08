@@ -167,6 +167,52 @@ test("recent validation rejects unsupported, rejected, and malformed rows", () =
   assert.equal(validateRecent(recent()).entries.length, 1);
 });
 
+test("recent validation accepts the Database-owned landing-card fixture", async () => {
+  // This is the same mandatory cross-repository contract mechanism used for
+  // canonical schemas below. Locally it reads PalomarDatabase's checked
+  // fixture; CI supplies the published producer output at the same path.
+  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
+    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const fixture = JSON.parse(
+    await readFile(new URL("tests/fixtures/recent.json", `file://${checkout}/`), "utf8"),
+  );
+  assert.equal(validateRecent(fixture), fixture);
+});
+
+test("recent is one exact complete projection, not a legacy summary shape", () => {
+  assert.throws(
+    () => validateRecent({ schema_version: 1, entries: [summary()] }),
+    /invalid shape/,
+  );
+
+  for (const mutate of [
+    (page) => { page.legacy_entries = []; },
+    (page) => { delete page.entries[0].abstract; },
+    (page) => { page.entries[0].registered_at = page.entries[0].published_at; },
+    (page) => { delete page.entries[0].source.project_path; },
+    (page) => { page.entries[0].authors[0].github = "somebody"; },
+    (page) => { page.entries[0].preservation.repositories = []; },
+  ]) {
+    const page = recent();
+    mutate(page);
+    assert.throws(() => validateRecent(page), /invalid shape|must contain one source mapping/);
+  }
+});
+
+test("recent validates every projected card field and source mapping", () => {
+  const duplicateClassifications = recent();
+  duplicateClassifications.entries[0].classification.arxiv.push("math.CO");
+  assert.throws(() => validateRecent(duplicateClassifications), /distinct values/);
+
+  const missingTheorems = recent();
+  missingTheorems.entries[0].formalization.theorem_names = [];
+  assert.throws(() => validateRecent(missingTheorems), /non-empty array/);
+
+  const mismatchedPreservation = recent();
+  mismatchedPreservation.entries[0].preservation.repositories[0].commit = "2".repeat(40);
+  assert.throws(() => validateRecent(mismatchedPreservation), /does not match source/);
+});
+
 test("a record must say when the version was registered, and agree with its result date", () => {
   // The two are one fact written twice, in two repositories. `accepted_at` is
   // the result's date: the identifier carries it, browsing pages by it, and

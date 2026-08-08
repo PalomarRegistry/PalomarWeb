@@ -23,20 +23,23 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # The canonical database is private. The site re-validates every public
-      # record client-side, so compare against the schemas from the filtered
-      # public snapshot rather than cloning the canonical repository.
-      - name: Download the published schemas
+      # The canonical database is private. Exercise the contracts through the
+      # filtered public snapshot: its schemas and the producer-owned recent
+      # projection that the landing page consumes directly.
+      - name: Download the published Database contracts
         env:
           PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
         run: |
-          mkdir palomar-database
+          mkdir -p palomar-database/tests/fixtures
           curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/schema-v1.json" \
             --output palomar-database/schema-v1.json
           curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/schema-v2.json" \
             --output palomar-database/schema-v2.json
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/recent.json" \
+            --output palomar-database/tests/fixtures/recent.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.4.1"
