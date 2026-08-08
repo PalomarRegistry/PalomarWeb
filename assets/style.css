@@ -273,18 +273,13 @@ button:focus-visible {
   font: .9rem var(--sans);
 }
 
-.category-tokens,
-.category-feed-list {
+.category-tokens {
   display: flex;
   flex-wrap: wrap;
   gap: .3rem .5rem;
 }
 
 .category-tokens code {
-  white-space: nowrap;
-}
-
-.category-feed-item {
   white-space: nowrap;
 }
 
