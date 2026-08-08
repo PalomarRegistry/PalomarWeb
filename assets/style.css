@@ -1019,8 +1019,7 @@ pre {
 }
 
 .source-availability.original-missing,
-.source-availability.archive-missing,
-.source-availability.legacy {
+.source-availability.archive-missing {
   border-left-color: #9a6700;
   background: #fff8df;
 }

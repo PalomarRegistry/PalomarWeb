@@ -6,18 +6,6 @@ import {
 
 /** Resolve one immutable repository revision to its recorded or preserved copy. */
 export function sourceLocation(entry, availability, repository, commit) {
-  if (!entry.preservation) {
-    return {
-      repository,
-      originalRepository: repository,
-      archiveRepository: null,
-      commit,
-      originalStatus: "unknown",
-      archiveStatus: "unknown",
-      checkedAt: null,
-      useArchive: false,
-    };
-  }
   const mapping = entry.preservation.repositories.find(
     (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
       row.commit === commit,

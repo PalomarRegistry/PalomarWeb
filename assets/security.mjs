@@ -8,7 +8,6 @@ const MAX_VERSIONS_PER_ID = 500;
 // unbounded one would let it come back without anything saying so.
 const RECENT_ITEMS = 200;
 export const ENTRY_SCHEMA_VERSION = 2;
-export const ENTRY_SCHEMA_VERSIONS = new Set([1, 2]);
 // The endpoint, not a document. There is no whole-registry document to name
 // any more: every surface is derived from this prefix by the function that
 // knows which one it wants.
@@ -329,27 +328,25 @@ export function validateRecent(value) {
     commit(string(source.commit, `${field}.source.commit`), `${field}.source.commit`);
     if (source.project_path !== null) safeRepositoryPath(source.project_path, `${field}.source.project_path`);
 
-    if (summary.preservation !== null) {
-      const preservation = exactObject(
-        summary.preservation,
-        ["repositories"],
-        `${field}.preservation`,
-      );
-      const repositories = array(preservation.repositories, `${field}.preservation.repositories`);
-      if (repositories.length !== 1) fail(`${field}.preservation must contain one source mapping`);
-      const mapping = exactObject(repositories[0], [
-        "source_repository",
-        "commit",
-        "fork_repository",
-      ], `${field}.preservation.repositories[0]`);
-      if (typeof mapping.source_repository !== "string" ||
-          mapping.source_repository.toLowerCase() !== repository.toLowerCase() ||
-          mapping.commit !== source.commit ||
-          typeof mapping.fork_repository !== "string" ||
-          !REPOSITORY_RE.test(mapping.fork_repository) ||
-          !mapping.fork_repository.startsWith("PalomarArchive/")) {
-        fail(`${field}.preservation does not match source`);
-      }
+    const preservation = exactObject(
+      summary.preservation,
+      ["repositories"],
+      `${field}.preservation`,
+    );
+    const repositories = array(preservation.repositories, `${field}.preservation.repositories`);
+    if (repositories.length !== 1) fail(`${field}.preservation must contain one source mapping`);
+    const mapping = exactObject(repositories[0], [
+      "source_repository",
+      "commit",
+      "fork_repository",
+    ], `${field}.preservation.repositories[0]`);
+    if (typeof mapping.source_repository !== "string" ||
+        mapping.source_repository.toLowerCase() !== repository.toLowerCase() ||
+        mapping.commit !== source.commit ||
+        typeof mapping.fork_repository !== "string" ||
+        !REPOSITORY_RE.test(mapping.fork_repository) ||
+        !mapping.fork_repository.startsWith("PalomarArchive/")) {
+      fail(`${field}.preservation does not match source`);
     }
   }
   return document;
@@ -833,7 +830,7 @@ function validateCanonicalRecordLinks(entry) {
 export function validateEntry(entry, summary) {
   object(entry, "entry");
   object(summary, "entry summary");
-  if (!ENTRY_SCHEMA_VERSIONS.has(entry.schema_version)) {
+  if (entry.schema_version !== ENTRY_SCHEMA_VERSION) {
     fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
   }
   if (entry.status !== "accepted") fail("entry status is not accepted");
@@ -1054,58 +1051,56 @@ export function validateEntry(entry, summary) {
     }
   }
 
-  if (entry.schema_version >= 2 || entry.preservation !== undefined) {
-    const preservation = object(entry.preservation, "entry.preservation");
-    if (preservation.archive_owner !== "PalomarArchive") {
-      fail("entry.preservation.archive_owner is unsupported");
+  const preservation = object(entry.preservation, "entry.preservation");
+  if (preservation.archive_owner !== "PalomarArchive") {
+    fail("entry.preservation.archive_owner is unsupported");
+  }
+  if (!TIMESTAMP_RE.test(preservation.archived_at) ||
+      Number.isNaN(Date.parse(preservation.archived_at))) {
+    fail("entry.preservation.archived_at is malformed");
+  }
+  digest(preservation.receipt_sha256, "entry.preservation.receipt_sha256");
+  const expected = new Map();
+  const addExpected = (repository, revision) => {
+    expected.set(`${repository.toLowerCase()}\0${revision}`, [repository, revision]);
+  };
+  addExpected(source.repository, source.commit);
+  for (const dependency of formalization.project_dependencies) {
+    if (dependency.path === undefined) addExpected(dependency.repository, dependency.revision);
+  }
+  const substantive = entry.provenance.substantive_formalization;
+  if (substantive) addExpected(substantive.repository, substantive.commit);
+  const expectedRows = [...expected.values()].sort((left, right) => {
+    const leftKey = `${left[0].toLowerCase()}\0${left[1]}`;
+    const rightKey = `${right[0].toLowerCase()}\0${right[1]}`;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+  const actualRows = [];
+  const seen = new Set();
+  for (const [position, value] of array(
+    preservation.repositories,
+    "entry.preservation.repositories",
+  ).entries()) {
+    const row = object(value, `entry.preservation.repositories[${position}]`);
+    if (!REPOSITORY_RE.test(row.source_repository)) {
+      fail(`entry.preservation.repositories[${position}].source_repository is malformed`);
     }
-    if (!TIMESTAMP_RE.test(preservation.archived_at) ||
-        Number.isNaN(Date.parse(preservation.archived_at))) {
-      fail("entry.preservation.archived_at is malformed");
+    commit(row.commit, `entry.preservation.repositories[${position}].commit`);
+    if (!REPOSITORY_RE.test(row.fork_repository) ||
+        !row.fork_repository.startsWith("PalomarArchive/")) {
+      fail(`entry.preservation.repositories[${position}].fork_repository is malformed`);
     }
-    digest(preservation.receipt_sha256, "entry.preservation.receipt_sha256");
-    const expected = new Map();
-    const addExpected = (repository, revision) => {
-      expected.set(`${repository.toLowerCase()}\0${revision}`, [repository, revision]);
-    };
-    addExpected(source.repository, source.commit);
-    for (const dependency of formalization.project_dependencies) {
-      if (dependency.path === undefined) addExpected(dependency.repository, dependency.revision);
+    const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
+    if (seen.has(key)) fail(`entry.preservation.repositories[${position}] is duplicated`);
+    seen.add(key);
+    const expectedRef = `refs/tags/palomar/${entry.id}-v${entry.version}/${row.commit}`;
+    if (row.ref !== expectedRef) {
+      fail(`entry.preservation.repositories[${position}].ref is not canonical`);
     }
-    const substantive = entry.provenance.substantive_formalization;
-    if (substantive) addExpected(substantive.repository, substantive.commit);
-    const expectedRows = [...expected.values()].sort((left, right) => {
-      const leftKey = `${left[0].toLowerCase()}\0${left[1]}`;
-      const rightKey = `${right[0].toLowerCase()}\0${right[1]}`;
-      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-    });
-    const actualRows = [];
-    const seen = new Set();
-    for (const [position, value] of array(
-      preservation.repositories,
-      "entry.preservation.repositories",
-    ).entries()) {
-      const row = object(value, `entry.preservation.repositories[${position}]`);
-      if (!REPOSITORY_RE.test(row.source_repository)) {
-        fail(`entry.preservation.repositories[${position}].source_repository is malformed`);
-      }
-      commit(row.commit, `entry.preservation.repositories[${position}].commit`);
-      if (!REPOSITORY_RE.test(row.fork_repository) ||
-          !row.fork_repository.startsWith("PalomarArchive/")) {
-        fail(`entry.preservation.repositories[${position}].fork_repository is malformed`);
-      }
-      const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
-      if (seen.has(key)) fail(`entry.preservation.repositories[${position}] is duplicated`);
-      seen.add(key);
-      const expectedRef = `refs/tags/palomar/${entry.id}-v${entry.version}/${row.commit}`;
-      if (row.ref !== expectedRef) {
-        fail(`entry.preservation.repositories[${position}].ref is not canonical`);
-      }
-      actualRows.push([row.source_repository, row.commit]);
-    }
-    if (JSON.stringify(actualRows) !== JSON.stringify(expectedRows)) {
-      fail("entry.preservation.repositories does not exactly cover the source graph");
-    }
+    actualRows.push([row.source_repository, row.commit]);
+  }
+  if (JSON.stringify(actualRows) !== JSON.stringify(expectedRows)) {
+    fail("entry.preservation.repositories does not exactly cover the source graph");
   }
 
   const verification = object(entry.verification, "entry.verification");

@@ -116,6 +116,10 @@ The scores are not published and are not in the record; a served record that had
 them would mean something upstream had gone wrong, and displaying it would be
 the worst moment to find out.
 
+The site accepts the sole current entry contract, `schema_version: 2`, and
+requires its source-preservation receipt. The unused pre-launch v1 draft has no
+browser fallback; an obsolete or malformed record fails closed.
+
 The website is a presentation layer only. Public data and schemas live at the
 machine-readable data origin. A versioned ID
 such as `PALOMAR-2026-07-29-000001-v1` names one immutable record. An ID without

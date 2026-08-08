@@ -39,7 +39,7 @@ export function challengeSourceUrl(entry, repositoryOverride = null) {
     throw new Error("entry has invalid canonical Challenge source metadata");
   }
   const selectedRepository = repositoryOverride || repository;
-  const isPreserved = entry?.preservation?.repositories?.some(
+  const isPreserved = entry.preservation.repositories.some(
     (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
       row.commit === commit && row.fork_repository === selectedRepository,
   );

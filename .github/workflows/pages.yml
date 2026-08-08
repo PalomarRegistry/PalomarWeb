@@ -32,9 +32,6 @@ jobs:
         run: |
           mkdir -p palomar-database/tests/fixtures
           curl --fail --silent --show-error --retry 3 \
-            "$PUBLIC_DATA_ORIGIN/schema-v1.json" \
-            --output palomar-database/schema-v1.json
-          curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/schema-v2.json" \
             --output palomar-database/schema-v2.json
           curl --fail --silent --show-error --retry 3 \

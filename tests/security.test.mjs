@@ -203,11 +203,15 @@ test("recent is one exact complete projection, not a legacy summary shape", () =
     (page) => { page.entries[0].registered_at = page.entries[0].published_at; },
     (page) => { delete page.entries[0].source.project_path; },
     (page) => { page.entries[0].authors[0].github = "somebody"; },
+    (page) => { page.entries[0].preservation = null; },
     (page) => { page.entries[0].preservation.repositories = []; },
   ]) {
     const page = recent();
     mutate(page);
-    assert.throws(() => validateRecent(page), /invalid shape|must contain one source mapping/);
+    assert.throws(
+      () => validateRecent(page),
+      /invalid shape|preservation must be an object|must contain one source mapping/,
+    );
   }
 });
 
@@ -409,12 +413,6 @@ test("preservation must cover every immutable source", () => {
   const moving = entry();
   moving.preservation.repositories[0].ref = "refs/tags/latest";
   assert.throws(() => validateEntry(moving, summary()), /ref is not canonical/);
-});
-
-test("legacy schema v1 records remain readable without an archive mapping", () => {
-  const legacy = entry({ schema_version: 1 });
-  delete legacy.preservation;
-  assert.equal(validateEntry(legacy, summary()).schema_version, 1);
 });
 
 test("availability applies the inclusive freshness boundaries to each endpoint", () => {
@@ -620,7 +618,18 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 });
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
-  assert.throws(() => validateEntry(entry({ schema_version: 99 }), summary()), /unsupported entry/);
+  const unsupportedSchemas = [
+    entry({ schema_version: 1 }),
+    entry({ schema_version: 3 }),
+    entry({ schema_version: true }),
+    entry({ schema_version: "2" }),
+  ];
+  const missingSchema = entry();
+  delete missingSchema.schema_version;
+  unsupportedSchemas.push(missingSchema);
+  for (const record of unsupportedSchemas) {
+    assert.throws(() => validateEntry(record, summary()), /unsupported entry schema_version/);
+  }
   assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
   const rejected = entry();
   rejected.review.verdict = "reject";

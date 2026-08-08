@@ -24,6 +24,10 @@
   the matching Web deployment. Do not add an old-shape or per-entry fallback;
   invalid projections are supposed to fail closed.
 
+- Entry records have one contract: `schema_version: 2` in `schema-v2.json`.
+  Version 1 was an unused pre-launch draft; do not restore its validator,
+  preservation fallback, public schema download, or legacy presentation.
+
 - `source-availability.json` is normalized by PalomarDatabase's executable
   source-availability contract and consumed under the same per-endpoint
   freshness rules here. A known answer is authoritative only from five minutes
