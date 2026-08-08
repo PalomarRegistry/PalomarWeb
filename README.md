@@ -98,7 +98,7 @@ explicit snapshot URL.
 
 Entry pages list all active versions. Older pages display a prominent link
 to the current version. Each page renders the selected version's own authorship,
-statement, proof, trust information, review, and warnings; information is never
+statement, proof, trust information, and review comments; information is never
 borrowed from a newer record. The site provides links, not computed diffs.
 The registry does not define change summaries or major/minor versions, so the
 website does not infer them. If a richer version
