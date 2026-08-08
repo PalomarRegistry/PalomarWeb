@@ -789,6 +789,25 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(rendered.locator("#theorem-end")).toBeInViewport();
 });
 
+test("a missing formatted Challenge leaves the accepted entry and pinned source usable", async ({ page }) => {
+  await page.route("**/challenge-metadata.json", (route) =>
+    route.fulfill({ status: 404, body: "not published" }));
+
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+
+  await expect(page.locator(".entry-heading h1")).toBeVisible();
+  await expect(page.locator(".entry-evidence")).toBeVisible();
+  await expect(page.locator(".challenge-fallback")).toContainText(
+    "The formatted statement is not available for this entry yet",
+  );
+  await expect(page.locator(".challenge-presentation iframe")).toHaveCount(0);
+  await expect(page.locator(".challenge-source")).toHaveAttribute(
+    "href",
+    `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Task.lean`,
+  );
+  await expect(page.locator("#status")).toBeHidden();
+});
+
 test("larger Challenge falls back to the dedicated wrapper", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}`);
   await expect(page.locator("#statement-dependencies")).toContainText(
@@ -799,6 +818,9 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   );
   await expect(page.locator(".challenge-presentation iframe")).toHaveCount(0);
   await expect(page.locator(".challenge-fallback")).toBeVisible();
+  await expect(page.locator(".challenge-fallback")).toContainText(
+    "This statement is too large to display here",
+  );
   await page.getByRole("link", { name: "Open formatted statement" }).click();
   await expect(page).toHaveURL(/render\.html\?id=PALOMAR-2026-07-29-000124/);
   await expect(page.locator(".challenge-presentation iframe")).toHaveAttribute(

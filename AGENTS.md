@@ -65,8 +65,12 @@
   mappings, and owns repository resolution plus in-place card decoration;
   `assets/entry-pages.mjs` owns entry-route parameter validation, progressive
   visibility, immutable-URL replacement, fragment scrolling, tombstone
-  dispatch, and route-level errors; `assets/app.js` owns data loading and page
-  composition. Do not duplicate registry-document validation or route
+  dispatch, and route-level errors. `assets/challenge-presentation.mjs` owns the
+  named-declarations render metadata's correspondence to the accepted entry,
+  its source/dependency controls, inline-versus-wrapper presentation, iframe
+  sandbox/height handling, and the missing-artifact fallback;
+  `assets/app.js` owns data loading and remaining page composition. Do not
+  duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed
   URL identifiers before asking the document loader to do any work.
 

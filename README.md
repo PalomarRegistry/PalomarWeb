@@ -81,7 +81,9 @@ The browser code keeps the data boundary separate from presentation:
 freshness, `source-preservation.mjs` matches validated manifest observations to
 the preservation receipt before resolving repository locations and decorating
 existing cards, `entry-pages.mjs` owns entry-route input and page-state
-transitions, and `app.js` loads records and composes the page-level views.
+transitions, `challenge-presentation.mjs` owns the named-declarations artifact's
+entry correspondence and presentation states, and `app.js` loads records and
+composes the remaining page-level views.
 
 Runtime reads use the browser's normal HTTP cache behavior. The public data
 service gives successful documents a 60-second browser/shared-cache lifetime,
