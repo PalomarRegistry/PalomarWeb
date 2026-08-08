@@ -11,6 +11,9 @@
  * the check is a comparison rather than new machinery.
  */
 
+import { readFile } from "node:fs/promises";
+
+import { shippedFiles } from "./build-site.mjs";
 import { validateEntry, validateRecent } from "../assets/security.mjs";
 
 const STAMP = /assets\/app\.js\?v=([A-Za-z0-9._-]+)/;
@@ -78,6 +81,64 @@ export async function publicDataState(
   }
 }
 
+// Stops at the delimiters a URL is written between: quotes and angle brackets
+// in markup, a semicolon in the CSP's source list, a bracket in CSS.
+const DATA_URL = /https:\/\/data\.palomar-registry\.org[^\s"'`<>();,]*/g;
+
+/**
+ * Every registry document the shipped site sends a reader to.
+ *
+ * A URL ending in `/` names a prefix the code builds a document out of rather
+ * than a document, and the bare origin appears in each page's content policy;
+ * neither is something to request.
+ */
+export function linkedDataDocuments(sources) {
+  const found = new Map();
+  for (const [name, text] of sources) {
+    for (const [href] of String(text).matchAll(DATA_URL)) {
+      const { pathname } = new URL(href);
+      if (pathname === "/" || pathname.endsWith("/")) continue;
+      if (!found.has(href)) found.set(href, name);
+    }
+  }
+  return found;
+}
+
+/** The shipped files, as `check-published.mjs` and the build both see them. */
+export async function shippedSources(root = new URL("..", import.meta.url)) {
+  return Promise.all(
+    shippedFiles.map(async (name) => [name, await readFile(new URL(name, root), "utf8")]),
+  );
+}
+
+/**
+ * Does the registry still serve every document the site links to?
+ *
+ * `index.json` was removed from the public data service, and seven links to it
+ * survived the removal: the landing page's machine-readable index, both
+ * noscript fallbacks and four footers, each answering 404 to whoever followed
+ * it. Nothing noticed, because nothing had ever asked the service whether the
+ * documents this site names are documents it will answer for. Asking it is the
+ * only check that cannot drift from it.
+ */
+export async function linkedDataState(sources, fetcher = fetch) {
+  const documents = linkedDataDocuments(sources);
+  const dead = [];
+  await Promise.all([...documents].map(async ([href, name]) => {
+    try {
+      const response = await fetcher(href, { method: "HEAD", cache: "no-store" });
+      if (!response.ok) dead.push(`${name} links ${href}, which responded ${response.status}`);
+    } catch (error) {
+      dead.push(`${name} links ${href}, which could not be fetched: ${error.message}`);
+    }
+  }));
+  if (dead.length) return { healthy: false, reason: dead.sort().join("; ") };
+  return {
+    healthy: true,
+    reason: `the registry serves all ${documents.size} documents the site links to`,
+  };
+}
+
 async function main(argv) {
   const options = new Map();
   for (let index = 0; index < argv.length; index += 2) {
@@ -91,9 +152,15 @@ async function main(argv) {
     console.log(`${data}: ${state.reason}`);
     return state.healthy ? 0 : 1;
   }
+  if (options.has("links") && !url && !expected) {
+    const state = await linkedDataState(await shippedSources());
+    console.log(state.reason);
+    return state.healthy ? 0 : 1;
+  }
   if (!url || !expected) {
     console.error(
-      "usage: check-published.mjs --url <site> --expect <commit> | --data <registry-data>",
+      "usage: check-published.mjs --url <site> --expect <commit> | --data <registry-data>"
+        + " | --links",
     );
     return 2;
   }

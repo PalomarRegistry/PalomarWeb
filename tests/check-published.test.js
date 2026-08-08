@@ -89,3 +89,49 @@ test("live-data health fails on the same contract error a visitor would see", as
   assert.equal(state.healthy, false);
   assert.match(state.reason, /entry\.review\.scores must be an object/);
 });
+
+test("every registry document the site links to is one the registry still serves", async () => {
+  // Seven links pointed at `index.json` for weeks after it stopped being
+  // served: the landing page's machine-readable index, both noscript
+  // fallbacks, and four footers. Each answered 404 to whoever followed it, and
+  // nothing noticed, because nothing had ever asked the registry whether the
+  // documents this site names are ones it will answer for.
+  //
+  // Offline, that question is answered by the one document whose removal is
+  // already history. Against the live registry it is answered in full, by
+  // `check-published.mjs --links` in the published-site health workflow.
+  const { shippedSources, linkedDataState } = await import("../scripts/check-published.mjs");
+  const asked = [];
+  const registry = async (url, options) => {
+    asked.push([String(url), options.method]);
+    return { ok: new URL(url).pathname !== "/index.json", status: 404 };
+  };
+
+  const state = await linkedDataState(await shippedSources(), registry);
+  assert.equal(state.healthy, true, state.reason);
+  assert.ok(asked.length, "the shipped site names no registry documents at all");
+  assert.deepEqual([...new Set(asked.map(([, method]) => method))], ["HEAD"]);
+});
+
+test("a link to a document the registry has removed is reported with the file that carries it", async () => {
+  const { linkedDataState } = await import("../scripts/check-published.mjs");
+  const state = await linkedDataState(
+    [["index.html", '<a href="https://data.palomar-registry.org/index.json">Data</a>']],
+    async () => ({ ok: false, status: 404 }),
+  );
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /index\.html links .*\/index\.json, which responded 404/);
+});
+
+test("a prefix the site builds documents out of is not itself requested", async () => {
+  const { linkedDataDocuments } = await import("../scripts/check-published.mjs");
+  // `connect-src https://data.palomar-registry.org` in every page's content
+  // policy, and the render base the entry page resolves an artifact against.
+  // Neither names a document, and requesting either would report a 404 that
+  // means nothing.
+  const documents = linkedDataDocuments([
+    ["index.html", "connect-src 'self' https://data.palomar-registry.org; frame-src 'self'"],
+    ["assets/security.mjs", 'const base = "https://data.palomar-registry.org/";'],
+  ]);
+  assert.deepEqual([...documents], []);
+});

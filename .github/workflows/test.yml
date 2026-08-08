@@ -37,6 +37,12 @@ jobs:
       - run: npm test
         env:
           PALOMAR_DATABASE_CHECKOUT: ${{ github.workspace }}/palomar-database
+      # Against the live service, because the grammar of what it serves lives
+      # in the canonical database and this repository cannot see it. A link to
+      # a document the service has removed answers 404 to a reader, which is
+      # how seven links to `index.json` survived its removal.
+      - name: Does the registry still serve every document the site links to
+        run: node scripts/check-published.mjs --links
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
         env:

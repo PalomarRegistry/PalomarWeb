@@ -50,6 +50,13 @@ jobs:
         env:
           DATA: https://data.palomar-registry.org
 
+      # The other direction: not whether the records the site reads are
+      # readable, but whether the documents it sends readers to are there at
+      # all. Seven links to `index.json` outlived its removal from the service
+      # because nothing ever asked.
+      - name: Does the registry still serve every document the site links to
+        run: node scripts/check-published.mjs --links
+
       # One attempt, with the traps that cost a day written into the guards.
       # A deployment is identified by its commit, so a second one for a commit
       # already deploying is cancelled rather than queued; and re-running a
