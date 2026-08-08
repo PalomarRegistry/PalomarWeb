@@ -3,6 +3,11 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import {
+  SEARCH_QUERY_CHARACTER_LIMIT,
+  SEARCH_TERM_LIMIT,
+} from "../assets/searching.mjs";
+
 const database = encodeURIComponent("http://127.0.0.1:4173/database/");
 const missingAvailability = encodeURIComponent(
   "http://127.0.0.1:4173/database/source-availability-missing.json",
@@ -886,6 +891,98 @@ test("a search reads one postings sequence per word and confirms every hit", asy
   // nothing on top of that.
   expect(asked.filter((path) => path.startsWith("/database/entries/")))
     .toEqual(["/database/entries/PALOMAR-2026-07-29-000124-v1.json"]);
+});
+
+test("an over-limit term count is an accessible warning and can be corrected", async ({ page }) => {
+  const query = Array.from(
+    { length: SEARCH_TERM_LIMIT + 1 },
+    (_unused, index) => `word${String(index).padStart(2, "0")}`,
+  ).join(" ");
+  const asked = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/database/")) asked.push(path);
+  });
+
+  await page.goto(`/?database=${database}&q=${encodeURIComponent(query)}`);
+  await expect(page.locator("#query")).toHaveValue(query);
+  await expect(page.locator("#search-status")).toHaveText(
+    `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
+      `this search has ${SEARCH_TERM_LIMIT + 1}. Common words count toward this limit.`,
+  );
+  await expect(page.locator("#search-status")).toHaveClass(/warning/);
+  await expect(page.locator("#search-status")).not.toHaveClass(/error/);
+  await expect(page.locator("#query")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#query")).toHaveAttribute("aria-describedby", "search-status");
+  await page.waitForTimeout(100);
+  expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
+  expect(asked.filter((path) => path === "/database/recent.json")).toEqual([]);
+  await expect(page.locator("#entry-grid")).toBeHidden();
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+  asked.length = 0;
+  await page.locator("#query").fill(query);
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#query")).toHaveValue(query);
+  await expect(page.locator("#search-status")).toHaveText(
+    `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
+      `this search has ${SEARCH_TERM_LIMIT + 1}. Common words count toward this limit.`,
+  );
+  await page.waitForTimeout(100);
+  expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
+
+  await page.locator("#query").fill("synthetically");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect(page.locator("#query")).not.toHaveAttribute("aria-invalid");
+  await expect(page.locator("#query")).not.toHaveAttribute("aria-describedby");
+
+  await page.locator("#query").fill("");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#entry-grid")).toBeVisible();
+  await expect(page.locator("#search-status")).toBeHidden();
+});
+
+test("huge few-distinct linked and typed queries fail before I/O or history", async ({ page }) => {
+  const query = "echo ".repeat(Math.ceil((SEARCH_QUERY_CHARACTER_LIMIT + 1) / 5));
+  const asked = [];
+  const pageErrors = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/database/")) asked.push(path);
+  });
+  page.on("pageerror", (error) => pageErrors.push(error));
+
+  await page.goto(`/?database=${database}&q=${encodeURIComponent(query)}`);
+  await expect(page.locator("#search-status")).toContainText(
+    `Shorten the search to at most ${SEARCH_QUERY_CHARACTER_LIMIT} characters`,
+  );
+  await expect(page.locator("#query")).toHaveAttribute(
+    "maxlength",
+    String(SEARCH_QUERY_CHARACTER_LIMIT),
+  );
+  await expect(page.locator("#query")).toHaveAttribute("aria-invalid", "true");
+  await page.waitForTimeout(100);
+  expect(asked.filter((path) => path.startsWith("/database/search/"))).toEqual([]);
+  expect(asked.filter((path) => path === "/database/recent.json")).toEqual([]);
+  expect(pageErrors).toEqual([]);
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+  const before = page.url();
+  asked.length = 0;
+  await page.locator("#query").evaluate((input, value) => { input.value = value; }, query);
+  await page.locator("#registry-search").evaluate((form) => {
+    form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+  });
+  await expect(page.locator("#search-status")).toContainText(
+    `Shorten the search to at most ${SEARCH_QUERY_CHARACTER_LIMIT} characters`,
+  );
+  await page.waitForTimeout(100);
+  expect(page.url()).toBe(before);
+  expect(asked.filter((path) => path.startsWith("/database/search/"))).toEqual([]);
+  expect(pageErrors).toEqual([]);
 });
 
 test("search cards retain posting order when posting pages finish out of order", async ({ page }) => {

@@ -16,7 +16,6 @@ import {
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
-  searchTerms,
   selectDatabaseUrl,
   selectAvailabilityUrl,
   recentUrl,
@@ -31,7 +30,7 @@ import {
   workflowRunId,
 } from "./security.mjs";
 import { loadSettledBounded } from "./loading.mjs";
-import { createRegistrySearch } from "./searching.mjs";
+import { createRegistrySearch, validateSearchQuery } from "./searching.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
@@ -659,6 +658,19 @@ function renderSearchCards(results, entries) {
   return cards;
 }
 
+function clearSearchQueryWarning(input) {
+  input?.removeAttribute("aria-invalid");
+  input?.removeAttribute("aria-describedby");
+}
+
+function showSearchQueryWarning(input, status, error) {
+  status.hidden = false;
+  status.textContent = error.message;
+  status.classList.add("warning");
+  input?.setAttribute("aria-invalid", "true");
+  input?.setAttribute("aria-describedby", status.id);
+}
+
 async function renderSearch(query) {
   const generation = searchGeneration + 1;
   searchGeneration = generation;
@@ -666,10 +678,25 @@ async function renderSearch(query) {
   activeSearchController = null;
   const status = document.querySelector("#search-status");
   const results = document.querySelector("#search-results");
+  const input = document.querySelector("#query");
   if (!status || !results) return;
   results.replaceChildren();
   status.className = "status";
-  const searching = Boolean(searchTerms(query).length);
+  let asked;
+  try {
+    asked = validateSearchQuery(query);
+    clearSearchQueryWarning(input);
+  } catch (error) {
+    setLandingSuppressed(Boolean(query));
+    if (error instanceof RangeError) showSearchQueryWarning(input, status, error);
+    else {
+      status.hidden = false;
+      status.textContent = `The search could not be run: ${error.message}`;
+      status.classList.add("error");
+    }
+    return;
+  }
+  const searching = Boolean(asked.length);
   setLandingSuppressed(searching);
   if (!searching) {
     status.hidden = true;
@@ -740,8 +767,11 @@ async function renderSearch(query) {
     status.classList.toggle("warning", Boolean(degraded));
   } catch (error) {
     if (generation !== searchGeneration) return;
-    status.textContent = `The search could not be run: ${error.message}`;
-    status.classList.add("error");
+    if (error instanceof RangeError) showSearchQueryWarning(input, status, error);
+    else {
+      status.textContent = `The search could not be run: ${error.message}`;
+      status.classList.add("error");
+    }
   } finally {
     if (generation === searchGeneration) activeSearchController = null;
   }
@@ -757,12 +787,21 @@ function wireSearch() {
     // The page's own content security policy forbids form submission, which is
     // right: nothing here posts anywhere. The query is a link to this page.
     event.preventDefault();
-    const query = input.value.trim();
+    const rawQuery = input.value;
+    try {
+      // Validate before trimming or constructing the shareable URL. This also
+      // keeps an over-limit value out of history.replaceState.
+      validateSearchQuery(rawQuery);
+    } catch (error) {
+      renderSearch(rawQuery);
+      return;
+    }
+    const query = rawQuery.trim();
     window.history.replaceState(null, "", searchPageUrlFor(query));
     renderSearch(query);
   });
   if (initial) renderSearch(initial);
-  return Boolean(searchTerms(initial).length);
+  return Boolean(initial);
 }
 
 function detailRow(label, value) {
