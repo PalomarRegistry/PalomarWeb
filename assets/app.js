@@ -39,7 +39,6 @@ import {
 } from "./security.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
-const FEED_BASE = "https://data.palomar-registry.org/feeds/";
 
 const params = new URLSearchParams(window.location.search);
 const PALOMAR_ID = /^PALOMAR-\d{4}-\d{2}-\d{2}-\d{6}$/;
@@ -59,11 +58,6 @@ function dataSource() {
     databaseBase,
   );
   return { databaseBase, renderBase, availabilityUrl };
-}
-
-function categoryFeedBase() {
-  if (!params.has("database")) return FEED_BASE;
-  return new URL("feeds/", dataSource().databaseBase);
 }
 
 function el(tag, className, text) {

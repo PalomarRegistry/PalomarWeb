@@ -53,6 +53,25 @@ test("the MSC descriptions shown to readers are readable", async () => {
   assert.equal(codes["52C10"], "Erdős problems and related topics of discrete geometry");
 });
 
+test("app.js writes down no data origin the database override cannot redirect", async () => {
+  // `?database=` names the endpoint every read surface is resolved against, so
+  // a fixture directory can stand in for the live service. A data URL spelled
+  // out as a literal in app.js is outside that arrangement by construction.
+  // `FEED_BASE` and the `categoryFeedBase()` that read it were the last of
+  // those: they outlived the category feed links, which were removed when
+  // every one of them answered 404, and went on naming a `feeds/` directory
+  // that nothing fetched and no reader could reach. The canonical web origin
+  // is a different thing and stays, because an entry's canonical link has to
+  // point at the official URL even when the page is being read from a fixture.
+  const app = await readFile(new URL("../assets/app.js", import.meta.url), "utf8");
+  assert.equal(
+    app.includes("data.palomar-registry.org"),
+    false,
+    "app.js names the data origin directly instead of resolving against the chosen endpoint",
+  );
+  assert.match(app, /const CANONICAL_WEB_BASE = "https:\/\/palomar-registry\.org\/";/);
+});
+
 test("everything the pages fetch at runtime is actually shipped", async () => {
   // The MSC table was added under assets/data/ and never added to the build's
   // copy list, so it was absent from the deployed site while the hover that
