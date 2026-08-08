@@ -27,6 +27,12 @@
 - Entry records have one contract: `schema_version: 2` in `schema-v2.json`.
   Version 1 was an unused pre-launch draft; do not restore its validator,
   preservation fallback, public schema download, or legacy presentation.
+  Deploy this consumer cleanup before the matching Database deletion: the live
+  data already contains only v2 entries and preservation-backed recent rows,
+  while the previous Web workflows still fetch `schema-v1.json` and would fail
+  as soon as Database publication removed it. This consumer-first ordering is
+  specific to deleting an artifact an old consumer still requests; shape
+  changes to documents the browser reads remain producer-first as above.
 
 - `source-availability.json` is normalized by PalomarDatabase's executable
   source-availability contract and consumed under the same per-endpoint

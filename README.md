@@ -119,6 +119,10 @@ the worst moment to find out.
 The site accepts the sole current entry contract, `schema_version: 2`, and
 requires its source-preservation receipt. The unused pre-launch v1 draft has no
 browser fallback; an obsolete or malformed record fails closed.
+The deployed data already contains only v2 entries and preservation-backed
+recent projections. The pre-launch removal therefore deploys this Web cleanup
+first, so its workflows stop fetching `schema-v1.json`; Database can then stop
+publishing and serving that obsolete document without breaking Web deployment.
 
 The website is a presentation layer only. Public data and schemas live at the
 machine-readable data origin. A versioned ID
