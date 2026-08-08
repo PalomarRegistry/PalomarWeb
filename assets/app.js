@@ -306,7 +306,15 @@ function entryCard(entry, versionCount, availability) {
         "archive-link",
       ),
     );
-  } else {
+  } else if (location.useArchive) {
+    // Reached only when the availability manifest says the original is
+    // missing, which is why the link above has switched to the preserved
+    // copy. A record with no preservation block predates archiving, so
+    // nothing has ever been checked about its repository at all; it used to
+    // fall through to here and be told, in public, that it is gone.
+    // `sourceAvailabilityNotice` says the accurate thing for that case on the
+    // entry page, which is that Palomar has no preserved copy. A card has no
+    // room to explain it, so it says nothing.
     footer.append(el("span", "source-status missing", "Original unavailable"));
   }
   if (versionCount > 1) {
