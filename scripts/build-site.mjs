@@ -5,7 +5,14 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
-const assetFiles = ["about.js", "app.js", "rendering.js", "security.mjs", "style.css"];
+const assetFiles = [
+  "about.js",
+  "app.js",
+  "loading.mjs",
+  "rendering.js",
+  "security.mjs",
+  "style.css",
+];
 // Copied verbatim into assets/, keeping their subdirectory. Listed separately
 // because they are data rather than code: no version query, no rewriting.
 const assetDataFiles = ["data/msc2020-codes.json"];
@@ -80,9 +87,11 @@ export async function buildSite({ output, version }) {
   const appTarget = path.join(destination, "assets", "app.js");
   const app = await readFile(appTarget, "utf8");
   const versionedImport = app
+    .replace('from "./loading.mjs";', `from "./loading.mjs?v=${version}";`)
     .replace('from "./rendering.js";', `from "./rendering.js?v=${version}";`)
     .replace('from "./security.mjs";', `from "./security.mjs?v=${version}";`);
   if (
+    !versionedImport.includes(`from "./loading.mjs?v=${version}";`) ||
     !versionedImport.includes(`from "./rendering.js?v=${version}";`) ||
     !versionedImport.includes(`from "./security.mjs?v=${version}";`)
   ) {

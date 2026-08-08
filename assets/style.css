@@ -321,6 +321,11 @@ button:focus-visible {
   color: var(--warning);
 }
 
+.status.warning {
+  border-color: var(--caution);
+  color: var(--caution);
+}
+
 .status.empty {
   padding-block: 2rem;
 }

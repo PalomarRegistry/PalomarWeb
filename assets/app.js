@@ -37,6 +37,7 @@ import {
   validateTombstone,
   workflowRunId,
 } from "./security.mjs";
+import { loadSettledBounded } from "./loading.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
@@ -46,6 +47,8 @@ const VERSION_PARAMETER = /^[1-9][0-9]*$/;
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
+const RECENT_ENTRY_CONCURRENCY = 8;
+const RECENT_ENTRY_TIMEOUT_MS = 8_000;
 
 function dataSource() {
   const databaseBase = databaseBaseFor(
@@ -90,8 +93,8 @@ function setOptionalText(selector, text) {
   if (node) node.textContent = text;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-cache" });
+async function fetchJson(url, { signal } = {}) {
+  const response = await fetch(url, { cache: "no-cache", signal });
   if (!response.ok) {
     const error = new Error(`${response.status} ${response.statusText}`);
     error.status = response.status;
@@ -337,12 +340,33 @@ function entryCard(entry, versionCount, availability) {
 }
 
 async function loadEntries(page, databaseBase) {
-  return Promise.all(
-    page.entries.map(async (summary) => {
-      const entry = await fetchJson(entryRecordUrl(summary, databaseBase));
+  const settled = await loadSettledBounded(
+    page.entries,
+    async (summary, signal) => {
+      const entry = await fetchJson(entryRecordUrl(summary, databaseBase), { signal });
+      // Every response is still untrusted independently. Degraded loading
+      // means a malformed record is omitted, never rendered provisionally.
       return validateEntry(entry, summary);
-    }),
+    },
+    {
+      concurrency: RECENT_ENTRY_CONCURRENCY,
+      timeoutMs: RECENT_ENTRY_TIMEOUT_MS,
+    },
   );
+  const entries = [];
+  let failed = 0;
+  for (const [position, result] of settled.entries()) {
+    if (result.status === "fulfilled") {
+      entries.push(result.value);
+    } else {
+      failed += 1;
+      console.warn(
+        `Recent entry ${page.entries[position].id} v${page.entries[position].version} ` +
+          `could not be loaded: ${result.reason?.message || String(result.reason)}`,
+      );
+    }
+  }
+  return { entries, failed };
 }
 
 async function renderIndex() {
@@ -358,7 +382,9 @@ async function renderIndex() {
     // how many versions each has, so neither is worked out again here.
     const recent = validateRecent(await fetchJson(recentUrl(databaseBase)));
     const versionCounts = new Map(recent.entries.map((row) => [row.id, row.versions]));
-    const entries = await loadEntries(recent, databaseBase);
+    const loaded = await loadEntries(recent, databaseBase);
+    const { entries } = loaded;
+    const recentTotal = recent.entries.length;
     const availability = await availabilityPromise;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
@@ -367,15 +393,29 @@ async function renderIndex() {
       "#metric-projects",
       new Set(entries.map((entry) => entry.source.repository)).size,
     );
-    if (!entries.length) {
+    if (!entries.length && !recentTotal) {
       status.textContent =
         "The telescope is ready. No entries have been published yet; the first accepted database PR will appear here automatically.";
       status.classList.add("empty");
       return;
     }
-    status.hidden = true;
-    // `loadEntries` preserves recent.entries order even when its parallel
-    // fetches finish out of order, so render the publisher's newest-first list.
+    if (!entries.length) {
+      status.textContent =
+        `No recent registry entries could be loaded (${loaded.failed} of ${recentTotal} failed). ` +
+        "Try again later.";
+      status.classList.add("error");
+      return;
+    }
+    const degradedMessage = loaded.failed
+      ? `Showing ${entries.length} of ${recentTotal} recent registry entries; ` +
+        `${loaded.failed} could not be loaded.`
+      : "";
+    status.hidden = !degradedMessage;
+    status.textContent = degradedMessage;
+    status.classList.toggle("warning", Boolean(degradedMessage));
+    // `loadEntries` keeps fulfilled values in recent.entries order even when
+    // its bounded parallel fetches finish out of order, so render the
+    // publisher's newest-first list.
     for (const entry of entries) {
       grid.append(entryCard(entry, versionCounts.get(entry.id), availability));
     }
@@ -434,7 +474,7 @@ async function renderIndex() {
         card.hidden = !visible;
         if (visible) shown += 1;
       }
-      status.hidden = shown !== 0;
+      status.hidden = shown !== 0 && !degradedMessage;
       const classificationQuery = [
         arxivValue && `arXiv ${arxivValue}`,
         mscValue && `MSC2020 ${mscValue}`,
@@ -444,12 +484,14 @@ async function renderIndex() {
         mscInvalid && "MSC2020",
       ].filter(Boolean);
       status.textContent = shown
-        ? ""
+        ? degradedMessage
         : invalidClassifications.length
           ? `No registry entries match the current filters. Invalid classification code format: ${invalidClassifications.join(", ")}.`
           : classificationQuery.length
           ? `No registry entries match the current filters. Classification query: ${classificationQuery.join(", ")}.`
           : "No registry entries match those filters.";
+      if (!shown && degradedMessage) status.textContent += ` ${degradedMessage}`;
+      status.classList.toggle("warning", Boolean(degradedMessage));
     };
     let updateTimer;
     const scheduleUpdate = () => {

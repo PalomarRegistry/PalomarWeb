@@ -23,6 +23,8 @@ test("deployment build versions coupled browser assets", async () => {
     await readFile(path.join(destination, "assets", "about.js"), "utf8");
     assert.match(app, /\.\/rendering\.js\?v=0123456789abcdef/);
     assert.match(app, /\.\/security\.mjs\?v=0123456789abcdef/);
+    assert.match(app, /\.\/loading\.mjs\?v=0123456789abcdef/);
+    await readFile(path.join(destination, "assets", "loading.mjs"), "utf8");
     await readFile(path.join(destination, "assets", "security.mjs"), "utf8");
   } finally {
     await rm(destination, { recursive: true, force: true });
