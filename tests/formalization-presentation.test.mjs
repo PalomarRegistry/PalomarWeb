@@ -1,0 +1,162 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { createFormalizationPresentation } from "../assets/formalization-presentation.mjs";
+import { validateAvailability } from "../assets/security.mjs";
+import {
+  COMMIT,
+  availabilityEndpoint,
+  availabilityManifest,
+  availabilityRow,
+  entry,
+} from "./registry-fixture.mjs";
+
+const CHECKED_AT = new Date(Math.floor(Date.now() / 1_000) * 1_000)
+  .toISOString()
+  .replace(".000Z", "Z");
+
+function fakeDocument() {
+  return {
+    createElement(tag) {
+      return {
+        children: [],
+        className: "",
+        href: "",
+        id: "",
+        tagName: tag.toUpperCase(),
+        textContent: "",
+        append(...children) {
+          this.children.push(...children);
+        },
+      };
+    },
+  };
+}
+
+function descendants(root) {
+  const found = [];
+  const visit = (value) => {
+    if (!value || typeof value !== "object" || !Array.isArray(value.children)) return;
+    found.push(value);
+    value.children.forEach(visit);
+  };
+  visit(root);
+  return found;
+}
+
+function byClass(root, className) {
+  return descendants(root).filter((node) =>
+    String(node.className).split(" ").includes(className));
+}
+
+function byTag(root, tagName) {
+  return descendants(root).filter((node) => node.tagName === tagName.toUpperCase());
+}
+
+function texts(root, tagName) {
+  return byTag(root, tagName).map((node) => node.textContent);
+}
+
+test("the trust badge and statement dependency section present the accepted trust record", () => {
+  const presentation = createFormalizationPresentation({ document: fakeDocument() });
+  const high = entry();
+  assert.equal(
+    presentation.trustBadge(high).textContent,
+    "Statement dependencies: Mathlib only",
+  );
+  const highSection = presentation.statementDependencies(high);
+  assert.equal(highSection.id, "statement-dependencies");
+  assert.ok(texts(highSection, "h2").includes("Depends only on Mathlib"));
+  assert.deepEqual(texts(highSection, "code"), ["Mathlib"]);
+  assert.equal(byClass(highSection, "reason-list").length, 0);
+
+  const qualified = entry();
+  qualified.trust = {
+    ...qualified.trust,
+    level: "qualified",
+    challenge_imports: ["Mathlib", "TauCeti"],
+    challenge_dependencies: [{ repository: "TauCetiProject/TauCeti" }],
+    reasons: ["The statement uses a domain-specific definition."],
+  };
+  assert.equal(
+    presentation.trustBadge(qualified).textContent,
+    "Statement dependencies: additional libraries",
+  );
+  const section = presentation.statementDependencies(qualified);
+  assert.ok(texts(section, "h2").includes("Depends on additional libraries"));
+  assert.deepEqual(texts(section, "code"), ["Mathlib", "TauCeti"]);
+  assert.deepEqual(texts(byClass(section, "plain-list")[0], "li"), [
+    "TauCetiProject/TauCeti",
+  ]);
+  assert.deepEqual(texts(byClass(section, "reason-list")[0], "li"), [
+    "The statement uses a domain-specific definition.",
+  ]);
+});
+
+test("the proof section presents imports and every preserved dependency kind", () => {
+  const { solutionMetadata } = createFormalizationPresentation({ document: fakeDocument() });
+  const record = entry();
+  record.formalization.project_dependencies.unshift({ name: "shared", path: "shared" });
+  const section = solutionMetadata(
+    record,
+    { schema_version: 2, solution_imports: ["ExampleDependency"] },
+    null,
+  );
+
+  assert.equal(section.className, "entry-solution");
+  assert.deepEqual(texts(section, "code"), [
+    "ExampleDependency",
+    "shared",
+    COMMIT.slice(0, 12),
+  ]);
+  assert.ok(texts(section, "summary").includes("2 project dependencies used by the proof"));
+  const links = byTag(section, "a");
+  assert.deepEqual(links.map((link) => link.textContent), [
+    "Solution.lean",
+    "shared",
+    "leanprover-community/mathlib4",
+    "Palomar preserved copy",
+  ]);
+  assert.equal(
+    links[0].href,
+    `https://github.com/example/challenge/blob/${COMMIT}/Solution.lean`,
+  );
+  assert.equal(
+    links[1].href,
+    `https://github.com/example/challenge/tree/${COMMIT}/shared`,
+  );
+  assert.equal(
+    links[3].href,
+    `https://github.com/PalomarArchive/mathlib4--fixture/tree/${COMMIT}`,
+  );
+});
+
+test("confirmed missing originals switch the proof and dependency links to their copies", () => {
+  const { solutionMetadata } = createFormalizationPresentation({ document: fakeDocument() });
+  const record = entry();
+  const missing = availabilityEndpoint({ status: "missing", checked_at: CHECKED_AT });
+  const availability = validateAvailability(availabilityManifest([
+    availabilityRow({ original: missing }),
+    availabilityRow({
+      source_repository: "leanprover-community/mathlib4",
+      fork_repository: "PalomarArchive/mathlib4--fixture",
+      original: missing,
+    }),
+  ], { generated_at: CHECKED_AT }));
+  const section = solutionMetadata(record, { schema_version: 1 }, availability);
+  const links = byTag(section, "a");
+
+  assert.deepEqual(texts(section, "code"), [COMMIT.slice(0, 12)]);
+  assert.deepEqual(links.map((link) => link.textContent), [
+    "Solution.lean",
+    "leanprover-community/mathlib4 (Palomar copy)",
+  ]);
+  assert.equal(
+    links[0].href,
+    `https://github.com/PalomarArchive/example--challenge--fixture/blob/${COMMIT}/Solution.lean`,
+  );
+  assert.equal(
+    links[1].href,
+    `https://github.com/PalomarArchive/mathlib4--fixture/tree/${COMMIT}`,
+  );
+});

@@ -68,7 +68,10 @@
   dispatch, and route-level errors. `assets/challenge-presentation.mjs` owns the
   named-declarations render metadata's correspondence to the accepted entry,
   its source/dependency controls, inline-versus-wrapper presentation, iframe
-  sandbox/height handling, and the missing-artifact fallback;
+  sandbox/height handling, and the missing-artifact fallback.
+  `assets/formalization-presentation.mjs` owns statement trust labels plus the
+  statement and accepted-proof dependency DOM, while continuing to consume
+  source locations and confined URLs from their existing owners;
   `assets/app.js` owns data loading and remaining page composition. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed
