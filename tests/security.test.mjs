@@ -70,7 +70,7 @@ function secondVersion(overrides = {}) {
 }
 
 function recentRow(overrides = {}) {
-  return { ...summary(), published_at: "2026-07-29T08:53:02Z", versions: 1, ...overrides };
+  return { ...summary(), published_at: "2026-07-29T09:14:07Z", versions: 1, ...overrides };
 }
 
 function recent(entries = [recentRow()], overrides = {}) {
@@ -347,6 +347,19 @@ test("a record must say when the version was registered, and agree with its resu
     () => validateEntry(secondVersion({ registered_at: "2026-07-28T09:00:00Z" }), secondSummary),
     /registered_at is before the result entered the registry/,
   );
+});
+
+test("a recent summary's publication instant matches the entry it orders", () => {
+  const record = entry();
+  assert.equal(validateEntry(record, recentRow()), record);
+  assert.throws(
+    () => validateEntry(record, recentRow({ published_at: "2026-07-29T09:14:08Z" })),
+    /registered_at does not match summary\.published_at/,
+  );
+
+  // Version indexes and search postings do not order cards by publication
+  // time, so their summaries deliberately do not carry this field.
+  assert.equal(validateEntry(record, summary()), record);
 });
 
 test("what recent claims is coverage and ordering, so both are checked", () => {

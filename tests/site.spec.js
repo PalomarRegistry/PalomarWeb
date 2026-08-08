@@ -127,6 +127,7 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
   await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
     const recent = await response.json();
+    expect(recent.entries).toHaveLength(registeredAt.size);
     const rows = new Map(recent.entries.map((row) => [row.id, row]));
     recent.entries = [...registeredAt].map(([id, publishedAt]) => ({
       ...rows.get(id),
@@ -145,7 +146,7 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
 
   // Recency and identifier order deliberately disagree. The DOM must follow
   // recent.json, whose order has already been validated as newest-first.
-  await expect(page.locator(".entry-card .entry-id")).toHaveText([
+  await expect(page.locator("#entry-grid .entry-card .entry-id")).toHaveText([
     "PALOMAR-2026-07-29-000124 v1 · current",
     "PALOMAR-2026-07-29-000123 v2 · current",
   ]);
