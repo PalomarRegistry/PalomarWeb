@@ -189,12 +189,24 @@ function categoryTokens(entry) {
   return tokens;
 }
 
-function acceptanceDate(entry) {
-  const value = entry.accepted_at || entry.review?.reviewed_at?.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) {
-    throw new Error("entry is missing a valid acceptance date");
+/**
+ * The day this version was registered.
+ *
+ * Not `accepted_at`, which is the *result's* date: the identifier carries it,
+ * every later version inherits it, and it is already on the card beside this.
+ * So a v2 labelled by it named a day years before that version existed, and on
+ * a page ordered by registration the visible dates ran out of order.
+ *
+ * There is no fallback to the review's date any more. A review's verdict and
+ * the registration it leads to are different moments, and the record carries
+ * `registered_at` for exactly this.
+ */
+function registrationDate(entry) {
+  const value = entry.registered_at;
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value || "")) {
+    throw new Error("entry is missing a valid registration date");
   }
-  return value;
+  return value.slice(0, 10);
 }
 
 function displayDate(value) {
@@ -258,7 +270,7 @@ function entryCard(entry, versionCount, availability) {
   const identity = el("div", "card-identity");
   identity.append(
     el("span", "entry-id", `${entry.id} v${entry.version} · current`),
-    el("span", "entry-date", `Accepted ${displayDate(acceptanceDate(entry))}`),
+    el("span", "entry-date", `Registered ${displayDate(registrationDate(entry))}`),
   );
   top.append(identity, trustBadge(entry));
   const title = el("h3");
@@ -1106,7 +1118,7 @@ function acceptanceCallout(entry, databaseBase) {
     );
   }
   copy.append(
-    el("strong", "", `Accepted on ${displayDate(acceptanceDate(entry))}`),
+    el("strong", "", `Registered on ${displayDate(registrationDate(entry))}`),
     assurance(
       "Mechanical assurance",
       "Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",

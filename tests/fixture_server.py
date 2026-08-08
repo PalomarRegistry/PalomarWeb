@@ -37,6 +37,12 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "schema_version": 2,
         "id": identifier,
         "accepted_at": "2026-07-29",
+        # The result's date is the day its version 1 was registered, and a
+        # later version brings its own instant: a v2 is a new registration and
+        # is news, where the result's date would file it beside its v1.
+        "registered_at": (
+            "2026-07-29T09:14:07Z" if version == 1 else f"2026-08-{version:02d}T09:14:07Z"
+        ),
         "version": version,
         "status": "accepted",
         "title": f"Fixture {identifier} version {version}",
@@ -308,7 +314,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "title": item["title"],
                     "status": "accepted",
                     "path": f"entries/{item['id']}-v{item['version']}.json",
-                    "published_at": item["review"]["reviewed_at"],
+                    "published_at": item["registered_at"],
                     "versions": versions[item["id"]],
                 }
                 for item in current.values()

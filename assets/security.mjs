@@ -214,9 +214,12 @@ export function validateRecent(value) {
     }
     integer(summary.versions, `recent.entries[${position}].versions`);
     const publishedAt = string(summary.published_at, `recent.entries[${position}].published_at`);
-    // Date-only or a full timestamp: a record with no review date falls back to
-    // `accepted_at`, which is a date, and both are what the publisher writes.
-    if (!TIMESTAMP_RE.test(publishedAt) && !DATE_RE.test(publishedAt)) {
+    // An instant, and only an instant. This is the record's `registered_at`,
+    // which the schema requires of every version. A date was tolerated while a
+    // row could fall back to `accepted_at`, and a date read as an instant is
+    // midnight, so such a row would sort ahead of everything registered that
+    // day with nothing to say why.
+    if (!TIMESTAMP_RE.test(publishedAt)) {
       fail(`recent.entries[${position}].published_at is malformed`);
     }
     const moment = Date.parse(publishedAt);
@@ -607,6 +610,20 @@ function validateCanonicalRecordLinks(entry) {
   const identifier = ID_RE.exec(entry.id);
   if (identifier[1] !== entry.accepted_at) fail("entry ID date does not match accepted_at");
 
+  // `accepted_at` is the result's date, inherited by every later version, and
+  // `registered_at` is the version's own instant. They meet at version 1, and
+  // there they must: one is in the identifier and decides which browse page
+  // the result is on, the other decides where it appears among what is new. A
+  // record where they have come apart renders perfectly well while being
+  // browsed under one day and ordered under another.
+  const registeredOn = entry.registered_at.slice(0, 10);
+  if (entry.version === 1 && registeredOn !== entry.accepted_at) {
+    fail("entry.accepted_at is not the day version 1 was registered");
+  }
+  if (registeredOn < entry.accepted_at) {
+    fail("entry.registered_at is before the result entered the registry");
+  }
+
   const submission = entry.submission;
   if (!SUBMISSION_ID_RE.test(submission.submission_id)) {
     fail("entry.submission.submission_id is malformed");
@@ -661,6 +678,14 @@ export function validateEntry(entry, summary) {
   string(entry.abstract, "entry.abstract");
   const acceptedAt = string(entry.accepted_at, "entry.accepted_at");
   if (!DATE_RE.test(acceptedAt)) fail("entry.accepted_at is malformed");
+  // The version's own registration instant, which is what every ordering
+  // surface reads and what the card is dated by. How it has to agree with
+  // `accepted_at` is in `validateCanonicalRecordLinks`, beside the rest of what
+  // a record derives from itself.
+  const registeredAt = string(entry.registered_at, "entry.registered_at");
+  if (!TIMESTAMP_RE.test(registeredAt) || Number.isNaN(Date.parse(registeredAt))) {
+    fail("entry.registered_at is malformed");
+  }
 
   for (const [position, value] of array(entry.authors, "entry.authors").entries()) {
     string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
