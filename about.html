@@ -119,9 +119,20 @@
           Palomar asserts nothing beyond these three checks.
         </p>
         <p>
-          For a registered result, the source, warnings, and full review are
-          publicly visible to help readers reach their own judgment on the work
-          and perform independent verification.
+          For a registered result, the source and the review's comments are
+          publicly visible, so that a reader can reach their own judgment on the
+          work and verify it independently. The published review is redacted: it
+          carries the accepted outcome and every comment, but not the scores
+          behind them or how severe the review considered each one.
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/specification.md#editorial-review">The
+          protocol specification</a> defines what is published.
+        </p>
+        <p>
+          The scores behind that outcome are withheld deliberately. The same
+          repository at the same commit has scored 5 and then 4 on one axis
+          across two runs of the same policy, with the same verdict both times,
+          and a number that moves like that reads as a judgement it cannot
+          carry. The verdict is what a reader is shown instead.
         </p>
       </section>
 
@@ -449,9 +460,25 @@
         <ol>
           <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
           <li><a href="https://submit.palomar-registry.org/">Open the submission form</a>. Enter the repository and commit SHA. Leave the optional project, Comparator-config, and metadata paths blank for the normal root layout; fill them only for a nested or non-default layout. Record whether you maintain the substantive formalization or have approval from someone who does, and, for a correction to an existing entry, enter its Palomar ID.</li>
-          <li>Sign in with GitHub so Palomar can confirm you have write access to the repository you are submitting. The sign-in is used once and is not stored.</li>
+          <li>Prove that you can write to the repository you are submitting. In a browser this is a GitHub sign-in: Palomar reads whether that account can push and then discards the token, keeping the account name in its private submission state.</li>
           <li>Keep the status page you are given. Its link is the only way back to your submission: Palomar does not email, and there is no account to sign in to.</li>
         </ol>
+        <p>
+          There are two ways to prove that write access, and they do not
+          establish the same thing. A sign-in answers for one account: GitHub
+          reports that this account can push, and the same account identified
+          itself to Palomar. An agent has no browser, so it instead pushes a tag
+          at the submitted commit and posts a gist carrying the same challenge.
+          That establishes that someone who can write to the repository submitted
+          it, and that an account named itself, which are not provably the same
+          account. It is deliberately the weaker of the two, and Palomar's
+          private submission record says which route a submission used; the
+          public registry entry does not carry it.
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/specification.md#submission-lifecycle-and-privacy">The
+          protocol specification</a> states the difference. Neither is proof of
+          authorship, which is why you are asked about your relationship to the
+          formalization separately.
+        </p>
         <h3 id="what-is-public">What is public, and what is not</h3>
         <p>
           Public from the moment you submit: your repository, commit, declared
@@ -461,11 +488,21 @@
           registry.
         </p>
         <p>
-          Not public unless you register: the editorial review, the decision, and
-          your identity as submitter. If a review goes badly, or you simply
-          change your mind, withdrawing leaves no public trace of the review,
-          decision, or submitter identity. The already-public verification run
+          Not public unless you register: the editorial review and the decision.
+          If a review goes badly, or you simply change your mind, withdrawing
+          leaves no public trace of either. The already-public verification run
           remains.
+        </p>
+        <p>
+          Not published whichever you choose: your identity as submitter.
+          Palomar does not publish the GitHub account that proved push access,
+          and the registry record has no field for the person who sent a
+          submission. What a record carries about you is the authorization
+          relationship you declared and, if you wrote one, the approval evidence
+          you supplied, which is free text and is public. Your repository is
+          public too, so the account that owns it stays as visible as it was
+          before you submitted. What Palomar does not do is put your name in the
+          record.
         </p>
         <p>
           “Private” here means not public, not confidential. Reviews are
@@ -489,7 +526,7 @@
         </p>
         <p>
           The review then appears on your status page, and nowhere else. It
-          gives the reasons, warnings, and any requested changes, not just a
+          gives the reasons, its comments, and any requested changes, not just a
           decision. A request for changes means the work may be reconsidered
           after specific correctable problems are addressed; a rejection means
           the submission failed a fundamental semantic, provenance, or editorial

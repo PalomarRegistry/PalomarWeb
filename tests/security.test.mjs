@@ -679,6 +679,34 @@ test("About describes the current review and version contracts", async () => {
   assert.match(about, /operational fault, not a decision/);
 });
 
+test("About says what registration publishes, and what it does not", async () => {
+  // About said the submitter's identity becomes public on registration. It
+  // does not, the schema has no field for it, and that is the direction of
+  // error nobody reports. It also promised the "full review", which is not
+  // what is published either.
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  assert.match(about, /the registry record has no field for the person who sent a\s+submission/);
+  assert.doesNotMatch(about, /full review are\s+publicly visible/);
+  assert.match(about, /The published review is redacted/);
+  assert.match(about, /scored 5 and then 4 on one axis/);
+  for (const anchor of ["#editorial-review", "#submission-lifecycle-and-privacy"]) {
+    assert.match(
+      about,
+      new RegExp(`PalomarPolicy/blob/main/docs/specification\\.md${anchor}`),
+      `About should link the specification at ${anchor} rather than restate it`,
+    );
+  }
+});
+
+test("About describes both ways push access is proved", async () => {
+  // A sign-in and the agent's tag-and-gist do not establish the same thing,
+  // and step 3 used to name only the first.
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  assert.match(about, /There are two ways to prove that write access/);
+  assert.match(about, /not provably the same\s+account/);
+  assert.match(about, /Neither is proof of\s+authorship/);
+});
+
 test("About states the repository licence boundary", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
   assert.match(about, /root licence file, SPDX identifier, and checksum/);
