@@ -389,6 +389,42 @@ test("a missing original automatically switches source links to the Palomar copy
   );
 });
 
+test("entry rendering demotes a stale original without discarding a fresh archive result", async ({ page }) => {
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    const response = await route.fetch();
+    const availability = await response.json();
+    const now = new Date();
+    now.setMilliseconds(0);
+    const stale = new Date(now.getTime() - 18 * 60 * 60 * 1000 - 1_000)
+      .toISOString().replace(".000Z", "Z");
+    const fresh = now.toISOString().replace(".000Z", "Z");
+    availability.generated_at = fresh;
+    for (const row of availability.repositories) {
+      row.original.status = "missing";
+      row.original.checked_at = stale;
+      row.original.last_attempt_at = null;
+      row.archive.status = "missing";
+      row.archive.checked_at = fresh;
+      row.archive.last_attempt_at = fresh;
+    }
+    await route.fulfill({ response, json: availability });
+  });
+
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}` +
+      `&availability=${missingAvailability}`,
+  );
+
+  await expect(page.locator(".source-availability.archive-missing")).toContainText(
+    "Source preservation degraded",
+  );
+  await expect(page.locator(".source-availability.original-missing")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /View full pinned statement file/ })).toHaveAttribute(
+    "href",
+    /github\.com\/example\/challenge\/blob\/1{40}\/project\/Comparator\/Task\.lean$/,
+  );
+});
+
 test("an entry accepted before source archiving explains the limitation as a warning", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", async (route) => {
     const response = await route.fetch();
@@ -467,6 +503,42 @@ test("a card says the original is unavailable exactly when the manifest says so"
 
   await page.goto(`/?database=${database}`);
   await expect(page.locator(".entry-card .source-status")).toHaveCount(0);
+});
+
+test("progressive cards never apply a stale missing claim", async ({ page }) => {
+  let releaseAvailability;
+  let noteAvailabilityRequest;
+  const availabilityRequested = new Promise((resolve) => { noteAvailabilityRequest = resolve; });
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    noteAvailabilityRequest();
+    const response = await route.fetch();
+    const availability = await response.json();
+    const now = new Date();
+    now.setMilliseconds(0);
+    availability.generated_at = now.toISOString().replace(".000Z", "Z");
+    const stale = new Date(now.getTime() - 18 * 60 * 60 * 1000 - 1_000)
+      .toISOString().replace(".000Z", "Z");
+    for (const row of availability.repositories) {
+      row.original.checked_at = stale;
+      row.original.last_attempt_at = null;
+    }
+    await new Promise((resolve) => { releaseAvailability = resolve; });
+    await route.fulfill({ response, json: availability });
+  });
+
+  await page.goto(`/?database=${database}&availability=${missingAvailability}`);
+  const card = page.locator(".entry-card").first();
+  await expect(card).toHaveCount(1);
+  await availabilityRequested;
+  await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
+  await card.locator(".repo-link").focus();
+  releaseAvailability();
+
+  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
+  await expect(card.locator(".source-status.missing")).toHaveCount(0);
+  await expect(card.locator(".archive-link")).toBeVisible();
+  await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
+  await expect(card.locator(".repo-link")).toBeFocused();
 });
 
 test("entry pages list immutable versions and flag superseded snapshots", async ({ page }) => {
@@ -1097,6 +1169,28 @@ test("search availability decorates the existing focused card in place", async (
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
   await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
   await expect(card.locator(".repo-link")).toBeFocused();
+});
+
+test("search cards do not publish a stale source-unavailable claim", async ({ page }) => {
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    const response = await route.fetch();
+    const availability = await response.json();
+    const now = new Date();
+    now.setMilliseconds(0);
+    availability.generated_at = now.toISOString().replace(".000Z", "Z");
+    const stale = new Date(now.getTime() - 18 * 60 * 60 * 1000 - 1_000)
+      .toISOString().replace(".000Z", "Z");
+    for (const row of availability.repositories) row.original.checked_at = stale;
+    await route.fulfill({ response, json: availability });
+  });
+
+  await page.goto(
+    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
+  );
+  const card = page.locator("#search-results .entry-card");
+  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
+  await expect(card.locator(".source-status.missing")).toHaveCount(0);
+  await expect(card.locator(".archive-link")).toBeVisible();
 });
 
 test("transient and invalid availability responses are both retried", async ({ page }) => {

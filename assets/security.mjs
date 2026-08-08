@@ -45,7 +45,8 @@ const ARXIV_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const LICENSE_PATH_RE = /^(?:licen[cs]e|copying|unlicense|ofl)(?:\.(?:md|markdown|txt))?$/i;
 const TIMESTAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
-const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
+export const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
+export const AVAILABILITY_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
@@ -354,17 +355,29 @@ export function validateRecent(value) {
   return document;
 }
 
+function availabilityTimestamp(value) {
+  if (typeof value !== "string" || !TIMESTAMP_RE.test(value)) return null;
+  const moment = Date.parse(value);
+  if (!Number.isFinite(moment) ||
+      new Date(moment).toISOString().replace(".000Z", "Z") !== value) {
+    return null;
+  }
+  return moment;
+}
+
 function availabilityEndpoint(value, field) {
   const endpoint = object(value, field);
   if (!["available", "missing", "unknown"].includes(endpoint.status)) {
     fail(`${field}.status is unsupported`);
   }
   if (endpoint.checked_at !== null && endpoint.checked_at !== undefined) {
-    if (!TIMESTAMP_RE.test(endpoint.checked_at) || Number.isNaN(Date.parse(endpoint.checked_at))) {
-      fail(`${field}.checked_at is malformed`);
-    }
+    // A malformed observation time is not evidence for a known answer. The
+    // producer normalizes it to null, and availabilityRecord independently
+    // demotes the endpoint so one bad observation cannot hide fresh siblings.
+    if (typeof endpoint.checked_at !== "string") fail(`${field}.checked_at is malformed`);
   }
-  if (!TIMESTAMP_RE.test(endpoint.last_attempt_at) || Number.isNaN(Date.parse(endpoint.last_attempt_at))) {
+  if (endpoint.last_attempt_at !== null && endpoint.last_attempt_at !== undefined &&
+      availabilityTimestamp(endpoint.last_attempt_at) === null) {
     fail(`${field}.last_attempt_at is malformed`);
   }
   if (!Number.isSafeInteger(endpoint.consecutive_missing) || endpoint.consecutive_missing < 0) {
@@ -411,15 +424,35 @@ export function validateAvailability(manifest) {
 
 export function availabilityRecord(manifest, repository, revision, now = Date.now()) {
   if (!manifest) return null;
-  const generated = Date.parse(manifest.generated_at);
-  if (!Number.isFinite(generated) || generated > now + 5 * 60 * 1000 ||
+  const generated = availabilityTimestamp(manifest.generated_at);
+  if (generated === null || generated > now + AVAILABILITY_MAX_CLOCK_SKEW_MS ||
       now - generated > AVAILABILITY_MAX_AGE_MS) {
     return null;
   }
-  return manifest.repositories.find(
+  const record = manifest.repositories.find(
     (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
       row.commit === revision,
   ) || null;
+  if (record === null) return null;
+
+  // generated_at describes the publication, not the age of every observation
+  // carried in it. Apply the same inclusive freshness window to each known
+  // endpoint at the point all landing, search, and entry links consume it.
+  const authoritativeEndpoint = (endpoint) => {
+    if (!["available", "missing"].includes(endpoint.status)) return endpoint;
+    const checked = availabilityTimestamp(endpoint.checked_at);
+    const age = checked === null ? null : now - checked;
+    if (age !== null && age >= -AVAILABILITY_MAX_CLOCK_SKEW_MS &&
+        age <= AVAILABILITY_MAX_AGE_MS) {
+      return endpoint;
+    }
+    return { ...endpoint, status: "unknown", checked_at: checked === null ? null : endpoint.checked_at };
+  };
+  return {
+    ...record,
+    original: authoritativeEndpoint(record.original),
+    archive: authoritativeEndpoint(record.archive),
+  };
 }
 
 export function entryRecordUrl(summary, databaseBase) {

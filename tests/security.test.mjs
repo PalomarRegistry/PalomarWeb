@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -6,6 +7,9 @@ import { htmlFiles } from "../scripts/build-site.mjs";
 import {
   COMMIT,
   DIGEST,
+  availabilityEndpoint,
+  availabilityManifest,
+  availabilityRow,
   entry,
   recent,
   recentRow,
@@ -14,6 +18,8 @@ import {
 } from "./registry-fixture.mjs";
 
 import {
+  AVAILABILITY_MAX_AGE_MS,
+  AVAILABILITY_MAX_CLOCK_SKEW_MS,
   DEFAULT_DATABASE,
   DEFAULT_AVAILABILITY,
   ENTRY_SCHEMA_VERSION,
@@ -410,41 +416,128 @@ test("legacy schema v1 records remain readable without an archive mapping", () =
   assert.equal(validateEntry(legacy, summary()).schema_version, 1);
 });
 
-test("availability is validated and stale state becomes unknown", () => {
-  const manifest = validateAvailability({
-    schema_version: 1,
-    generated_at: "2026-08-06T00:00:00Z",
-    repositories: [
-      {
-        source_repository: "example/challenge",
-        commit: COMMIT,
-        fork_repository: "PalomarArchive/example--challenge--fixture",
-        original: {
-          status: "missing",
-          checked_at: "2026-08-06T00:00:00Z",
-          last_attempt_at: "2026-08-06T00:00:00Z",
-          consecutive_missing: 2,
-          last_error: null,
-        },
-        archive: {
-          status: "available",
-          checked_at: "2026-08-06T00:00:00Z",
-          last_attempt_at: "2026-08-06T00:00:00Z",
-          consecutive_missing: 0,
-          last_error: null,
-        },
-      },
+test("availability applies the inclusive freshness boundaries to each endpoint", () => {
+  const now = Date.parse("2026-08-08T12:00:00Z");
+  const stamp = (offset) => new Date(now + offset).toISOString().replace(".000Z", "Z");
+  const statusAt = (checkedAt) => availabilityRecord(validateAvailability(availabilityManifest([
+    availabilityRow({
+      original: availabilityEndpoint({ status: "missing", checked_at: checkedAt }),
+    }),
+  ])), "example/challenge", COMMIT, now).original.status;
+
+  assert.equal(statusAt(stamp(-AVAILABILITY_MAX_AGE_MS)), "missing");
+  assert.equal(statusAt(stamp(-AVAILABILITY_MAX_AGE_MS - 1_000)), "unknown");
+  assert.equal(statusAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS)), "missing");
+  assert.equal(statusAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS + 1_000)), "unknown");
+});
+
+test("one malformed or stale endpoint cannot hide unrelated fresh observations", () => {
+  const now = Date.parse("2026-08-08T12:00:00Z");
+  const manifest = validateAvailability(availabilityManifest([
+    availabilityRow({
+      original: availabilityEndpoint({ status: "missing", checked_at: "not-a-timestamp" }),
+      archive: availabilityEndpoint({
+        status: "available",
+        checked_at: "2026-08-07T17:59:59Z",
+        last_attempt_at: null,
+      }),
+    }),
+    availabilityRow({
+      source_repository: "example/fresh",
+      original: availabilityEndpoint({ status: "missing" }),
+      archive: availabilityEndpoint({ status: "available" }),
+    }),
+  ]));
+
+  const mixed = availabilityRecord(manifest, "EXAMPLE/challenge", COMMIT, now);
+  assert.equal(mixed.original.status, "unknown", "malformed checked_at is not evidence");
+  assert.equal(mixed.original.checked_at, null);
+  assert.equal(mixed.archive.status, "unknown", "one second beyond 18 hours is stale");
+  assert.equal(mixed.archive.last_attempt_at, null, "never-attempted endpoints are valid");
+  assert.deepEqual(
+    [
+      availabilityRecord(manifest, "example/fresh", COMMIT, now).original.status,
+      availabilityRecord(manifest, "example/fresh", COMMIT, now).archive.status,
     ],
-  });
-  assert.equal(
-    availabilityRecord(manifest, "EXAMPLE/challenge", COMMIT, Date.parse("2026-08-06T12:00:00Z"))
-      .original.status,
-    "missing",
+    ["missing", "available"],
   );
-  assert.equal(
-    availabilityRecord(manifest, "example/challenge", COMMIT, Date.parse("2026-08-07T00:00:00Z")),
-    null,
+});
+
+test("availability keeps whole-document freshness inclusive and fail-closed", () => {
+  const now = Date.parse("2026-08-08T12:00:00Z");
+  const recordAt = (generatedAt) => availabilityRecord(
+    validateAvailability(availabilityManifest([availabilityRow()], { generated_at: generatedAt })),
+    "example/challenge",
+    COMMIT,
+    now,
   );
+  assert.ok(recordAt("2026-08-07T18:00:00Z"));
+  assert.equal(recordAt("2026-08-07T17:59:59Z"), null);
+  assert.ok(recordAt("2026-08-08T12:05:00Z"));
+  assert.equal(recordAt("2026-08-08T12:05:01Z"), null);
+  assert.throws(
+    () => validateAvailability(availabilityManifest([
+      availabilityRow({ original: availabilityEndpoint({ last_attempt_at: "never" }) }),
+    ])),
+    /last_attempt_at is malformed/,
+  );
+});
+
+test("availability agrees with the Database producer contract", async () => {
+  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
+    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const executable = new URL("tools/source_availability_contract.py", `file://${checkout}/`);
+  try {
+    await readFile(executable, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    // CI cannot read the private canonical repository, so the existing
+    // cross-repository mechanism supplies the producer's published object at
+    // the same checkout root. This remains a mandatory exercised contract,
+    // not a skip; local development invokes the exact executable below.
+    const fixture = JSON.parse(await readFile(
+      new URL("tests/fixtures/source-availability.json", `file://${checkout}/`),
+      "utf8",
+    ));
+    assert.ok(fixture.repositories.length > 0, "the published contract must exercise a row");
+    assert.equal(validateAvailability(fixture), fixture);
+    return;
+  }
+  const raw = availabilityManifest([
+    availabilityRow({
+      original: availabilityEndpoint({
+        status: "missing",
+        checked_at: "2026-08-07T17:59:59Z",
+      }),
+      archive: availabilityEndpoint({
+        checked_at: "2026-08-08T12:05:00Z",
+        last_attempt_at: null,
+      }),
+    }),
+  ]);
+  const script = [
+    "import datetime as dt, json, pathlib, sys",
+    `sys.path.insert(0, str(pathlib.Path(${JSON.stringify(checkout)}) / 'tools'))`,
+    "from source_availability_contract import normalize_manifest",
+    "value = normalize_manifest(json.load(sys.stdin), as_of=dt.datetime(2026, 8, 8, 12, tzinfo=dt.UTC))",
+    "json.dump(value, sys.stdout, sort_keys=True)",
+  ].join("; ");
+  const produced = JSON.parse(execFileSync("python3", ["-c", script], {
+    encoding: "utf8",
+    input: JSON.stringify(raw),
+  }));
+
+  const consumed = validateAvailability(produced);
+  const row = availabilityRecord(
+    consumed,
+    "example/challenge",
+    COMMIT,
+    Date.parse("2026-08-08T12:00:00Z"),
+  );
+  assert.equal(row.original.status, "unknown");
+  assert.equal(row.archive.status, "available");
+  assert.equal(row.archive.last_attempt_at, null);
+  assert.equal(produced.coverage.freshness_max_age_seconds, AVAILABILITY_MAX_AGE_MS / 1_000);
 });
 
 test("withdrawn palomar-indexed provenance is rejected", () => {
