@@ -618,12 +618,25 @@ test("entries display repository licence evidence and its boundary", async ({ pa
   await expect(evidence).toContainText("Cited papers, reused formalizations, and dependencies retain their own licences");
 });
 
-test("entry version parameters use canonical positive-integer spelling", async ({ page }) => {
+test("detail routes reject malformed parameters before registry I/O", async ({ page }) => {
+  const dataRequests = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/database/")) dataRequests.push(path);
+  });
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000123&version=2.0&database=${database}`,
   );
   await expect(page.locator("#status")).toContainText("missing or invalid Palomar ID or version");
   await expect(page.locator("#entry-content")).toBeHidden();
+
+  await page.goto(
+    `/render.html?id=PALOMAR-2026-07-29-000123&version=02&database=${database}`,
+  );
+  await expect(page.locator("#status")).toContainText("missing a valid Palomar ID and version");
+  await expect(page.locator("#render-content")).toBeHidden();
+  await page.waitForLoadState("networkidle");
+  expect(dataRequests).toEqual([]);
 });
 
 test("an exact unavailable entry shows only its target and public date", async ({ page }) => {

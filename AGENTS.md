@@ -63,8 +63,12 @@
   `assets/security.mjs`. `assets/source-preservation.mjs` consumes that
   validated contract, matches manifest observations to preservation-receipt
   mappings, and owns repository resolution plus in-place card decoration;
-  `assets/app.js` owns page composition. Do not duplicate validation across
-  those modules.
+  `assets/entry-pages.mjs` owns entry-route parameter validation, progressive
+  visibility, immutable-URL replacement, fragment scrolling, tombstone
+  dispatch, and route-level errors; `assets/app.js` owns data loading and page
+  composition. Do not duplicate registry-document validation or route
+  orchestration across those modules; the route module still rejects malformed
+  URL identifiers before asking the document loader to do any work.
 
 - The browser suite needs `python3` on `PATH`, for the fixture server. Two of
   its tests want `PALOMAR_PREVIOUS_REF` and skip silently without it, which only

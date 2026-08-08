@@ -80,7 +80,8 @@ The browser code keeps the data boundary separate from presentation:
 `security.mjs` validates registry and availability documents and owns endpoint
 freshness, `source-preservation.mjs` matches validated manifest observations to
 the preservation receipt before resolving repository locations and decorating
-existing cards, and `app.js` composes the page-level views.
+existing cards, `entry-pages.mjs` owns entry-route input and page-state
+transitions, and `app.js` loads records and composes the page-level views.
 
 Runtime reads use the browser's normal HTTP cache behavior. The public data
 service gives successful documents a 60-second browser/shared-cache lifetime,
