@@ -84,9 +84,9 @@ existing cards, `entry-pages.mjs` owns entry-route input and page-state
 transitions, `challenge-presentation.mjs` owns the named-declarations artifact's
 entry correspondence and presentation states, `formalization-presentation.mjs`
 owns statement trust labels and the statement/proof dependency presentation,
-`entry-history-presentation.mjs` owns canonical entry links, supersession
-notices, and immutable version-history presentation, and `app.js` loads records
-and composes the remaining page-level views.
+`entry-history-presentation.mjs` owns the entry page's canonical link,
+supersession notice, and immutable version-history section, and `app.js` loads
+records and composes the remaining page-level views.
 
 Runtime reads use the browser's normal HTTP cache behavior. The public data
 service gives successful documents a 60-second browser/shared-cache lifetime,

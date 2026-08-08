@@ -896,9 +896,19 @@ test("current HTML remains compatible with cached JavaScript from the previous d
     body: fileAtPreviousDeployment("assets/rendering.js"),
     contentType: "text/javascript; charset=utf-8",
   }));
+  // Pin only these cached entry points by intent. Their imports resolve to the
+  // fresh shared modules, which is the adjacent Pages deployment boundary this
+  // regression exercises.
 
   await page.goto(`/?database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
+  await expect(page.locator("#status")).not.toContainText("could not be loaded");
+
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+  await expect(page.locator(".version-notice")).toHaveCount(1);
+  await expect(page.locator("#version-history li")).toHaveCount(2);
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
 

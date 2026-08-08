@@ -141,6 +141,14 @@ test("history is newest-first, identifies the selected snapshot, and leaves inpu
     "Version 2SupersededViewing",
     "Version 1Superseded",
   ]);
+  assert.deepEqual(byClass(list, "version-state").map((node) => node.textContent), [
+    "Current",
+    "Superseded",
+    "Superseded",
+  ]);
+  assert.equal(byClass(list, "current").length, 1);
+  assert.equal(byClass(list, "superseded").length, 2);
+  assert.equal(byClass(list, "viewing-version").length, 1);
   assert.equal(byClass(list, "selected-version")[0].attributes.get("aria-current"), "true");
   assert.deepEqual(byTag(list, "a").map((node) => node.href), [
     `https://fixture.invalid/entry.html?id=${id}&version=3`,
