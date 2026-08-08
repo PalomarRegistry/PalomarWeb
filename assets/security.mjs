@@ -45,7 +45,8 @@ const ARXIV_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const LICENSE_PATH_RE = /^(?:licen[cs]e|copying|unlicense|ofl)(?:\.(?:md|markdown|txt))?$/i;
 const TIMESTAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
-const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
+export const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
+export const AVAILABILITY_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
@@ -354,17 +355,23 @@ export function validateRecent(value) {
   return document;
 }
 
+function availabilityTimestamp(value) {
+  if (typeof value !== "string" || !TIMESTAMP_RE.test(value)) return null;
+  const moment = Date.parse(value);
+  if (!Number.isFinite(moment) ||
+      new Date(moment).toISOString().replace(".000Z", "Z") !== value) {
+    return null;
+  }
+  return moment;
+}
+
 function availabilityEndpoint(value, field) {
   const endpoint = object(value, field);
   if (!["available", "missing", "unknown"].includes(endpoint.status)) {
     fail(`${field}.status is unsupported`);
   }
-  if (endpoint.checked_at !== null && endpoint.checked_at !== undefined) {
-    if (!TIMESTAMP_RE.test(endpoint.checked_at) || Number.isNaN(Date.parse(endpoint.checked_at))) {
-      fail(`${field}.checked_at is malformed`);
-    }
-  }
-  if (!TIMESTAMP_RE.test(endpoint.last_attempt_at) || Number.isNaN(Date.parse(endpoint.last_attempt_at))) {
+  if (endpoint.last_attempt_at !== null && endpoint.last_attempt_at !== undefined &&
+      availabilityTimestamp(endpoint.last_attempt_at) === null) {
     fail(`${field}.last_attempt_at is malformed`);
   }
   if (!Number.isSafeInteger(endpoint.consecutive_missing) || endpoint.consecutive_missing < 0) {
@@ -374,21 +381,34 @@ function availabilityEndpoint(value, field) {
       typeof endpoint.last_error !== "string") {
     fail(`${field}.last_error is malformed`);
   }
-  return endpoint;
+  // checked_at is evidence rather than structure. Whatever malformed value
+  // arrived, it says only that this endpoint has no trustworthy observation;
+  // do not let it invalidate fresh sibling endpoints or rows.
+  if (availabilityTimestamp(endpoint.checked_at) !== null) return endpoint;
+  return {
+    ...endpoint,
+    status: ["available", "missing"].includes(endpoint.status) ? "unknown" : endpoint.status,
+    checked_at: null,
+  };
 }
 
 export function validateAvailability(manifest) {
-  object(manifest, "availability");
-  if (manifest.schema_version !== 1) fail("availability schema_version is unsupported");
-  if (!TIMESTAMP_RE.test(manifest.generated_at) || Number.isNaN(Date.parse(manifest.generated_at))) {
+  const document = object(manifest, "availability");
+  if (document.schema_version !== 1) fail("availability schema_version is unsupported");
+  if (availabilityTimestamp(document.generated_at) === null) {
     fail("availability.generated_at is malformed");
   }
-  if (manifest.database_commit !== undefined) {
-    commit(manifest.database_commit, "availability.database_commit");
+  if (document.database_commit !== undefined) {
+    commit(document.database_commit, "availability.database_commit");
+  }
+  const coverage = object(document.coverage, "availability.coverage");
+  if (coverage.freshness_max_age_seconds !== AVAILABILITY_MAX_AGE_MS / 1_000) {
+    fail("availability.coverage.freshness_max_age_seconds disagrees with the consumer");
   }
   const seen = new Set();
+  const repositories = [];
   for (const [position, value] of array(
-    manifest.repositories,
+    document.repositories,
     "availability.repositories",
   ).entries()) {
     const row = object(value, `availability.repositories[${position}]`);
@@ -403,23 +423,55 @@ export function validateAvailability(manifest) {
     const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
     if (seen.has(key)) fail(`availability.repositories[${position}] is duplicated`);
     seen.add(key);
-    availabilityEndpoint(row.original, `availability.repositories[${position}].original`);
-    availabilityEndpoint(row.archive, `availability.repositories[${position}].archive`);
+    repositories.push({
+      ...row,
+      original: availabilityEndpoint(
+        row.original,
+        `availability.repositories[${position}].original`,
+      ),
+      archive: availabilityEndpoint(
+        row.archive,
+        `availability.repositories[${position}].archive`,
+      ),
+    });
   }
-  return manifest;
+  return { ...document, repositories };
 }
 
 export function availabilityRecord(manifest, repository, revision, now = Date.now()) {
   if (!manifest) return null;
-  const generated = Date.parse(manifest.generated_at);
-  if (!Number.isFinite(generated) || generated > now + 5 * 60 * 1000 ||
+  const generated = availabilityTimestamp(manifest.generated_at);
+  if (generated === null || generated > now + AVAILABILITY_MAX_CLOCK_SKEW_MS ||
       now - generated > AVAILABILITY_MAX_AGE_MS) {
     return null;
   }
-  return manifest.repositories.find(
+  const record = manifest.repositories.find(
     (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
       row.commit === revision,
   ) || null;
+  if (record === null) return null;
+
+  // generated_at describes the publication, not the age of every observation
+  // carried in it. Apply the same inclusive freshness window to each known
+  // endpoint at the point all landing, search, and entry links consume it.
+  const authoritativeEndpoint = (endpoint) => {
+    const checked = availabilityTimestamp(endpoint.checked_at);
+    const normalized = checked === null && endpoint.checked_at !== null
+      ? { ...endpoint, checked_at: null }
+      : endpoint;
+    if (!["available", "missing"].includes(endpoint.status)) return normalized;
+    const age = checked === null ? null : now - checked;
+    if (age !== null && age >= -AVAILABILITY_MAX_CLOCK_SKEW_MS &&
+        age <= AVAILABILITY_MAX_AGE_MS) {
+      return normalized;
+    }
+    return { ...normalized, status: "unknown" };
+  };
+  return {
+    ...record,
+    original: authoritativeEndpoint(record.original),
+    archive: authoritativeEndpoint(record.archive),
+  };
 }
 
 export function entryRecordUrl(summary, databaseBase) {

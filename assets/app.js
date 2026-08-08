@@ -1217,10 +1217,18 @@ function sourceAvailabilityNotice(entry, availability) {
     );
   } else if (location.archiveStatus === "missing") {
     notice.classList.add("archive-missing");
+    const originalConfirmed = location.originalStatus === "available";
     notice.append(
       el("strong", "", "Source preservation degraded"),
-      el("p", "", "The original source still works, but Palomar's preserved copy is unavailable."),
-      externalLink("Original source", original),
+      el(
+        "p",
+        "",
+        originalConfirmed
+          ? "The original source still works, but Palomar's preserved copy is unavailable."
+          : "Palomar's preserved copy is unavailable. The recorded original location remains " +
+            "linked, but its current availability has not been confirmed.",
+      ),
+      externalLink(originalConfirmed ? "Original source" : "Recorded original location", original),
       " · ",
       externalLink("Recorded Palomar copy", archived),
     );

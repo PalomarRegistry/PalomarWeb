@@ -17,8 +17,17 @@ The landing page and entry pages also load the current source-availability
 manifest. When an original pinned commit has been confirmed missing and the
 recorded archive is not itself known to be missing, source links automatically
 switch to the `PalomarArchive` copy while still displaying the original
-location. Missing archives are shown as degraded, and a stale or unavailable
-manifest is discarded rather than believed.
+location. Missing archives are shown as degraded; the notice says the original
+still works only when its own observation confirms that, and otherwise describes
+the recorded original neutrally. The manifest and every known endpoint
+observation independently have an inclusive eighteen-hour maximum age and
+five-minute future-clock allowance. The producer declares that maximum in
+`coverage.freshness_max_age_seconds`, and the browser rejects a document that
+disagrees. An endpoint whose `checked_at` is missing, malformed, too far in the
+future, or one second older is treated as unknown without discarding fresh
+sibling rows; a stale or unavailable whole manifest is likewise never believed.
+`last_attempt_at` may be null when the bounded producer has never attempted that
+endpoint.
 Registry cards display arXiv and MSC2020 classifications, and the toolbar can
 filter the rows the landing page holds by either taxonomy. The classification
 fields suggest codes represented by those rows but also accept any exact code,

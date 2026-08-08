@@ -32,6 +32,9 @@ jobs:
           curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/recent.json" \
             --output palomar-database/tests/fixtures/recent.json
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/source-availability.json" \
+            --output palomar-database/tests/fixtures/source-availability.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24.4.1"

@@ -337,6 +337,7 @@ class Handler(SimpleHTTPRequestHandler):
             payload = {
                 "schema_version": 1,
                 "generated_at": checked_at,
+                "coverage": {"freshness_max_age_seconds": 18 * 60 * 60},
                 "repositories": [
                     {
                         "source_repository": row["source_repository"],

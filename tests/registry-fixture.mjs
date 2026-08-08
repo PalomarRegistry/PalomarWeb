@@ -65,6 +65,39 @@ export function recent(entries = [recentRow()], overrides = {}) {
   return { schema_version: 1, entries, ...overrides };
 }
 
+export function availabilityEndpoint(overrides = {}) {
+  return {
+    status: "available",
+    checked_at: "2026-08-08T12:00:00Z",
+    last_attempt_at: "2026-08-08T12:00:00Z",
+    consecutive_missing: 0,
+    last_error: null,
+    ...overrides,
+  };
+}
+
+export function availabilityManifest(repositories = [], overrides = {}) {
+  return {
+    schema_version: 1,
+    generated_at: "2026-08-08T12:00:00Z",
+    database_commit: "d".repeat(40),
+    coverage: { freshness_max_age_seconds: 18 * 60 * 60 },
+    repositories,
+    ...overrides,
+  };
+}
+
+export function availabilityRow(overrides = {}) {
+  return {
+    source_repository: "example/challenge",
+    commit: COMMIT,
+    fork_repository: "PalomarArchive/example--challenge--fixture",
+    original: availabilityEndpoint(),
+    archive: availabilityEndpoint(),
+    ...overrides,
+  };
+}
+
 export function entry(overrides = {}) {
   const evidenceTree = "c".repeat(64);
   const value = {
