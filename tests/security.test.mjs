@@ -58,7 +58,7 @@ import {
 
 // The website's own origin, for the cross-origin assertion below.
 const CANONICAL_WEB_BASE_FOR_TEST = "https://palomar-registry.org/";
-const AVAILABILITY_PRODUCER_COMMIT = "5288deae2cf6c537bdf56e9a54faf00393937119";
+const AVAILABILITY_PRODUCER_COMMIT = "7e446fda08d26b5c1290a9e3ec0947ece0c4994e";
 
 test("production ignores every database query override", () => {
   for (const override of [
@@ -461,6 +461,26 @@ test("one malformed or stale endpoint cannot hide unrelated fresh observations",
       availabilityRecord(manifest, "example/fresh", COMMIT, now).archive.status,
     ],
     ["missing", "available"],
+  );
+});
+
+test("availability demotes malformed timestamp strings but rejects non-string values", () => {
+  const now = Date.parse("2026-08-08T12:00:00Z");
+  const malformedString = validateAvailability(availabilityManifest([
+    availabilityRow({
+      original: availabilityEndpoint({ status: "missing", checked_at: "not-a-timestamp" }),
+    }),
+  ]));
+  assert.equal(
+    availabilityRecord(malformedString, "example/challenge", COMMIT, now).original.status,
+    "unknown",
+  );
+
+  assert.throws(
+    () => validateAvailability(availabilityManifest([
+      availabilityRow({ original: availabilityEndpoint({ checked_at: 123 }) }),
+    ])),
+    /checked_at is malformed/,
   );
 });
 
