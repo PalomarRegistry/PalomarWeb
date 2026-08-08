@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRegistrySearch, SEARCH_TERM_LIMIT } from "../assets/searching.mjs";
+import {
+  createRegistrySearch,
+  SEARCH_QUERY_CHARACTER_LIMIT,
+  SEARCH_TERM_LIMIT,
+  validateSearchQuery,
+} from "../assets/searching.mjs";
 import { identifiedEntry } from "./registry-fixture.mjs";
 
 const BASE = "https://data.example.test/";
@@ -59,9 +64,36 @@ test("the distinct-term limit is a hard head-request bound", async () => {
   });
   await assert.rejects(
     rejectOverLimit([...terms, "onewordmore"].join(" "), BASE),
-    new RangeError(`Search queries may contain at most ${SEARCH_TERM_LIMIT} distinct words.`),
+    new RangeError(
+      `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
+        `this search has ${SEARCH_TERM_LIMIT + 1}. Common words count toward this limit.`,
+    ),
   );
+  await wait(20);
   assert.equal(overLimitRequests, 0);
+});
+
+test("query validation checks characters first and deduplicates normalized terms", async () => {
+  const repeated = Array.from({ length: SEARCH_TERM_LIMIT + 10 }, () => "Repeated").join(" ");
+  assert.deepEqual(validateSearchQuery(repeated), ["repeated"]);
+
+  const tooLong = "echo ".repeat(Math.ceil((SEARCH_QUERY_CHARACTER_LIMIT + 1) / 5));
+  assert.ok(tooLong.length > SEARCH_QUERY_CHARACTER_LIMIT);
+  let requests = 0;
+  const search = createRegistrySearch(async () => {
+    requests += 1;
+    throw new Error("an over-limit query must not read registry data");
+  });
+
+  await assert.rejects(
+    search(tooLong, BASE),
+    new RangeError(
+      `Shorten the search to at most ${SEARCH_QUERY_CHARACTER_LIMIT} characters; ` +
+        `it currently has ${tooLong.length}.`,
+    ),
+  );
+  await wait(20);
+  assert.equal(requests, 0);
 });
 
 test("search pipelines I/O but retains validated publisher order", async () => {
