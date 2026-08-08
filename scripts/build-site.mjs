@@ -5,11 +5,18 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
-const appModules = ["loading.mjs", "rendering.js", "searching.mjs", "security.mjs"];
-const assetFiles = [
+const browserModuleFiles = [
   "about.js",
   "app.js",
-  ...appModules,
+  "loading.mjs",
+  "rendering.js",
+  "searching.mjs",
+  "security.mjs",
+  "source-preservation.mjs",
+];
+const browserModulePaths = new Set(browserModuleFiles.map((file) => `/assets/${file}`));
+const assetFiles = [
+  ...browserModuleFiles,
   "style.css",
 ];
 // Copied verbatim into assets/, keeping their subdirectory. Listed separately
@@ -45,6 +52,60 @@ function options(args) {
     }
   }
   return result;
+}
+
+let browserModuleParser = null;
+
+async function parseBrowserModule(source, filename) {
+  browserModuleParser ||= import("es-module-lexer").then(async ({ init, parse }) => {
+    await init;
+    return parse;
+  });
+  return (await browserModuleParser)(source, filename)[0];
+}
+
+/** Add the deployment version to every relative edge in the shipped module graph. */
+export async function versionBrowserImports(source, filename, version) {
+  const imports = await parseBrowserModule(source, filename);
+  const replacements = [];
+  for (const imported of imports) {
+    const specifier = imported.n;
+    if (typeof specifier !== "string") {
+      continue;
+    }
+    const pathLike = specifier.startsWith("./") || specifier.startsWith("../") ||
+      specifier.startsWith("/");
+    if (!pathLike) continue;
+    const resolved = new URL(
+      specifier,
+      new URL(`/assets/${filename}`, "https://browser.invalid/"),
+    );
+    // Absolute and protocol-relative URLs are external dependencies, not
+    // deployment assets. Bare package imports are likewise left to the browser.
+    if (resolved.origin !== "https://browser.invalid") continue;
+    if (resolved.search || resolved.hash) {
+      throw new Error(`${filename} has an already-qualified local import: ${specifier}`);
+    }
+    if (!browserModulePaths.has(resolved.pathname)) {
+      throw new Error(
+        `${filename} imports a local browser module that is not shipped: ` +
+          `${specifier} resolves to ${resolved.pathname}`,
+      );
+    }
+    const versioned = `${specifier}?v=${version}`;
+    replacements.push({
+      start: imported.s,
+      end: imported.e,
+      value: imported.d === -1 ? versioned : JSON.stringify(versioned),
+    });
+  }
+
+  let output = source;
+  for (const replacement of replacements.reverse()) {
+    output = output.slice(0, replacement.start) + replacement.value +
+      output.slice(replacement.end);
+  }
+  return output;
 }
 
 export async function buildSite({ output, version }) {
@@ -83,20 +144,11 @@ export async function buildSite({ output, version }) {
     await writeFile(target, versioned);
   }
 
-  const appTarget = path.join(destination, "assets", "app.js");
-  const app = await readFile(appTarget, "utf8");
-  let versionedImport = app;
-  for (const module of appModules) {
-    const source = `from "./${module}";`;
-    if (!versionedImport.includes(source)) {
-      throw new Error(`could not find coupled browser import ${module}`);
-    }
-    versionedImport = versionedImport.replace(
-      source,
-      `from "./${module}?v=${version}";`,
-    );
+  for (const file of browserModuleFiles) {
+    const target = path.join(destination, "assets", file);
+    const source = await readFile(target, "utf8");
+    await writeFile(target, await versionBrowserImports(source, file, version));
   }
-  await writeFile(appTarget, versionedImport);
   await writeFile(path.join(destination, ".nojekyll"), "");
 }
 
