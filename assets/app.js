@@ -374,7 +374,9 @@ async function renderIndex() {
       return;
     }
     status.hidden = true;
-    for (const entry of entries.sort((a, b) => a.id.localeCompare(b.id))) {
+    // `loadEntries` preserves recent.entries order even when its parallel
+    // fetches finish out of order, so render the publisher's newest-first list.
+    for (const entry of entries) {
       grid.append(entryCard(entry, versionCounts.get(entry.id), availability));
     }
     let trust = "all";

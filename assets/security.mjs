@@ -686,6 +686,9 @@ export function validateEntry(entry, summary) {
   if (!TIMESTAMP_RE.test(registeredAt) || Number.isNaN(Date.parse(registeredAt))) {
     fail("entry.registered_at is malformed");
   }
+  if (summary.published_at !== undefined && summary.published_at !== registeredAt) {
+    fail("entry.registered_at does not match summary.published_at");
+  }
 
   for (const [position, value] of array(entry.authors, "entry.authors").entries()) {
     string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
