@@ -24,7 +24,41 @@ export function secondVersion(overrides = {}) {
 }
 
 export function recentRow(overrides = {}) {
-  return { ...summary(), published_at: "2026-07-29T09:14:07Z", versions: 1, ...overrides };
+  const record = entry();
+  const sourceMapping = record.preservation?.repositories.find(
+    (mapping) =>
+      mapping.source_repository.toLowerCase() === record.source.repository.toLowerCase() &&
+      mapping.commit === record.source.commit,
+  );
+  return {
+    id: record.id,
+    version: record.version,
+    status: record.status,
+    title: record.title,
+    path: `entries/${record.id}-v${record.version}.json`,
+    abstract: record.abstract,
+    authors: record.authors.map(({ name }) => ({ name })),
+    classification: structuredClone(record.classification),
+    formalization: { theorem_names: [...record.formalization.theorem_names] },
+    trust: { level: record.trust.level },
+    source: {
+      repository: record.source.repository,
+      commit: record.source.commit,
+      project_path: record.source.project_path ?? null,
+    },
+    preservation: sourceMapping
+      ? {
+          repositories: [{
+            source_repository: sourceMapping.source_repository,
+            commit: sourceMapping.commit,
+            fork_repository: sourceMapping.fork_repository,
+          }],
+        }
+      : null,
+    published_at: record.registered_at,
+    versions: 1,
+    ...overrides,
+  };
 }
 
 export function recent(entries = [recentRow()], overrides = {}) {

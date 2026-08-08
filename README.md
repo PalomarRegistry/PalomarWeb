@@ -6,11 +6,12 @@ The site is static and deployed with GitHub Pages. It reads
 <https://data.palomar-registry.org/> at runtime, so publishing a database change
 does not require a coordinated website deployment. There is no whole-registry
 document there any more, and the pages are shaped by that: the landing page
-reads `recent.json`, an entry page reads `versions/<id>.json` and then the one
-record it wants, a search reads `search/stopwords.json` and a word's postings,
-and a withdrawn version reads its tombstone. Fetching the index and filtering it
-in a browser meant every visitor paid for the whole registry to see a couple of
-hundred rows, and paid more every time somebody else published anything.
+reads one self-contained `recent.json` projection, an entry page reads
+`versions/<id>.json` and then the one record it wants, a search reads
+`search/stopwords.json` and a word's postings, and a withdrawn version reads its
+tombstone. Fetching the index and filtering it in a browser meant every visitor
+paid for the whole registry to see a couple of hundred rows, and paid more every
+time somebody else published anything.
 
 The landing page and entry pages also load the current source-availability
 manifest. When an original pinned commit has been confirmed missing and the
@@ -42,10 +43,28 @@ to the newest matching version in the bounded candidate set, so a result is not
 repeated. A posting still says neither that a version is current nor how many
 active versions exist, so search cards make neither claim; landing cards get
 both facts from `recent.json`.
+Each `recent.json` row is the exact landing-card projection built from a
+validated canonical entry: identity, current/history count, registration time,
+title, abstract, authors, classifications, theorem names, trust, source commit
+and project path, and the source's preservation mapping. The browser validates
+that complete closed shape and renders it directly. A normal landing load is
+therefore exactly two dynamic data requests—`recent.json` and the optional
+source-availability manifest—with no per-card entry reads. Invalid or partial
+projections fail closed before any card is rendered.
+This is one exact closed producer/consumer contract, not an extensible summary:
+a shape change must be published by PalomarDatabase first and followed by the
+matching website deployment. The consumer deliberately has no old-row fallback
+or per-entry recovery path.
 Landing and verified search cards render before the source-availability
 manifest; if it arrives, their existing source controls are decorated in place.
 A linked `?q=` search does not also load the hidden recent listing; clearing the
 search starts one landing attempt, and a failed attempt can be retried.
+
+Runtime reads use the browser's normal HTTP cache behavior. The public data
+service gives successful documents a 60-second browser/shared-cache lifetime,
+so repeat reads can be reused for that interval; missing and error responses are
+not stored. A withdrawn object can consequently remain visible from an already
+populated client or shared cache for at most 60 seconds.
 
 Local preview:
 
@@ -127,7 +146,4 @@ snapshot URLs remain permanent.
 
 This remains a runtime-JSON site: JavaScript is required for registry and entry
 content. The static shells explain this and point a no-JavaScript reader at the
-machine-readable data. Those links, and the footer's, still name the
-whole-registry `index.json` that the data service no longer serves, so they
-currently answer 404; they want to be `recent.json` on the landing page and
-`entries/<id>-v<n>.json` on an entry page.
+bounded newest-results or browse documents on the machine-readable data origin.

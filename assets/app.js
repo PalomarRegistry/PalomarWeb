@@ -40,8 +40,6 @@ const VERSION_PARAMETER = /^[1-9][0-9]*$/;
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
-const RECENT_ENTRY_CONCURRENCY = 8;
-const RECENT_ENTRY_TIMEOUT_MS = 30_000;
 const AVAILABILITY_TIMEOUT_MS = 30_000;
 
 function dataSource() {
@@ -88,7 +86,7 @@ function setOptionalText(selector, text) {
 }
 
 async function fetchJson(url, { signal } = {}) {
-  const response = await fetch(url, { cache: "no-cache", signal });
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     const error = new Error(`${response.status} ${response.statusText}`);
     error.status = response.status;
@@ -234,8 +232,7 @@ function categoryTokens(entry) {
  * the registration it leads to are different moments, and the record carries
  * `registered_at` for exactly this.
  */
-function registrationDate(entry) {
-  const value = entry.registered_at;
+function registrationDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value || "")) {
     throw new Error("entry is missing a valid registration date");
   }
@@ -327,7 +324,7 @@ function decorateCardSet(cards, entries, availability, context) {
 
 function entryCard(
   entry,
-  { versionCount = null, current = false } = {},
+  { versionCount = null, current = false, registeredAt = entry.registered_at } = {},
 ) {
   const categories = classification(entry);
   const card = el("article", "entry-card");
@@ -350,7 +347,7 @@ function entryCard(
   const identity = el("div", "card-identity");
   identity.append(
     el("span", "entry-id", `${entry.id} v${entry.version}${current ? " · current" : ""}`),
-    el("span", "entry-date", `Registered ${displayDate(registrationDate(entry))}`),
+    el("span", "entry-date", `Registered ${displayDate(registrationDate(registeredAt))}`),
   );
   top.append(identity, trustBadge(entry));
   const title = el("h3");
@@ -406,36 +403,6 @@ function entryCard(
   return card;
 }
 
-async function loadEntries(page, databaseBase) {
-  const settled = await loadSettledBounded(
-    page.entries,
-    async (summary, signal) => {
-      const entry = await fetchJson(entryRecordUrl(summary, databaseBase), { signal });
-      // Every response is still untrusted independently. Degraded loading
-      // means a malformed record is omitted, never rendered provisionally.
-      return validateEntry(entry, summary);
-    },
-    {
-      concurrency: RECENT_ENTRY_CONCURRENCY,
-      timeoutMs: RECENT_ENTRY_TIMEOUT_MS,
-    },
-  );
-  const entries = [];
-  let failed = 0;
-  for (const [position, result] of settled.entries()) {
-    if (result.status === "fulfilled") {
-      entries.push(result.value);
-    } else {
-      failed += 1;
-      console.warn(
-        `Recent entry ${page.entries[position].id} v${page.entries[position].version} ` +
-          `could not be loaded: ${result.reason?.message || String(result.reason)}`,
-      );
-    }
-  }
-  return { entries, failed };
-}
-
 let landingSuppressed = false;
 let landingStatusHidden = document.querySelector("#status")?.hidden ?? true;
 
@@ -466,55 +433,33 @@ async function renderIndex() {
     grid.replaceChildren();
     const { databaseBase, availabilityUrl } = dataSource();
     const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
-    // What is new, not the whole registry. This page used to read a document
-    // naming every active version and then sort and filter it here, which was
-    // tens of megabytes for a screen of cards and grew every time anybody else
-    // published anything. The publisher decides which results are current and
-    // how many versions each has, so neither is worked out again here.
+    // The publisher projects every landing-card field from validated canonical
+    // entries into this bounded newest-first document. Rendering the selection
+    // therefore costs one summary read, not one record read per card.
     const recent = validateRecent(await fetchJson(recentUrl(databaseBase)));
-    const versionCounts = new Map(recent.entries.map((row) => [row.id, row.versions]));
-    const loaded = await loadEntries(recent, databaseBase);
-    const { entries } = loaded;
-    const recentTotal = recent.entries.length;
+    const entries = recent.entries;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
-    // The validated summary still names every accepted result when an
-    // individual record is temporarily unavailable. Counting only rendered
-    // cards would make a transport failure look like a registry withdrawal.
-    setOptionalText("#metric-results", String(recentTotal));
+    setOptionalText("#metric-results", String(entries.length));
     setOptionalText(
       "#metric-projects",
       new Set(entries.map((entry) => entry.source.repository)).size,
     );
-    if (!entries.length && !recentTotal) {
+    if (!entries.length) {
       setLandingStatusHidden(false);
       status.textContent =
         "The telescope is ready. No entries have been published yet; the first accepted database PR will appear here automatically.";
       status.classList.add("empty");
       return true;
     }
-    if (!entries.length) {
-      setLandingStatusHidden(false);
-      status.textContent =
-        `No recent registry entries could be loaded (${loaded.failed} of ${recentTotal} failed). ` +
-        "Try again later.";
-      status.className = "status error";
-      return false;
-    }
-    const degradedMessage = loaded.failed
-      ? `The recent listing is incomplete: ${loaded.failed} of ${recentTotal} entries ` +
-        "could not be loaded."
-      : "";
-    setLandingStatusHidden(!degradedMessage);
-    status.textContent = degradedMessage;
-    status.className = degradedMessage ? "status warning" : "status";
-    // `loadEntries` keeps fulfilled values in recent.entries order even when
-    // its bounded parallel fetches finish out of order, so render the
-    // publisher's newest-first list.
+    setLandingStatusHidden(true);
+    status.textContent = "";
+    status.className = "status";
     const cards = entries.map((entry) =>
       entryCard(entry, {
-        versionCount: versionCounts.get(entry.id),
+        versionCount: entry.versions,
         current: true,
+        registeredAt: entry.published_at,
       }));
     grid.append(...cards);
     void availabilityPromise.then((availability) => {
@@ -577,7 +522,7 @@ async function renderIndex() {
         card.hidden = !visible;
         if (visible) shown += 1;
       }
-      setLandingStatusHidden(shown !== 0 && !degradedMessage);
+      setLandingStatusHidden(shown !== 0);
       const classificationQuery = [
         arxivValue && `arXiv ${arxivValue}`,
         mscValue && `MSC2020 ${mscValue}`,
@@ -587,13 +532,12 @@ async function renderIndex() {
         mscInvalid && "MSC2020",
       ].filter(Boolean);
       status.textContent = shown
-        ? degradedMessage
+        ? ""
         : invalidClassifications.length
           ? `No registry entries match the current filters. Invalid classification code format: ${invalidClassifications.join(", ")}.`
           : classificationQuery.length
           ? `No registry entries match the current filters. Classification query: ${classificationQuery.join(", ")}.`
           : "No registry entries match those filters.";
-      if (!shown && degradedMessage) status.textContent += ` ${degradedMessage}`;
     };
     let updateTimer;
     const scheduleUpdate = () => {
@@ -1181,7 +1125,7 @@ function acceptanceCallout(entry, databaseBase) {
     );
   }
   copy.append(
-    el("strong", "", `Registered on ${displayDate(registrationDate(entry))}`),
+    el("strong", "", `Registered on ${displayDate(registrationDate(entry.registered_at))}`),
     assurance(
       "Mechanical assurance",
       "Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",

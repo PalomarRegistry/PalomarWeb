@@ -61,6 +61,16 @@ function string(value, field) {
   return value;
 }
 
+function boundedString(value, field, maximum) {
+  const text = string(value, field);
+  let length = 0;
+  for (const _character of text) {
+    length += 1;
+    if (length > maximum) fail(`${field} is longer than ${maximum} characters`);
+  }
+  return text;
+}
+
 function integer(value, field) {
   if (!Number.isSafeInteger(value) || value < 1) fail(`${field} must be a positive integer`);
   return value;
@@ -71,11 +81,32 @@ function array(value, field) {
   return value;
 }
 
+function exactObject(value, keys, field) {
+  const item = object(value, field);
+  const actual = Object.keys(item).sort();
+  const expected = [...keys].sort();
+  if (actual.length !== expected.length ||
+      actual.some((key, position) => key !== expected[position])) {
+    fail(`${field} has an invalid shape`);
+  }
+  return item;
+}
+
 function stringArray(value, field) {
   for (const [position, item] of array(value, field).entries()) {
     string(item, `${field}[${position}]`);
   }
   return value;
+}
+
+function distinctStringArray(value, field, pattern = null) {
+  const items = stringArray(value, field);
+  if (!items.length) fail(`${field} must be a non-empty array`);
+  if (new Set(items).size !== items.length) fail(`${field} must contain distinct values`);
+  if (pattern && items.some((item) => !pattern.test(item))) {
+    fail(`${field} contains a malformed value`);
+  }
+  return items;
 }
 
 function commit(value, field) {
@@ -185,15 +216,14 @@ export function recentUrl(databaseBase) {
 /**
  * What is new, from `recent.json`.
  *
- * The rows are the ones the index carried, so the row grammar and
- * `entryRecordUrl` apply unchanged. What is new is coverage and ordering: this
- * document claims to be the newest current versions and no more than the
- * publisher's bound of them. A page in some other order renders perfectly well,
- * and so does one carrying a result twice under two versions, which is why
- * neither would be noticed by anything else.
+ * Each row is the publisher's exact, self-contained landing-card projection of
+ * one validated canonical entry. The deliberately small nested objects carry
+ * every field a card renders and no record-only fields. Besides that complete
+ * shape, this document claims to be the newest current versions and no more
+ * than the publisher's bound of them, so coverage and ordering are checked too.
  */
 export function validateRecent(value) {
-  const document = object(value, "recent");
+  const document = exactObject(value, ["schema_version", "entries"], "recent");
   if (document.schema_version !== RECENT_SCHEMA_VERSION) {
     fail(`unsupported recent schema_version ${String(document.schema_version)}`);
   }
@@ -202,18 +232,35 @@ export function validateRecent(value) {
   const seen = new Set();
   let previous = null;
   for (const [position, value] of entries.entries()) {
-    const summary = object(value, `recent.entries[${position}]`);
-    const id = string(summary.id, `recent.entries[${position}].id`);
+    const field = `recent.entries[${position}]`;
+    const summary = exactObject(value, [
+      "abstract",
+      "authors",
+      "classification",
+      "formalization",
+      "id",
+      "path",
+      "preservation",
+      "published_at",
+      "source",
+      "status",
+      "title",
+      "trust",
+      "version",
+      "versions",
+    ], field);
+    const id = string(summary.id, `${field}.id`);
     if (!ID_RE.test(id)) fail(`recent.entries[${position}].id is malformed`);
-    const version = integer(summary.version, `recent.entries[${position}].version`);
-    string(summary.title, `recent.entries[${position}].title`);
+    const version = integer(summary.version, `${field}.version`);
+    boundedString(summary.title, `${field}.title`, 300);
+    boundedString(summary.abstract, `${field}.abstract`, 10_000);
     if (summary.status !== "accepted") fail(`recent.entries[${position}].status is not accepted`);
     const expectedPath = `entries/${id}-v${version}.json`;
     if (summary.path !== expectedPath) {
       fail(`recent.entries[${position}].path must be ${expectedPath}`);
     }
-    integer(summary.versions, `recent.entries[${position}].versions`);
-    const publishedAt = string(summary.published_at, `recent.entries[${position}].published_at`);
+    integer(summary.versions, `${field}.versions`);
+    const publishedAt = string(summary.published_at, `${field}.published_at`);
     // An instant, and only an instant. This is the record's `registered_at`,
     // which the schema requires of every version. A date was tolerated while a
     // row could fall back to `accepted_at`, and a date read as an instant is
@@ -223,13 +270,86 @@ export function validateRecent(value) {
       fail(`recent.entries[${position}].published_at is malformed`);
     }
     const moment = Date.parse(publishedAt);
-    if (Number.isNaN(moment)) fail(`recent.entries[${position}].published_at is malformed`);
-    if (previous !== null && moment > previous) fail("recent is not in newest-first order");
-    previous = moment;
+    if (Number.isNaN(moment) ||
+        new Date(moment).toISOString().replace(".000Z", "Z") !== publishedAt) {
+      fail(`recent.entries[${position}].published_at is malformed`);
+    }
+    if (previous !== null &&
+        (moment > previous.moment || (moment === previous.moment && id > previous.id))) {
+      fail("recent is not in newest-first order");
+    }
+    previous = { moment, id };
     // One row per result, because these are the current versions: the same
     // identifier twice means this is not the selection it says it is.
     if (seen.has(id)) fail(`recent names ${id} more than once`);
     seen.add(id);
+
+    const authors = array(summary.authors, `${field}.authors`);
+    if (!authors.length) fail(`${field}.authors must be a non-empty array`);
+    for (const [authorPosition, authorValue] of authors.entries()) {
+      const authorField = `${field}.authors[${authorPosition}]`;
+      const author = exactObject(authorValue, ["name"], authorField);
+      string(author.name, `${authorField}.name`);
+    }
+
+    const classification = exactObject(
+      summary.classification,
+      ["arxiv", "msc2020"],
+      `${field}.classification`,
+    );
+    const arxiv = distinctStringArray(
+      classification.arxiv,
+      `${field}.classification.arxiv`,
+      ARXIV_RE,
+    );
+    if (arxiv.length > 2) fail(`${field}.classification.arxiv has more than 2 codes`);
+    const msc2020 = distinctStringArray(
+      classification.msc2020,
+      `${field}.classification.msc2020`,
+      MSC2020_RE,
+    );
+    if (msc2020.length > 8) fail(`${field}.classification.msc2020 has more than 8 codes`);
+    const formalization = exactObject(
+      summary.formalization,
+      ["theorem_names"],
+      `${field}.formalization`,
+    );
+    distinctStringArray(formalization.theorem_names, `${field}.formalization.theorem_names`);
+    const trust = exactObject(summary.trust, ["level"], `${field}.trust`);
+    if (!["high", "qualified"].includes(trust.level)) fail(`${field}.trust.level is invalid`);
+
+    const source = exactObject(
+      summary.source,
+      ["repository", "commit", "project_path"],
+      `${field}.source`,
+    );
+    const repository = string(source.repository, `${field}.source.repository`);
+    if (!REPOSITORY_RE.test(repository)) fail(`${field}.source.repository is malformed`);
+    commit(string(source.commit, `${field}.source.commit`), `${field}.source.commit`);
+    if (source.project_path !== null) safeRepositoryPath(source.project_path, `${field}.source.project_path`);
+
+    if (summary.preservation !== null) {
+      const preservation = exactObject(
+        summary.preservation,
+        ["repositories"],
+        `${field}.preservation`,
+      );
+      const repositories = array(preservation.repositories, `${field}.preservation.repositories`);
+      if (repositories.length !== 1) fail(`${field}.preservation must contain one source mapping`);
+      const mapping = exactObject(repositories[0], [
+        "source_repository",
+        "commit",
+        "fork_repository",
+      ], `${field}.preservation.repositories[0]`);
+      if (typeof mapping.source_repository !== "string" ||
+          mapping.source_repository.toLowerCase() !== repository.toLowerCase() ||
+          mapping.commit !== source.commit ||
+          typeof mapping.fork_repository !== "string" ||
+          !REPOSITORY_RE.test(mapping.fork_repository) ||
+          !mapping.fork_repository.startsWith("PalomarArchive/")) {
+        fail(`${field}.preservation does not match source`);
+      }
+    }
   }
   return document;
 }

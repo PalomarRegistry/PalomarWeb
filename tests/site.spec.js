@@ -97,7 +97,14 @@ test("every formalization.yaml mention on the About page links to its standard",
 });
 
 test("landing cards show the registration date and dated identifier", async ({ page }) => {
-  await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) => route.abort());
+  const dynamicRequests = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/database/")) dynamicRequests.push(path);
+  });
+  // A landing record read is a regression even if its result happens to be
+  // valid, so make one fail loudly instead of letting it hide in the fixture.
+  await page.route("**/database/entries/*.json", (route) => route.abort());
   await page.goto(`/?database=${database}`);
   const first = page.locator(".entry-card").first();
   await expect(first.locator(".entry-id")).toContainText("PALOMAR-2026-07-29-");
@@ -120,8 +127,29 @@ test("landing cards show the registration date and dated identifier", async ({ p
   await expect(first.locator(".card-subjects")).toContainText("MSC 05C10");
   await expect(first.locator(".card-project")).toContainText("Project directory");
   await expect(first.locator(".card-project")).toContainText("project");
+  await expect(first.locator("h3")).toContainText("version 2");
+  await expect(first.locator(".card-abstract")).toContainText("quasicoherent behaviour");
+  await expect(first.locator(".card-meta")).toContainText("Example");
+  await expect(first.locator(".card-meta")).toContainText("Example.theorem");
+  await expect(first.locator(".repo-link")).toHaveAttribute(
+    "href",
+    /github\.com\/example\/challenge\/tree\/1{40}$/,
+  );
+  await expect(first.locator(".archive-link")).toHaveAttribute(
+    "href",
+    /github\.com\/PalomarArchive\/example--challenge\/tree\/1{40}$/,
+  );
+  await expect(page.locator("#metric-results")).toHaveText("2");
+  await expect(page.locator("#metric-projects")).toHaveText("1");
   await expect(page.getByRole("button", { name: "Mathlib only" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
+  await expect.poll(() => [...dynamicRequests].sort()).toEqual([
+    "/database/recent.json",
+    "/database/source-availability.json",
+  ]);
+  await page.waitForTimeout(100);
+  expect(dynamicRequests.filter((path) => path.startsWith("/database/entries/"))).toEqual([]);
+  expect(dynamicRequests).toHaveLength(2);
 });
 
 test("landing cards preserve the publisher's newest-first order", async ({ page }) => {
@@ -140,13 +168,6 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
     }));
     await route.fulfill({ response, json: recent });
   });
-  await page.route("**/database/entries/*.json", async (route) => {
-    const response = await route.fetch();
-    const entry = await response.json();
-    entry.registered_at = registeredAt.get(entry.id);
-    await route.fulfill({ response, json: entry });
-  });
-
   await page.goto(`/?database=${database}`);
 
   // Recency and identifier order deliberately disagree. The DOM must follow
@@ -157,47 +178,52 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
   ]);
 });
 
-test("one malformed recent entry does not hide valid cards", async ({ page }) => {
-  await page.route("**/database/entries/PALOMAR-2026-07-29-000123-v2.json", async (route) => {
+test("old, partial, and malformed recent summaries fail closed before rendering", async ({ page }) => {
+  let variant = "old";
+  const entryRequests = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/database/entries/")) entryRequests.push(path);
+  });
+  await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
-    const malformed = await response.json();
-    malformed.title = "";
-    await route.fulfill({ response, json: malformed });
+    const document = await response.json();
+    if (variant === "old") {
+      document.entries = document.entries.map((row) => ({
+        id: row.id,
+        version: row.version,
+        title: row.title,
+        status: row.status,
+        path: row.path,
+        published_at: row.published_at,
+        versions: row.versions,
+      }));
+    } else if (variant === "partial") {
+      delete document.entries[0].abstract;
+    } else {
+      document.entries[0].preservation.repositories[0].commit = "2".repeat(40);
+    }
+    await route.fulfill({ response, json: document });
   });
 
-  await page.goto(`/?database=${database}`);
-
-  await expect(page.locator("#entry-grid .entry-card .entry-id")).toHaveText([
-    "PALOMAR-2026-07-29-000124 v1 · current",
-  ]);
-  await expect(page.locator("#status")).toHaveText(
-    "The recent listing is incomplete: 1 of 2 entries could not be loaded.",
-  );
-  await expect(page.locator("#status")).toHaveClass(/warning/);
-  await expect(page.locator("#metric-results")).toHaveText("2");
-
-  await page.locator("#arxiv-query").fill("math.NT");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-  await expect(page.locator("#status")).toHaveText(
-    "The recent listing is incomplete: 1 of 2 entries could not be loaded.",
-  );
-
-  await page.locator("#arxiv-query").fill("math.CO");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
-  await expect(page.locator("#status")).toHaveText(
-    "No registry entries match the current filters. Classification query: arXiv math.CO. " +
-      "The recent listing is incomplete: 1 of 2 entries could not be loaded.",
-  );
+  for (const selected of ["old", "partial", "malformed"]) {
+    variant = selected;
+    await page.goto(`/?database=${database}&contract-case=${selected}`);
+    await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
+    await expect(page.locator("#status")).toHaveClass(/error/);
+    await expect(page.locator("#status")).toContainText("The registry could not be loaded");
+  }
+  expect(entryRequests).toEqual([]);
 });
 
-test("an entirely unavailable recent selection reports failure instead of emptiness", async ({ page }) => {
-  await page.route("**/database/entries/*.json", (route) => route.abort());
+test("an unavailable recent summary reports failure instead of emptiness", async ({ page }) => {
+  await page.route("**/database/recent.json", (route) =>
+    route.fulfill({ status: 503, body: "temporarily unavailable" }),
+  );
 
   await page.goto(`/?database=${database}`);
 
-  await expect(page.locator("#status")).toHaveText(
-    "No recent registry entries could be loaded (2 of 2 failed). Try again later.",
-  );
+  await expect(page.locator("#status")).toContainText("The registry could not be loaded: 503");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveClass(/error/);
   await expect(page.locator("#status")).not.toContainText("No entries have been published");
@@ -393,12 +419,12 @@ test("a card for a result accepted before archiving does not call its original u
   // read that silence as a missing original and printed "Original unavailable"
   // beside somebody else's repository, which is a published claim about a
   // third party's work made on no evidence.
-  await page.route("**/entries/PALOMAR-2026-07-29-000123-v2.json", async (route) => {
+  await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
-    const legacy = await response.json();
-    legacy.schema_version = 1;
-    delete legacy.preservation;
-    await route.fulfill({ response, json: legacy });
+    const recent = await response.json();
+    const legacy = recent.entries.find((row) => row.id === "PALOMAR-2026-07-29-000123");
+    legacy.preservation = null;
+    await route.fulfill({ response, json: recent });
   });
   await page.goto(`/?database=${database}`);
 
@@ -891,6 +917,33 @@ test("a search reads one postings sequence per word and confirms every hit", asy
   // nothing on top of that.
   expect(asked.filter((path) => path.startsWith("/database/entries/")))
     .toEqual(["/database/entries/PALOMAR-2026-07-29-000124-v1.json"]);
+});
+
+test("runtime data reads reuse a fresh HTTP response", async ({ page }) => {
+  const headUrl = "http://127.0.0.1:4173/database/search/t/cacheprobe/head.json";
+  const timings = () => page.evaluate((url) =>
+    performance.getEntriesByName(url).map((entry) => ({
+      decodedBodySize: entry.decodedBodySize,
+      transferSize: entry.transferSize,
+    })), headUrl);
+
+  await page.goto(`/?database=${database}`);
+  await page.evaluate(() => performance.clearResourceTimings());
+  await page.locator("#query").fill("cacheprobe");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect.poll(async () => (await timings()).length).toBe(1);
+
+  // The fixture gives this otherwise ordinary postings document max-age=60.
+  // Submitting the same search still calls fetch, but the browser should
+  // satisfy it from its HTTP cache rather than transferring it again.
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect.poll(async () => (await timings()).length).toBe(2);
+  const [network, cached] = await timings();
+  expect(network.transferSize).toBeGreaterThan(0);
+  expect(network.decodedBodySize).toBeGreaterThan(0);
+  expect(cached.transferSize).toBe(0);
+  expect(cached.decodedBodySize).toBe(network.decodedBodySize);
 });
 
 test("an over-limit term count is an accessible warning and can be corrected", async ({ page }) => {

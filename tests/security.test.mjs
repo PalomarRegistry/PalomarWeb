@@ -167,6 +167,82 @@ test("recent validation rejects unsupported, rejected, and malformed rows", () =
   assert.equal(validateRecent(recent()).entries.length, 1);
 });
 
+test("recent validation accepts the Database-owned landing-card fixture", async () => {
+  // This is the same mandatory cross-repository contract mechanism used for
+  // canonical schemas below. Locally it reads PalomarDatabase's checked
+  // fixture; CI supplies the published producer output at the same path.
+  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
+    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const fixture = JSON.parse(
+    await readFile(new URL("tests/fixtures/recent.json", `file://${checkout}/`), "utf8"),
+  );
+  assert.ok(fixture.entries.length > 0, "the external contract fixture must exercise a row");
+  assert.equal(validateRecent(fixture), fixture);
+});
+
+test("an empty recent registry is valid", () => {
+  assert.deepEqual(validateRecent(recent([])).entries, []);
+});
+
+test("recent is one exact complete projection, not a legacy summary shape", () => {
+  assert.throws(
+    () => validateRecent({ schema_version: 1, entries: [summary()] }),
+    /invalid shape/,
+  );
+
+  for (const mutate of [
+    (page) => { page.legacy_entries = []; },
+    (page) => { delete page.entries[0].abstract; },
+    (page) => { page.entries[0].registered_at = page.entries[0].published_at; },
+    (page) => { delete page.entries[0].source.project_path; },
+    (page) => { page.entries[0].authors[0].github = "somebody"; },
+    (page) => { page.entries[0].preservation.repositories = []; },
+  ]) {
+    const page = recent();
+    mutate(page);
+    assert.throws(() => validateRecent(page), /invalid shape|must contain one source mapping/);
+  }
+});
+
+test("recent validates every projected card field and source mapping", () => {
+  const duplicateClassifications = recent();
+  duplicateClassifications.entries[0].classification.arxiv.push("math.CO");
+  assert.throws(() => validateRecent(duplicateClassifications), /distinct values/);
+
+  const missingTheorems = recent();
+  missingTheorems.entries[0].formalization.theorem_names = [];
+  assert.throws(() => validateRecent(missingTheorems), /non-empty array/);
+
+  const mismatchedPreservation = recent();
+  mismatchedPreservation.entries[0].preservation.repositories[0].commit = "2".repeat(40);
+  assert.throws(() => validateRecent(mismatchedPreservation), /does not match source/);
+});
+
+test("recent applies the canonical producer's cheap presentation bounds", () => {
+  for (const [field, maximum] of [["title", 300], ["abstract", 10_000]]) {
+    const atBound = recent();
+    atBound.entries[0][field] = "x".repeat(maximum);
+    assert.equal(validateRecent(atBound), atBound);
+
+    const overBound = recent();
+    overBound.entries[0][field] = "x".repeat(maximum + 1);
+    assert.throws(() => validateRecent(overBound), new RegExp(`longer than ${maximum}`));
+  }
+
+  const classifications = recent();
+  classifications.entries[0].classification.arxiv = ["math.CO", "math.NT"];
+  classifications.entries[0].classification.msc2020 = Array.from(
+    { length: 8 },
+    (_unused, position) => `10A${String(position + 1).padStart(2, "0")}`,
+  );
+  assert.equal(validateRecent(classifications), classifications);
+  classifications.entries[0].classification.arxiv.push("cs.DM");
+  assert.throws(() => validateRecent(classifications), /more than 2 codes/);
+  classifications.entries[0].classification.arxiv.pop();
+  classifications.entries[0].classification.msc2020.push("10A09");
+  assert.throws(() => validateRecent(classifications), /more than 8 codes/);
+});
+
 test("a record must say when the version was registered, and agree with its result date", () => {
   // The two are one fact written twice, in two repositories. `accepted_at` is
   // the result's date: the identifier carries it, browsing pages by it, and
@@ -237,6 +313,16 @@ test("what recent claims is coverage and ordering, so both are checked", () => {
     () => validateRecent(recent([recentRow(), recentRow({ version: 2, path: "entries/PALOMAR-2026-07-29-000123-v2.json" })])),
     /more than once/,
   );
+});
+
+test("recent breaks equal publication timestamps by descending identifier", () => {
+  const lower = recentRow();
+  const higher = recentRow({
+    id: "PALOMAR-2026-07-29-000124",
+    path: "entries/PALOMAR-2026-07-29-000124-v1.json",
+  });
+  assert.deepEqual(validateRecent(recent([higher, lower])).entries, [higher, lower]);
+  assert.throws(() => validateRecent(recent([lower, higher])), /newest-first/);
 });
 
 test("recent is bounded, because the document it replaced was the registry", () => {

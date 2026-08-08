@@ -180,6 +180,54 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
     return record
 
 
+def recent_row(record: dict, versions: int) -> dict:
+    """Project exactly the landing-card contract emitted by PalomarDatabase."""
+    source = record["source"]
+    preservation = record.get("preservation")
+    mapping = (
+        next(
+            (
+                item
+                for item in preservation["repositories"]
+                if item["source_repository"].casefold()
+                == source["repository"].casefold()
+                and item["commit"] == source["commit"]
+            ),
+            None,
+        )
+        if preservation
+        else None
+    )
+    return {
+        "id": record["id"],
+        "version": record["version"],
+        "status": record["status"],
+        "title": record["title"],
+        "path": f"entries/{record['id']}-v{record['version']}.json",
+        "abstract": record["abstract"],
+        "authors": [{"name": author["name"]} for author in record["authors"]],
+        "classification": record["classification"],
+        "formalization": {
+            "theorem_names": record["formalization"]["theorem_names"],
+        },
+        "trust": {"level": record["trust"]["level"]},
+        "source": {
+            "repository": source["repository"],
+            "commit": source["commit"],
+            "project_path": source.get("project_path"),
+        },
+        "preservation": {
+            "repositories": [{
+                "source_repository": mapping["source_repository"],
+                "commit": mapping["commit"],
+                "fork_repository": mapping["fork_repository"],
+            }]
+        } if mapping else None,
+        "published_at": record["registered_at"],
+        "versions": versions,
+    }
+
+
 ENTRIES = {
     ("PALOMAR-2026-07-29-000123", 1): entry(
         "PALOMAR-2026-07-29-000123", 100, 1
@@ -242,7 +290,7 @@ ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["trust"].update(
 # case the published stopword list exists for: a query containing "the" has to
 # find it anyway, and inferring stopwords from a missing head could not.
 ENTRIES[("PALOMAR-2026-07-29-000124", 1)]["abstract"] = (
-    "Quasicoherent sheaves, synthetically."
+    "Quasicoherent sheaves, synthetically. Cacheprobe."
 )
 SEARCH_INDEX = search_index(ENTRIES)
 
@@ -251,11 +299,16 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
-    def send_bytes(self, payload: bytes, content_type: str) -> None:
+    def send_bytes(
+        self,
+        payload: bytes,
+        content_type: str,
+        cache_control: str = "no-store",
+    ) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -307,18 +360,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if previous is None or item["version"] > previous["version"]:
                     current[item["id"]] = item
             versions = collections.Counter(item["id"] for item in ENTRIES.values())
-            rows = [
-                {
-                    "id": item["id"],
-                    "version": item["version"],
-                    "title": item["title"],
-                    "status": "accepted",
-                    "path": f"entries/{item['id']}-v{item['version']}.json",
-                    "published_at": item["registered_at"],
-                    "versions": versions[item["id"]],
-                }
-                for item in current.values()
-            ]
+            rows = [recent_row(item, versions[item["id"]]) for item in current.values()]
             # Newest first, ties broken by identifier descending, exactly as
             # `selection.latest_entries` orders them in the publisher.
             rows.sort(key=lambda row: (row["published_at"], row["id"]), reverse=True)
@@ -401,7 +443,13 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 self.send_error(404)
                 return
-            self.send_bytes(json.dumps(payload).encode(), "application/json")
+            self.send_bytes(
+                json.dumps(payload).encode(),
+                "application/json",
+                cache_control=(
+                    "public, max-age=60" if term == "cacheprobe" else "no-store"
+                ),
+            )
             return
         tombstone = re.fullmatch(
             r"/database/tombstones/(PALOMAR-2026-07-29-000125)-v(1)\.json",
