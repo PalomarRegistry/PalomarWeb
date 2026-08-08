@@ -48,3 +48,16 @@ test("one shared deadline aborts hung requests and bounds queued work", async ()
   assert.deepEqual(results.map((result) => result.status), Array(4).fill("rejected"));
   for (const result of results) assert.match(result.reason.message, /deadline of 30ms expired/);
 });
+
+test("the deadline settles a load that ignores its abort signal", async () => {
+  const before = Date.now();
+  const results = await loadSettledBounded(
+    ["never"],
+    () => new Promise(() => {}),
+    { concurrency: 1, timeoutMs: 30 },
+  );
+
+  assert.ok(Date.now() - before < 500, "an abort-ignoring load hung the loader");
+  assert.equal(results[0].status, "rejected");
+  assert.match(results[0].reason.message, /deadline of 30ms expired/);
+});

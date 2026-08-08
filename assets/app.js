@@ -48,7 +48,7 @@ const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
 const RECENT_ENTRY_CONCURRENCY = 8;
-const RECENT_ENTRY_TIMEOUT_MS = 8_000;
+const RECENT_ENTRY_TIMEOUT_MS = 30_000;
 
 function dataSource() {
   const databaseBase = databaseBaseFor(
@@ -388,7 +388,10 @@ async function renderIndex() {
     const availability = await availabilityPromise;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
-    setOptionalText("#metric-results", String(entries.length));
+    // The validated summary still names every accepted result when an
+    // individual record is temporarily unavailable. Counting only rendered
+    // cards would make a transport failure look like a registry withdrawal.
+    setOptionalText("#metric-results", String(recentTotal));
     setOptionalText(
       "#metric-projects",
       new Set(entries.map((entry) => entry.source.repository)).size,
@@ -400,19 +403,20 @@ async function renderIndex() {
       return;
     }
     if (!entries.length) {
+      status.hidden = false;
       status.textContent =
         `No recent registry entries could be loaded (${loaded.failed} of ${recentTotal} failed). ` +
         "Try again later.";
-      status.classList.add("error");
+      status.className = "status error";
       return;
     }
     const degradedMessage = loaded.failed
-      ? `Showing ${entries.length} of ${recentTotal} recent registry entries; ` +
-        `${loaded.failed} could not be loaded.`
+      ? `The recent listing is incomplete: ${loaded.failed} of ${recentTotal} entries ` +
+        "could not be loaded."
       : "";
     status.hidden = !degradedMessage;
     status.textContent = degradedMessage;
-    status.classList.toggle("warning", Boolean(degradedMessage));
+    status.className = degradedMessage ? "status warning" : "status";
     // `loadEntries` keeps fulfilled values in recent.entries order even when
     // its bounded parallel fetches finish out of order, so render the
     // publisher's newest-first list.
@@ -491,7 +495,6 @@ async function renderIndex() {
           ? `No registry entries match the current filters. Classification query: ${classificationQuery.join(", ")}.`
           : "No registry entries match those filters.";
       if (!shown && degradedMessage) status.textContent += ` ${degradedMessage}`;
-      status.classList.toggle("warning", Boolean(degradedMessage));
     };
     let updateTimer;
     const scheduleUpdate = () => {
@@ -517,8 +520,9 @@ async function renderIndex() {
     });
     update();
   } catch (error) {
+    status.hidden = false;
     status.textContent = `The registry could not be loaded: ${error.message}`;
-    status.classList.add("error");
+    status.className = "status error";
   }
 }
 

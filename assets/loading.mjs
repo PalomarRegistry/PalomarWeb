@@ -27,6 +27,36 @@ export async function loadSettledBounded(
   const timer = setTimeout(() => controller.abort(deadlineError), timeoutMs);
   let next = 0;
 
+  /**
+   * Settle when the load settles or the one shared deadline expires.
+   *
+   * The load is not trusted to observe its signal. The abort listener is the
+   * loader's own enforcement, and is removed as soon as a load settles so a
+   * long but healthy page does not accumulate listeners. Both load outcomes
+   * are handled even after the deadline wins, preventing late rejections from
+   * becoming unhandled.
+   */
+  function beforeDeadline(loadPromise) {
+    return new Promise((resolve, reject) => {
+      if (controller.signal.aborted) {
+        reject(controller.signal.reason);
+        return;
+      }
+      const onAbort = () => reject(controller.signal.reason);
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      loadPromise.then(
+        (value) => {
+          controller.signal.removeEventListener("abort", onAbort);
+          resolve(value);
+        },
+        (reason) => {
+          controller.signal.removeEventListener("abort", onAbort);
+          reject(reason);
+        },
+      );
+    });
+  }
+
   async function worker() {
     while (next < items.length) {
       const position = next;
@@ -40,9 +70,12 @@ export async function loadSettledBounded(
       }
 
       try {
+        const loadPromise = Promise.resolve().then(
+          () => load(items[position], controller.signal),
+        );
         results[position] = {
           status: "fulfilled",
-          value: await load(items[position], controller.signal),
+          value: await beforeDeadline(loadPromise),
         };
       } catch (reason) {
         results[position] = { status: "rejected", reason };

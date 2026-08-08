@@ -166,9 +166,23 @@ test("one malformed recent entry does not hide valid cards", async ({ page }) =>
     "PALOMAR-2026-07-29-000124 v1 · current",
   ]);
   await expect(page.locator("#status")).toHaveText(
-    "Showing 1 of 2 recent registry entries; 1 could not be loaded.",
+    "The recent listing is incomplete: 1 of 2 entries could not be loaded.",
   );
   await expect(page.locator("#status")).toHaveClass(/warning/);
+  await expect(page.locator("#metric-results")).toHaveText("2");
+
+  await page.locator("#arxiv-query").fill("math.NT");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator("#status")).toHaveText(
+    "The recent listing is incomplete: 1 of 2 entries could not be loaded.",
+  );
+
+  await page.locator("#arxiv-query").fill("math.CO");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Classification query: arXiv math.CO. " +
+      "The recent listing is incomplete: 1 of 2 entries could not be loaded.",
+  );
 });
 
 test("an entirely unavailable recent selection reports failure instead of emptiness", async ({ page }) => {
@@ -176,10 +190,10 @@ test("an entirely unavailable recent selection reports failure instead of emptin
 
   await page.goto(`/?database=${database}`);
 
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveText(
     "No recent registry entries could be loaded (2 of 2 failed). Try again later.",
   );
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveClass(/error/);
   await expect(page.locator("#status")).not.toContainText("No entries have been published");
 });
