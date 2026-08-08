@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
-const appModules = ["loading.mjs", "rendering.js", "security.mjs"];
+const appModules = ["loading.mjs", "rendering.js", "searching.mjs", "security.mjs"];
 const assetFiles = [
   "about.js",
   "app.js",

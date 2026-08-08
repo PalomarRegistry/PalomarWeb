@@ -10,7 +10,7 @@
 export async function loadSettledBounded(
   items,
   load,
-  { concurrency, timeoutMs },
+  { concurrency, timeoutMs, signal = null },
 ) {
   if (!Array.isArray(items)) throw new TypeError("items must be an array");
   if (typeof load !== "function") throw new TypeError("load must be a function");
@@ -20,11 +20,17 @@ export async function loadSettledBounded(
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new RangeError("timeoutMs must be positive");
   }
+  if (signal !== null && !(signal instanceof AbortSignal)) {
+    throw new TypeError("signal must be an AbortSignal");
+  }
 
   const results = new Array(items.length);
   const controller = new AbortController();
   const deadlineError = new Error(`load deadline of ${timeoutMs}ms expired`);
   const timer = setTimeout(() => controller.abort(deadlineError), timeoutMs);
+  const abortFromParent = () => controller.abort(signal.reason);
+  if (signal?.aborted) abortFromParent();
+  else signal?.addEventListener("abort", abortFromParent, { once: true });
   let next = 0;
 
   /**
@@ -91,6 +97,7 @@ export async function loadSettledBounded(
     await Promise.all(workers);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abortFromParent);
   }
   return results;
 }

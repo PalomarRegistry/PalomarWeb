@@ -13,22 +13,15 @@ import {
   isLoopbackHostname,
   pinnedRepositoryDirectoryUrl,
   pinnedRepositoryFileUrl,
-  postingRecordUrl,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
-  searchHeadUrl,
-  searchPageUrl,
   searchTerms,
-  stopwordsUrl,
   selectDatabaseUrl,
   selectAvailabilityUrl,
   recentUrl,
   selectRenderBase,
   tombstoneUrl,
-  validateSearchHead,
-  validateSearchPage,
-  validateStopwords,
   validateEntry,
   validateAvailability,
   validateRecent,
@@ -38,6 +31,7 @@ import {
   workflowRunId,
 } from "./security.mjs";
 import { loadSettledBounded } from "./loading.mjs";
+import { createRegistrySearch } from "./searching.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
@@ -49,6 +43,7 @@ const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
 const RECENT_ENTRY_CONCURRENCY = 8;
 const RECENT_ENTRY_TIMEOUT_MS = 30_000;
+const AVAILABILITY_TIMEOUT_MS = 30_000;
 
 function dataSource() {
   const databaseBase = databaseBaseFor(
@@ -103,13 +98,34 @@ async function fetchJson(url, { signal } = {}) {
   return response.json();
 }
 
-async function loadAvailability(url) {
+const searchRegistry = createRegistrySearch(fetchJson);
+
+async function loadAvailability(url, { signal } = {}) {
   try {
-    return validateAvailability(await fetchJson(url));
+    return validateAvailability(await fetchJson(url, { signal }));
   } catch (error) {
     console.warn(`Source availability is unavailable: ${error.message}`);
     return null;
   }
+}
+
+// The landing and search controllers run independently, but they need the same
+// manifest. Share one bounded read rather than doubling a large request when a
+// reader arrives at a search URL.
+const availabilityLoads = new Map();
+function loadAvailabilityBounded(url) {
+  const key = url.href;
+  if (!availabilityLoads.has(key)) {
+    availabilityLoads.set(
+      key,
+      loadSettledBounded(
+        [url],
+        (selected, signal) => loadAvailability(selected, { signal }),
+        { concurrency: 1, timeoutMs: AVAILABILITY_TIMEOUT_MS },
+      ).then(([loaded]) => loaded.status === "fulfilled" ? loaded.value : null),
+    );
+  }
+  return availabilityLoads.get(key);
 }
 
 function sourceLocation(entry, availability, repository, commit) {
@@ -251,7 +267,10 @@ function trustBadge(entry) {
   return badge;
 }
 
-function entryCard(entry, versionCount, availability) {
+function entryCard(
+  entry,
+  { versionCount = null, availability = null, current = false } = {},
+) {
   const categories = classification(entry);
   const card = el("article", "entry-card");
   card.dataset.trust = entry.trust.level;
@@ -272,7 +291,7 @@ function entryCard(entry, versionCount, availability) {
   const top = el("div", "card-top");
   const identity = el("div", "card-identity");
   identity.append(
-    el("span", "entry-id", `${entry.id} v${entry.version} · current`),
+    el("span", "entry-id", `${entry.id} v${entry.version}${current ? " · current" : ""}`),
     el("span", "entry-date", `Registered ${displayDate(registrationDate(entry))}`),
   );
   top.append(identity, trustBadge(entry));
@@ -374,7 +393,7 @@ async function renderIndex() {
   const grid = document.querySelector("#entry-grid");
   try {
     const { databaseBase, availabilityUrl } = dataSource();
-    const availabilityPromise = loadAvailability(availabilityUrl);
+    const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
     // What is new, not the whole registry. This page used to read a document
     // naming every active version and then sort and filter it here, which was
     // tens of megabytes for a screen of cards and grew every time anybody else
@@ -421,7 +440,11 @@ async function renderIndex() {
     // its bounded parallel fetches finish out of order, so render the
     // publisher's newest-first list.
     for (const entry of entries) {
-      grid.append(entryCard(entry, versionCounts.get(entry.id), availability));
+      grid.append(entryCard(entry, {
+        versionCount: versionCounts.get(entry.id),
+        availability,
+        current: true,
+      }));
     }
     let trust = "all";
     const search = document.querySelector("#search");
@@ -526,193 +549,6 @@ async function renderIndex() {
   }
 }
 
-// How much of a word's postings one query is allowed to pull. A common word
-// runs to hundreds of pages at a hundred thousand results, and a reader wants
-// the newest matches rather than all of them; the record check below is what
-// makes stopping early safe rather than merely cheap.
-const SEARCH_PAGE_BUDGET = 16;
-const SEARCH_RESULT_LIMIT = 20;
-const SEARCH_CANDIDATE_LIMIT = 60;
-const POSTING_RE = /^(PALOMAR-\d{4}-\d{2}-\d{2}-\d{6})-v([1-9]\d*)$/;
-
-// One editorial constant, fetched once per page rather than copied into this
-// repository, where it would drift from the indexer's across two deployments.
-let stopwords = null;
-
-/**
- * The words the indexer drops, so that a query can drop them too.
- *
- * Inferring them instead, from the fact that a dropped word has no head, was
- * wrong in a way a reader could not diagnose: a missing head is also what a
- * word nothing carries looks like, so "the ring" was answered against a record
- * whose text happens not to contain "the" by reporting that "the" is
- * unfindable. The list is published because it is a fixed choice of a few
- * hundred function words, which is nothing like the document naming every
- * known word that this index exists without.
- *
- * A list that cannot be fetched leaves every word in the query, which is the
- * behaviour this replaced: it narrows a search that should have been wider,
- * and never shows a result that does not match.
- */
-async function searchStopwords(databaseBase) {
-  if (stopwords) return stopwords;
-  try {
-    stopwords = validateStopwords(await fetchJson(stopwordsUrl(databaseBase)));
-  } catch (error) {
-    if (error.status !== 404) throw error;
-    stopwords = new Set();
-  }
-  return stopwords;
-}
-
-async function searchHead(term, databaseBase) {
-  try {
-    return validateSearchHead(await fetchJson(searchHeadUrl(term, databaseBase)), term);
-  } catch (error) {
-    // A 404 is the only answer there is for a word nothing carries. There is
-    // no document to consult first: one that named every known word would grow
-    // with the registry and be rewritten on every publication, which is the
-    // whole reason this index is shaped the way it is.
-    if (error.status !== 404) throw error;
-    return null;
-  }
-}
-
-/**
- * One word's postings, newest first, for as many pages as the budget allows.
- *
- * The pages are in registration order, so the last page is the newest batch,
- * and within a page an identifier begins with its registration date. A page
- * the head says exists and that is not there is an error rather than an empty
- * answer: the head is the only account of which pages there are.
- */
-async function searchPostings(term, head, databaseBase, wanted) {
-  const postings = [];
-  const first = Math.max(0, head.pages - wanted);
-  for (let number = head.pages - 1; number >= first; number -= 1) {
-    const page = validateSearchPage(
-      await fetchJson(searchPageUrl(term, number, databaseBase)),
-      term,
-      number,
-      head,
-    );
-    postings.push(...[...page.postings].reverse());
-  }
-  return { postings, whole: first === 0 };
-}
-
-/**
- * Which results might match, in the order they would be shown.
- *
- * The rarest word drives, because its sequence is the shortest and every match
- * is somewhere in it. Another word joins the intersection only if the whole of
- * it fits in what is left of the budget: intersecting against half a word's
- * postings would drop genuine matches while looking like a narrower search.
- * Everything else is settled per record by `carriesEveryTerm`, which is exact
- * and costs nothing, since the record has to be fetched to be shown anyway.
- *
- * A word with no head is a word nothing carries, and it is that rather than a
- * word the indexer drops because the dropped ones have already left the query
- * by the time this runs. It leaves the intersection and stays in the
- * per-record check, which rejects every candidate, and it is named in what the
- * reader is told rather than guessed about.
- */
-async function searchCandidates(terms, databaseBase) {
-  const heads = [];
-  const missing = [];
-  for (const term of terms) {
-    const head = await searchHead(term, databaseBase);
-    if (head && head.results > 0) heads.push([term, head]);
-    else missing.push(term);
-  }
-  heads.sort((left, right) => left[1].results - right[1].results);
-  if (!heads.length) return { postings: [], whole: true, missing };
-
-  let budget = SEARCH_PAGE_BUDGET;
-  let found = null;
-  let whole = true;
-  for (const [term, head] of heads) {
-    if (found !== null && head.pages > budget) break;
-    const wanted = Math.min(head.pages, budget);
-    if (wanted === 0) break;
-    const pulled = await searchPostings(term, head, databaseBase, wanted);
-    budget -= wanted;
-    whole = whole && pulled.whole;
-    if (found === null) {
-      found = pulled.postings;
-    } else {
-      const carried = new Set(pulled.postings);
-      found = found.filter((posting) => carried.has(posting));
-    }
-    if (budget <= 0) break;
-  }
-  return { postings: found ?? [], whole, missing };
-}
-
-/**
- * Whether a record really carries every word of the query.
- *
- * This is the check the postings are an index *of*, made against the record
- * itself, so a posting that claims a result it should not is caught here
- * rather than shown. It is also what lets the intersection above stop early
- * and what lets a word with no head still be answered exactly.
- */
-function carriesEveryTerm(entry, terms) {
-  const words = new Set([
-    ...searchTerms(entry.title),
-    ...searchTerms(entry.abstract),
-    ...entry.authors.flatMap((author) => searchTerms(author.name)),
-  ]);
-  return terms.every((term) => words.has(term));
-}
-
-/**
- * The summary a fetched record is checked against.
- *
- * `index.json` is an independent claim about a record's title, which is why
- * `validateEntry` compares the two. A posting claims something else: that this
- * record carries these words. So the identity is checked here and the claim
- * itself is checked by `carriesEveryTerm`, against the record's own text.
- */
-function postingSummary(posting, entry) {
-  const match = POSTING_RE.exec(posting);
-  return {
-    id: match[1],
-    version: Number(match[2]),
-    title: entry.title,
-    status: entry.status,
-    path: `entries/${posting}.json`,
-  };
-}
-
-async function searchRegistry(query, databaseBase) {
-  const asked = [...new Set(searchTerms(query))];
-  const dropping = await searchStopwords(databaseBase);
-  const dropped = asked.filter((term) => dropping.has(term));
-  const terms = asked.filter((term) => !dropping.has(term));
-  if (!terms.length) {
-    return { terms, dropped, entries: [], whole: true, examined: 0, missing: [] };
-  }
-  const { postings, whole, missing } = await searchCandidates(terms, databaseBase);
-  const entries = [];
-  let examined = 0;
-  for (const posting of postings) {
-    if (entries.length >= SEARCH_RESULT_LIMIT || examined >= SEARCH_CANDIDATE_LIMIT) break;
-    examined += 1;
-    const record = await fetchJson(postingRecordUrl(posting, databaseBase));
-    const entry = validateEntry(record, postingSummary(posting, record));
-    if (carriesEveryTerm(entry, terms)) entries.push(entry);
-  }
-  return {
-    terms,
-    dropped,
-    entries,
-    missing,
-    whole: whole && examined === postings.length,
-    examined,
-  };
-}
-
 function searchPageUrlFor(query) {
   const target = new URL("index.html", window.location.href);
   target.search = "";
@@ -741,9 +577,17 @@ async function renderSearch(query) {
   status.hidden = false;
   status.textContent = "Searching the registry…";
   try {
-    const { databaseBase } = dataSource();
+    const { databaseBase, availabilityUrl } = dataSource();
+    const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
     const found = await searchRegistry(query, databaseBase);
-    for (const entry of found.entries) results.append(entryCard(entry, 1, null));
+    const availability = await availabilityPromise;
+    for (const problem of found.problems) {
+      console.warn(
+        `Search ${problem.stage} ${problem.item} could not be loaded: ` +
+          `${problem.reason?.message || String(problem.reason)}`,
+      );
+    }
+    for (const entry of found.entries) results.append(entryCard(entry, { availability }));
     if (!found.terms.length) {
       // Every word of the query is one the indexer drops, so there is nothing
       // to ask for. Saying which words those were is the difference between an
@@ -752,20 +596,32 @@ async function renderSearch(query) {
         `Every word of that search is too common to be indexed: ${found.dropped.join(", ")}.`;
       return;
     }
+    const degraded = found.problems.length
+      ? found.timedOut
+        ? "the search deadline expired before every request completed"
+        : `${found.problems.length} data request${found.problems.length === 1 ? "" : "s"} failed`
+      : "";
     if (!found.entries.length) {
       // Naming the words nothing carries is what turns "no results" into
       // something a reader can act on. The words the indexer drops are not
       // among them: they left the query before it was asked.
-      status.textContent = found.missing.length
+      status.textContent = degraded
+        ? `No verified results could be shown. The search is incomplete because ${degraded}. Try again.`
+        : found.missing.length
         ? `No result carries all of: ${found.terms.join(", ")}. Nothing is indexed under `
           + `${found.missing.join(", ")}.`
         : `No result carries all of: ${found.terms.join(", ")}.`;
+      status.classList.toggle("warning", Boolean(degraded));
       return;
     }
-    status.hidden = found.whole;
-    status.textContent = found.whole
+    status.hidden = found.whole && !degraded;
+    status.textContent = degraded
+      ? `Showing ${found.entries.length} verified result${found.entries.length === 1 ? "" : "s"}. `
+        + `The search is incomplete because ${degraded}.`
+      : found.whole
       ? ""
       : `Showing the newest ${found.entries.length} results; narrow the search for older ones.`;
+    status.classList.toggle("warning", Boolean(degraded));
   } catch (error) {
     status.textContent = `The search could not be run: ${error.message}`;
     status.classList.add("error");

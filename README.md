@@ -26,6 +26,12 @@ before that classification has an entry. The filter is over `recent.json`, which
 is the newest 200 current versions and not the registry, so it narrows what is
 on the page rather than searching everything; the search box does the latter,
 a word at a time, over titles, abstracts and author names.
+Search heads, posting pages and records load with bounded concurrency under one
+30-second deadline. A failed page or record leaves already validated results
+visible with an incomplete-search warning. Posting rows currently carry only a
+versioned identifier, so search cards do not call that version current or show
+a version-history count they cannot verify; landing cards get both facts from
+`recent.json`.
 
 Local preview:
 

@@ -842,6 +842,11 @@ test("a search reads one postings sequence per word and confirms every hit", asy
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-card")).toContainText("000124");
+  // A posting names an immutable version, but does not claim that it is
+  // current or say how many active versions the result has. Search cards omit
+  // both claims until the public search contract publishes them.
+  await expect(page.locator("#search-results .entry-id")).not.toContainText("current");
+  await expect(page.locator("#search-results .version-history-link")).toHaveCount(0);
   // The listing is a different question, and answering both at once would show
   // one reader two sets of results with nothing saying which was which.
   await expect(page.locator("#entry-grid")).toBeHidden();
@@ -860,6 +865,55 @@ test("a search reads one postings sequence per word and confirms every hit", asy
   // nothing on top of that.
   expect(asked.filter((path) => path.startsWith("/database/entries/")))
     .toEqual(["/database/entries/PALOMAR-2026-07-29-000124-v1.json"]);
+});
+
+test("search cards retain posting order when posting pages finish out of order", async ({ page }) => {
+  await page.route("**/database/search/t/quasicoherent/*.json", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/1.json")) await new Promise((resolve) => setTimeout(resolve, 100));
+    if (path.endsWith("/0.json")) await new Promise((resolve) => setTimeout(resolve, 5));
+    await route.continue();
+  });
+
+  await page.goto(`/?database=${database}&q=quasicoherent`);
+
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(3);
+  await expect(page.locator("#search-results .entry-id")).toHaveText([
+    "PALOMAR-2026-07-29-000124 v1",
+    "PALOMAR-2026-07-29-000123 v2",
+    "PALOMAR-2026-07-29-000123 v1",
+  ]);
+});
+
+test("a failed posting page leaves validated search cards and reports degradation", async ({ page }) => {
+  await page.route("**/database/search/t/quasicoherent/1.json", (route) =>
+    route.fulfill({ status: 503, body: "temporarily unavailable" }),
+  );
+
+  await page.goto(`/?database=${database}&q=quasicoherent`);
+
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("#search-results .entry-id")).toHaveText([
+    "PALOMAR-2026-07-29-000123 v2",
+    "PALOMAR-2026-07-29-000123 v1",
+  ]);
+  await expect(page.locator("#search-status")).toContainText(
+    "Showing 2 verified results. The search is incomplete because 1 data request failed.",
+  );
+  await expect(page.locator("#search-status")).toHaveClass(/warning/);
+});
+
+test("search cards use real availability without inventing version metadata", async ({ page }) => {
+  await page.goto(
+    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
+  );
+
+  const card = page.locator("#search-results .entry-card");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(".entry-id")).toHaveText("PALOMAR-2026-07-29-000124 v1");
+  await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
+  await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
+  await expect(card.locator(".version-history-link")).toHaveCount(0);
 });
 
 test("a search runs from a link, and says so when nothing carries the words", async ({ page }) => {
