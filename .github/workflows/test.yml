@@ -58,11 +58,10 @@ jobs:
         run: node scripts/check-published.mjs --data "$PUBLIC_DATA_ORIGIN"
         env:
           PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
-      # Against the live service, because the grammar of what it serves lives
-      # in the canonical database and this repository cannot see it. A link to
-      # a document the service has removed answers 404 to a reader, which is
-      # how seven links to `index.json` survived its removal.
-      - name: Does the registry still serve every document the site links to
+      # Against the live owners, because this repository cannot prove that a
+      # registry document or the one Policy document selected for link health
+      # still exists. A removed document answers 404 to a reader.
+      - name: Do monitored linked documents still resolve
         run: node scripts/check-published.mjs --links
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
