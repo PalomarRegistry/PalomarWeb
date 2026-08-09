@@ -407,36 +407,46 @@ test("live-data health checks recent publication time against the already fetche
 });
 
 test("every registry document the site links to is one the registry still serves", async () => {
-  // Seven links pointed at `index.json` for weeks after it stopped being
-  // served: the landing page's machine-readable index, both noscript
-  // fallbacks, and four footers. Each answered 404 to whoever followed it, and
-  // nothing noticed, because nothing had ever asked the registry whether the
-  // documents this site names are ones it will answer for.
-  //
-  // Offline, that question is answered by the one document whose removal is
-  // already history. Against the live registry it is answered in full, by
-  // `check-published.mjs --links` in the published-site health workflow.
-  const { shippedSources, linkedDataState } = await import("../scripts/check-published.mjs");
+  const {
+    linkedDataDocuments,
+    linkedDataState,
+    shippedSources,
+  } = await import("../scripts/check-published.mjs");
+  const sources = await shippedSources();
+  const documents = linkedDataDocuments(sources);
+  for (const path of ["browse/index.json", "feed.xml", "recent.json", "source-availability.json"]) {
+    assert.ok(
+      documents.has(`https://data.palomar-registry.org/${path}`),
+      `${path} is absent from the shipped document reconciliation`,
+    );
+  }
   const asked = [];
   const registry = async (url, options) => {
-    asked.push([String(url), options.method]);
-    return { ok: new URL(url).pathname !== "/index.json", status: 404 };
+    asked.push([String(url), options]);
+    return { ok: true, status: 200 };
   };
 
-  const state = await linkedDataState(await shippedSources(), registry);
+  const state = await linkedDataState(sources, registry);
   assert.equal(state.healthy, true, state.reason);
-  assert.ok(asked.length, "the shipped site names no registry documents at all");
-  assert.deepEqual([...new Set(asked.map(([, method]) => method))], ["HEAD"]);
+  assert.ok(documents.size, "the shipped site names no registry documents at all");
+  assert.equal(asked.length, documents.size);
+  assert.deepEqual(
+    asked.map(([url]) => url).sort(),
+    [...documents.keys()].sort(),
+  );
+  for (const [, options] of asked) {
+    assert.deepEqual(options, { method: "HEAD", cache: "no-store" });
+  }
 });
 
-test("a link to a document the registry has removed is reported with the file that carries it", async () => {
+test("a missing current registry document is reported with the file that carries it", async () => {
   const { linkedDataState } = await import("../scripts/check-published.mjs");
   const state = await linkedDataState(
-    [["index.html", '<a href="https://data.palomar-registry.org/index.json">Data</a>']],
+    [["index.html", '<a href="https://data.palomar-registry.org/recent.json">Data</a>']],
     async () => ({ ok: false, status: 404 }),
   );
   assert.equal(state.healthy, false);
-  assert.match(state.reason, /index\.html links .*\/index\.json, which responded 404/);
+  assert.match(state.reason, /index\.html links .*\/recent\.json, which responded 404/);
 });
 
 test("a prefix the site builds documents out of is not itself requested", async () => {
