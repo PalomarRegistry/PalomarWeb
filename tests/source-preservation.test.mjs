@@ -9,13 +9,15 @@ import {
   sourceLocation,
   topSourceLocation,
 } from "../assets/source-preservation.mjs";
-import { validateAvailability, validateEntry } from "../assets/security.mjs";
+import { validateAvailability, validateEntry, validateRecent } from "../assets/security.mjs";
 import {
   COMMIT,
   availabilityEndpoint,
   availabilityManifest,
   availabilityRow,
   entry,
+  recent,
+  recentRow,
   summary,
 } from "./registry-fixture.mjs";
 
@@ -234,7 +236,7 @@ test("source location rejects raw records and receipts changed after validation"
   );
 });
 
-test("one accepted receipt traversal serves every later source lookup", () => {
+test("validation's one receipt traversal serves every later source lookup", () => {
   const record = entry();
   const rows = record.preservation.repositories;
   let rowReads = 0;
@@ -245,6 +247,7 @@ test("one accepted receipt traversal serves every later source lookup", () => {
     },
   });
   validateEntry(record, summary());
+  assert.equal(rowReads, rows.length, "validation traverses the receipt exactly once");
   const serialized = JSON.stringify(record);
   rowReads = 0;
 
@@ -258,16 +261,43 @@ test("one accepted receipt traversal serves every later source lookup", () => {
     );
   }
 
-  assert.equal(rowReads, rows.length, "the receipt is traversed exactly once to build its index");
+  assert.equal(rowReads, 0, "presentation never traverses the receipt after validation");
   assert.equal(JSON.stringify(record), serialized, "the private index does not alter serialized data");
 });
 
-test("a post-validation ambiguous receipt fails closed before it is cached", () => {
+test("post-validation receipt-row mutation cannot change the accepted mapping", () => {
   const record = acceptedEntry();
+  const acceptedFork = record.preservation.repositories[0].fork_repository;
+  record.preservation.repositories[0].source_repository = "example/changed";
+  record.preservation.repositories[0].commit = "b".repeat(40);
+  record.preservation.repositories[0].fork_repository = "PalomarArchive/example--changed";
   record.preservation.repositories.push({ ...record.preservation.repositories[0] });
+
+  assert.equal(topSourceLocation(record, null).archiveRepository, acceptedFork);
   assert.throws(
-    () => topSourceLocation(record, null),
-    /ambiguous source preservation receipt/,
+    () => sourceLocation(record, null, "example/changed", "b".repeat(40)),
+    /has no preserved copy/,
+  );
+});
+
+test("recent presentation also uses the mapping captured by validation", () => {
+  const projection = validateRecent(recent([recentRow()]));
+  const record = projection.entries[0];
+  const acceptedFork = record.preservation.repositories[0].fork_repository;
+  record.preservation.repositories[0].fork_repository = "PalomarArchive/example--changed";
+
+  assert.equal(topSourceLocation(record, null).archiveRepository, acceptedFork);
+});
+
+test("a rejected recent document leaves its earlier rows unusable", () => {
+  const first = recentRow();
+  assert.throws(
+    () => validateRecent(recent([first, recentRow()])),
+    /more than once/,
+  );
+  assert.throws(
+    () => topSourceLocation(first, null),
+    /was not validated/,
   );
 });
 

@@ -473,6 +473,36 @@ test("validated availability uses one private index for every later lookup", () 
   assert.equal(JSON.stringify(manifest), serialized, "the private index does not alter JSON");
 });
 
+test("availability lookup uses the accepted snapshot rather than later row mutation", () => {
+  const now = Date.parse("2026-08-08T12:00:00Z");
+  const manifest = validateAvailability(availabilityManifest([
+    availabilityRow({
+      original: availabilityEndpoint({
+        status: "missing",
+        checked_at: "2026-08-08T12:00:00Z",
+      }),
+    }),
+  ], { generated_at: "2026-08-08T12:00:00Z" }));
+  const acceptedFork = manifest.repositories[0].fork_repository;
+
+  manifest.generated_at = "2026-08-08T13:00:00Z";
+  manifest.repositories[0].fork_repository = "PalomarArchive/example--changed";
+  manifest.repositories[0].original.status = "available";
+  manifest.repositories[0].original.checked_at = "2026-08-08T11:30:00Z";
+
+  const first = availabilityRecord(manifest, "example/challenge", COMMIT, now);
+  assert.equal(first.fork_repository, acceptedFork);
+  assert.equal(first.original.status, "missing");
+  assert.equal(first.original.checked_at, "2026-08-08T12:00:00Z");
+
+  // Lookup also must not expose its private endpoint snapshot for mutation.
+  first.original.status = "available";
+  assert.equal(
+    availabilityRecord(manifest, "example/challenge", COMMIT, now).original.status,
+    "missing",
+  );
+});
+
 test("availability lookup refuses raw and ambiguous documents", () => {
   assert.throws(
     () => availabilityRecord(availabilityManifest([availabilityRow()]), "example/challenge", COMMIT),

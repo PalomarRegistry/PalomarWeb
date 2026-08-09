@@ -62,15 +62,18 @@
 - Keep availability parsing and endpoint-freshness authority in
   `assets/security.mjs`. It builds the private, non-serializing availability
   index only while accepting a validated document; lookup must refuse a raw
-  object rather than scan its repositories. `assets/source-preservation.mjs`
-  consumes that validated contract, builds one private receipt index only for
-  a source record accepted by the entry or recent validator, matches manifest
-  observations, and owns repository resolution plus in-place card decoration.
+  object rather than scan its repositories. Both availability freshness and
+  the fields lookup consumes are captured by value at validation, not reread
+  from a mutable public row. `assets/source-preservation.mjs` consumes the
+  private receipt index captured by the entry or recent validator, matches
+  manifest observations, and owns repository resolution plus in-place card
+  decoration.
   These indexes keep total source-decoration work `O(R + D)` for `R` manifest
   rows and `D` preservation rows; do not restore a scan for each dependency.
   `rendering.js` deliberately re-derives the single Challenge source mapping
-  from the accepted receipt as an independent URL check; its one `O(D)` scan is
-  not a per-dependency multiplier and remains inside the stated total bound;
+  from the accepted receipt as an independent URL check; its `O(D)` scan runs a
+  fixed number of times per page, not once per dependency, and remains inside
+  the stated total bound;
   `assets/entry-pages.mjs` owns entry-route parameter validation, progressive
   visibility, immutable-URL replacement, fragment scrolling, tombstone
   dispatch, and route-level errors. `assets/challenge-presentation.mjs` owns the

@@ -88,7 +88,9 @@ presentation builds one private lookup for each accepted record's preservation
 rows—`D` rows in total across the page. Decorating its source controls therefore
 takes `O(R + D)` work for the page, with constant-time repository/revision
 lookups afterward, rather than rescanning both arrays for every dependency.
-These lookups live in `WeakMap`s, do not alter the public JSON, and are available
+These lookups and the exact fields they consume are captured in private
+`WeakMap` receipts at successful validation, so later mutation cannot change
+accepted presentation data. They do not alter the public JSON and are available
 only to documents that passed the current validators.
 
 The browser code keeps the data boundary separate from presentation:

@@ -1,40 +1,10 @@
 import {
-  assertValidatedSourceRecord,
   availabilityRecord,
   pinnedRepositoryDirectoryUrl,
   pinnedRepositoryFileUrl,
   safeExternalUrl,
+  validatedSourceMapping,
 } from "./security.mjs";
-
-const receiptIndexes = new WeakMap();
-
-function receiptIndex(entry) {
-  assertValidatedSourceRecord(entry);
-  if (receiptIndexes.has(entry)) return receiptIndexes.get(entry);
-
-  const index = new Map();
-  for (const row of entry.preservation.repositories) {
-    const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
-    // Validation already rejects duplicates. Keep this last check because an
-    // in-place mutation before first presentation must not make Map insertion
-    // silently choose one of two receipts.
-    if (index.has(key)) {
-      throw new Error(
-        `entry has an ambiguous source preservation receipt for ` +
-          `${row.source_repository}@${row.commit}`,
-      );
-    }
-    // Copy the three consumed fields so later presentation never observes an
-    // in-place mutation of the accepted receipt row.
-    index.set(key, {
-      source_repository: row.source_repository,
-      commit: row.commit,
-      fork_repository: row.fork_repository,
-    });
-  }
-  receiptIndexes.set(entry, index);
-  return index;
-}
 
 /**
  * Publish one fail-soft availability result to source controls as it arrives.
@@ -198,7 +168,7 @@ export function createSourceAvailabilityNotice(
 
 /** Resolve one immutable repository revision to its recorded or preserved copy. */
 export function sourceLocation(entry, availability, repository, commit) {
-  const mapping = receiptIndex(entry).get(`${repository.toLowerCase()}\0${commit}`);
+  const mapping = validatedSourceMapping(entry, repository, commit);
   if (!mapping) throw new Error(`entry has no preserved copy of ${repository}@${commit}`);
   const observed = availabilityRecord(availability, repository, commit);
   const status = observed &&
@@ -226,12 +196,12 @@ export function topSourceLocation(entry, availability) {
 
 export function sourceFileUrl(entry, path, availability) {
   const location = topSourceLocation(entry, availability);
-  return pinnedRepositoryFileUrl(location.repository, entry.source.commit, path);
+  return pinnedRepositoryFileUrl(location.repository, location.commit, path);
 }
 
 export function sourceDirectoryUrl(entry, path, availability) {
   const location = topSourceLocation(entry, availability);
-  return pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit, path);
+  return pinnedRepositoryDirectoryUrl(location.repository, location.commit, path);
 }
 
 function decorateCardAvailability(card, entry, availability) {
@@ -240,10 +210,10 @@ function decorateCardAvailability(card, entry, availability) {
   if (!repositoryLink) throw new Error("card has no repository link");
   repositoryLink.textContent = location.useArchive
     ? "Palomar preserved copy"
-    : entry.source.repository;
+    : location.originalRepository;
   repositoryLink.href = pinnedRepositoryDirectoryUrl(
     location.repository,
-    entry.source.commit,
+    location.commit,
   ).href;
 
   const archiveLink = card.querySelector(".archive-link");
@@ -251,7 +221,7 @@ function decorateCardAvailability(card, entry, availability) {
   const archiveWasFocused = document.activeElement === archiveLink;
   archiveLink.href = pinnedRepositoryDirectoryUrl(
     location.archiveRepository,
-    entry.source.commit,
+    location.commit,
   ).href;
   archiveLink.hidden = location.useArchive;
   let missing = card.querySelector(".source-status.missing");

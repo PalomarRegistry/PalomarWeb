@@ -60,12 +60,21 @@ function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
 }
 
-export function assertValidatedSourceRecord(record) {
+export function validatedSourceMapping(record, repository, revision) {
   const repositories = record?.preservation?.repositories;
-  if (!Array.isArray(repositories) ||
-      validatedSourceRecords.get(record) !== repositories) {
+  const receipt = validatedSourceRecords.get(record);
+  if (!Array.isArray(repositories) || receipt?.repositories !== repositories) {
     fail("source record was not validated or its preservation receipt changed");
   }
+  return receipt.index.get(`${repository.toLowerCase()}\0${revision}`) || null;
+}
+
+function sourceMappingSnapshot(row) {
+  return Object.freeze({
+    source_repository: row.source_repository,
+    commit: row.commit,
+    fork_repository: row.fork_repository,
+  });
 }
 
 function object(value, field) {
@@ -254,6 +263,7 @@ export function validateRecent(value) {
   const entries = array(document.entries, "recent.entries");
   if (entries.length > RECENT_ITEMS) fail("recent carries more rows than it may");
   const seen = new Set();
+  const sourceReceipts = [];
   let previous = null;
   for (const [position, value] of entries.entries()) {
     const field = `recent.entries[${position}]`;
@@ -372,11 +382,17 @@ export function validateRecent(value) {
         !mapping.fork_repository.startsWith("PalomarArchive/")) {
       fail(`${field}.preservation does not match source`);
     }
+    const key = `${mapping.source_repository.toLowerCase()}\0${mapping.commit}`;
+    sourceReceipts.push({
+      record: summary,
+      repositories,
+      index: new Map([[key, sourceMappingSnapshot(mapping)]]),
+    });
   }
   // Mark rows only after the complete projection succeeds. A reference to an
   // early row from a later-rejected document must not become presentation data.
-  for (const summary of entries) {
-    validatedSourceRecords.set(summary, summary.preservation.repositories);
+  for (const receipt of sourceReceipts) {
+    validatedSourceRecords.set(receipt.record, receipt);
   }
   return document;
 }
@@ -421,7 +437,8 @@ function availabilityEndpoint(value, field) {
 export function validateAvailability(manifest) {
   const document = object(manifest, "availability");
   if (document.schema_version !== 1) fail("availability schema_version is unsupported");
-  if (availabilityTimestamp(document.generated_at) === null) {
+  const generatedAt = availabilityTimestamp(document.generated_at);
+  if (generatedAt === null) {
     fail("availability.generated_at is malformed");
   }
   if (document.database_commit !== undefined) {
@@ -462,23 +479,30 @@ export function validateAvailability(manifest) {
       ),
     };
     repositories.push(accepted);
-    index.set(key, accepted);
+    // The private consequence of validation must not point back at mutable
+    // public rows. Capture exactly the fields lookup can later return/use.
+    index.set(key, Object.freeze({
+      source_repository: accepted.source_repository,
+      commit: accepted.commit,
+      fork_repository: accepted.fork_repository,
+      original: Object.freeze({ ...accepted.original }),
+      archive: Object.freeze({ ...accepted.archive }),
+    }));
   }
   const accepted = { ...document, repositories };
-  availabilityIndexes.set(accepted, index);
+  availabilityIndexes.set(accepted, { generatedAt, index });
   return accepted;
 }
 
 export function availabilityRecord(manifest, repository, revision, now = Date.now()) {
   if (!manifest) return null;
-  const index = availabilityIndexes.get(manifest);
-  if (!index) fail("availability document was not validated");
-  const generated = availabilityTimestamp(manifest.generated_at);
-  if (generated === null || generated > now + AVAILABILITY_MAX_CLOCK_SKEW_MS ||
-      now - generated > AVAILABILITY_MAX_AGE_MS) {
+  const receipt = availabilityIndexes.get(manifest);
+  if (!receipt) fail("availability document was not validated");
+  if (receipt.generatedAt > now + AVAILABILITY_MAX_CLOCK_SKEW_MS ||
+      now - receipt.generatedAt > AVAILABILITY_MAX_AGE_MS) {
     return null;
   }
-  const record = index.get(`${repository.toLowerCase()}\0${revision}`) || null;
+  const record = receipt.index.get(`${repository.toLowerCase()}\0${revision}`) || null;
   if (record === null) return null;
 
   // generated_at describes the publication, not the age of every observation
@@ -486,9 +510,12 @@ export function availabilityRecord(manifest, repository, revision, now = Date.no
   // endpoint at the point all landing, search, and entry links consume it.
   const authoritativeEndpoint = (endpoint) => {
     const checked = availabilityTimestamp(endpoint.checked_at);
-    const normalized = checked === null && endpoint.checked_at !== null
-      ? { ...endpoint, checked_at: null }
-      : endpoint;
+    const normalized = {
+      ...endpoint,
+      checked_at: checked === null && endpoint.checked_at !== null
+        ? null
+        : endpoint.checked_at,
+    };
     if (!["available", "missing"].includes(endpoint.status)) return normalized;
     const age = checked === null ? null : now - checked;
     if (age !== null && age >= -AVAILABILITY_MAX_CLOCK_SKEW_MS &&
@@ -1234,6 +1261,7 @@ export function validateEntry(entry, summary) {
   });
   const actualRows = [];
   const seen = new Set();
+  const preservationIndex = new Map();
   for (const [position, value] of array(
     preservation.repositories,
     "entry.preservation.repositories",
@@ -1255,6 +1283,7 @@ export function validateEntry(entry, summary) {
       fail(`entry.preservation.repositories[${position}].ref is not canonical`);
     }
     actualRows.push([row.source_repository, row.commit]);
+    preservationIndex.set(key, sourceMappingSnapshot(row));
   }
   if (JSON.stringify(actualRows) !== JSON.stringify(expectedRows)) {
     fail("entry.preservation.repositories does not exactly cover the source graph");
@@ -1350,7 +1379,10 @@ export function validateEntry(entry, summary) {
   string(render.rendered_at, "entry.challenge_render.rendered_at");
 
   validateCanonicalRecordLinks(entry);
-  validatedSourceRecords.set(entry, entry.preservation.repositories);
+  validatedSourceRecords.set(entry, {
+    repositories: entry.preservation.repositories,
+    index: preservationIndex,
+  });
   return entry;
 }
 
