@@ -82,12 +82,4 @@ export function challengeArtifactUrl(entry, renderBase) {
 export function challengeMetadataUrl(entry, renderBase) {
   return new URL("../challenge-metadata.json", challengeArtifactUrl(entry, renderBase));
 }
-
-export function entryRecordPath(id, version, path) {
-  const expected = `entries/${id}-v${version}.json`;
-  if (!ID.test(id || "") || !Number.isInteger(version) || version < 1 || path !== expected) {
-    throw new Error("registry index contains an invalid entry path");
-  }
-  return expected;
-}
 import { pinnedRepositoryFileUrl, safeRepositoryPath } from "./security.mjs";
