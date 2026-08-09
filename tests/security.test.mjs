@@ -862,6 +862,35 @@ test("About describes the current review and version contracts", async () => {
   assert.doesNotMatch(about, /durable-evidence schema \(version 5\)/);
   assert.match(about, /review-failed/);
   assert.match(about, /operational fault, not a decision/);
+  assert.match(about, /append-only canonical history/);
+  assert.match(about, /Moderator may exceptionally retract one exact version/);
+  assert.doesNotMatch(about, /registered record is never removed/);
+});
+
+test("About publishes the three distinct governance rosters", async () => {
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const prose = about.replace(/\s+/g, " ");
+  assert.match(about, /PalomarPolicy\/blob\/main\/docs\/governance\.md/);
+  assert.match(
+    about,
+    /Technical Maintainers[\s\S]*Terence Tao, Matthew Ballard, Nestor Guillen, and Jaume de Dios/,
+  );
+  for (const name of [
+    "Jeremy Avigad",
+    "Matthew Ballard",
+    "Jaume de Dios",
+    "Nestor Guillen",
+    "Bryna Kra",
+    "Kim Morrison",
+    "Terence Tao",
+    "Ravi Vakil",
+    "Akshay Venkatesh",
+  ]) {
+    const appearances = prose.split(name).length - 1;
+    assert.ok(appearances >= 2, `${name} must appear on the Moderator and Board rosters`);
+  }
+  assert.match(about, /Board membership carries no operational duty\s+or repository authority by itself/);
+  assert.doesNotMatch(about, /override the AI/i);
 });
 
 test("user documentation names current examples and iframe height units", async () => {

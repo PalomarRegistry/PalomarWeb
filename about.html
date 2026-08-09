@@ -542,8 +542,10 @@
           Nothing is registered until you ask for it. If the review is an
           acceptance, your status page offers two choices: register, or withdraw.
           Registration is permanent: the record, the review, and your repository
-          and commit go into the public registry, and Palomar records are
-          append-only, so a registered record is never removed. Acceptance is not
+          and commit enter Palomar's append-only canonical history. A named
+          Moderator may exceptionally retract one exact version from the active
+          public registry; that does not delete or rewrite the canonical record,
+          and the public service retains a minimal tombstone. Acceptance is not
           registration; an accepted submission appears in the registry once the
           corresponding database pull request is merged.
         </p>
@@ -564,13 +566,38 @@
         <p>
           Palomar was initially incubated by the
           <a href="https://lean-fro.org/">Lean FRO</a> and
-          <a href="https://icarm.math.brown.edu/">ICARM</a>. The initial
-          Scientific Advisory Board is Kim Morrison, Nestor Guillen, Terence Tao, Akshay
-          Venkatesh, Jeremy Avigad, Bryna Kra, Ravi Vakil, Jaume de Dios, and
-          Matthew Ballard. The board advises on policy and standards; it does not
-          review, approve, or endorse individual submissions. The board,
-          maintainer team, and project governance are expected to change as
-          the project develops. Kim Morrison is the initial point of contact.
+          <a href="https://icarm.math.brown.edu/">ICARM</a>. Palomar launches
+          with three distinct groups, even though their initial memberships
+          overlap. The complete role and access contract is maintained in
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/governance.md">Palomar Policy</a>.
+        </p>
+        <h3>Technical Maintainers</h3>
+        <p>
+          Technical Maintainers can change Palomar's repositories, software,
+          services, and deployed behaviour. The initial Technical Maintainers
+          are Terence Tao, Matthew Ballard, Nestor Guillen, and Jaume de Dios.
+        </p>
+        <h3>Moderators</h3>
+        <p>
+          Moderators may authorize the exceptional retraction or restoration
+          of one exact registered version. A Technical Maintainer executes the
+          validated private-database change; canonical history is not erased.
+          The initial Moderators are Jeremy Avigad, Matthew Ballard, Jaume de
+          Dios, Nestor Guillen, Bryna Kra, Kim Morrison, Terence Tao, Ravi
+          Vakil, and Akshay Venkatesh.
+        </p>
+        <h3>Scientific Advisory Board</h3>
+        <p>
+          The Scientific Advisory Board advises on policy, standards, and
+          scientific direction. Board membership carries no operational duty
+          or repository authority by itself, and the board does not review,
+          approve, or endorse individual submissions. The initial board is
+          Jeremy Avigad, Matthew Ballard, Jaume de Dios, Nestor Guillen, Bryna
+          Kra, Kim Morrison, Terence Tao, Ravi Vakil, and Akshay Venkatesh.
+        </p>
+        <p>
+          These memberships may change as the project develops. Kim Morrison
+          is the initial point of contact.
           Questions and proposals are welcome in the
           <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
         </p>
