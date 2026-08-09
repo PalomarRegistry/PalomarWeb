@@ -249,21 +249,29 @@ export async function publicDataState(
 // Stops at the delimiters a URL is written between: quotes and angle brackets
 // in markup, a semicolon in the CSP's source list, a bracket in CSS.
 const DATA_URL = /https:\/\/data\.palomar-registry\.org[^\s"'`<>();,]*/g;
+const POLICY_DOCUMENT_URL =
+  /https:\/\/github\.com\/PalomarRegistry\/PalomarPolicy\/blob\/main\/CONTRIBUTING\.md(?:#[A-Za-z0-9._-]+)?/g;
 
 /**
- * Every registry document the shipped site sends a reader to.
+ * Every registry document the shipped site sends a reader to, plus the mutable
+ * Policy document to which About explicitly delegates mechanical requirements.
  *
  * A URL ending in `/` names a prefix the code builds a document out of rather
  * than a document, and the bare origin appears in each page's content policy;
- * neither is something to request.
+ * neither is something to request. A fragment names a section within a
+ * document; its exact value is pinned inside About by a unit test but cannot be
+ * validated by an HTTP request. Health checks the document once without it.
  */
-export function linkedDataDocuments(sources) {
+export function monitoredLinkedDocuments(sources) {
   const found = new Map();
   for (const [name, text] of sources) {
-    for (const [href] of String(text).matchAll(DATA_URL)) {
-      const { pathname } = new URL(href);
-      if (pathname === "/" || pathname.endsWith("/")) continue;
-      if (!found.has(href)) found.set(href, name);
+    for (const pattern of [DATA_URL, POLICY_DOCUMENT_URL]) {
+      for (const [href] of String(text).matchAll(pattern)) {
+        const target = new URL(href);
+        if (target.pathname === "/" || target.pathname.endsWith("/")) continue;
+        target.hash = "";
+        if (!found.has(target.href)) found.set(target.href, name);
+      }
     }
   }
   return found;
@@ -277,17 +285,19 @@ export async function shippedSources(root = new URL("..", import.meta.url)) {
 }
 
 /**
- * Does the registry still serve every document the site links to?
+ * Do the owners still serve every document selected for continuous link health?
  *
  * `index.json` was removed from the public data service, and seven links to it
  * survived the removal: the landing page's machine-readable index, both
  * noscript fallbacks and four footers, each answering 404 to whoever followed
  * it. Nothing noticed, because nothing had ever asked the service whether the
  * documents this site names are documents it will answer for. Asking it is the
- * only check that cannot drift from it.
+ * only check that cannot drift from it. The same check also proves that the
+ * selected Policy owner still serves the document to which About delegates its
+ * mutable Comparator rules.
  */
-export async function linkedDataState(sources, fetcher = fetch) {
-  const documents = linkedDataDocuments(sources);
+export async function linkedDocumentState(sources, fetcher = fetch) {
+  const documents = monitoredLinkedDocuments(sources);
   const dead = [];
   await Promise.all([...documents].map(async ([href, name]) => {
     try {
@@ -300,7 +310,7 @@ export async function linkedDataState(sources, fetcher = fetch) {
   if (dead.length) return { healthy: false, reason: dead.sort().join("; ") };
   return {
     healthy: true,
-    reason: `the registry serves all ${documents.size} documents the site links to`,
+    reason: `all ${documents.size} monitored linked documents resolve`,
   };
 }
 
@@ -318,7 +328,7 @@ async function main(argv) {
     return state.healthy ? 0 : 1;
   }
   if (options.has("links") && !url && !expected) {
-    const state = await linkedDataState(await shippedSources());
+    const state = await linkedDocumentState(await shippedSources());
     console.log(state.reason);
     return state.healthy ? 0 : 1;
   }

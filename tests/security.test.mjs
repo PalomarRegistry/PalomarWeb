@@ -885,6 +885,15 @@ test("user documentation names current examples and iframe height units", async 
   assert.doesNotMatch(readme, /PALOMAR-2026-07-29-000001/);
 });
 
+test("About delegates the mutable axiom allowlist to the promoted Policy", async () => {
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  assert.match(
+    about,
+    /PalomarPolicy\/blob\/main\/CONTRIBUTING\.md#23-comparator-configuration/,
+  );
+  assert.doesNotMatch(about, /propext|Quot\.sound|Classical\.choice/);
+});
+
 test("About says what registration publishes, and what it does not", async () => {
   // About said the submitter's identity becomes public on registration. It
   // does not, the schema has no field for it, and that is the direction of

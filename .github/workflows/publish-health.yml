@@ -54,10 +54,9 @@ jobs:
           DATA: https://data.palomar-registry.org
 
       # The other direction: not whether the records the site reads are
-      # readable, but whether the documents it sends readers to are there at
-      # all. Seven links to `index.json` outlived its removal from the service
-      # because nothing ever asked.
-      - name: Does the registry still serve every document the site links to
+      # readable, but whether the registry documents and the Policy document
+      # selected for link health are still there at all.
+      - name: Do monitored linked documents still resolve
         run: node scripts/check-published.mjs --links
 
       # One attempt, with the traps that cost a day written into the guards.

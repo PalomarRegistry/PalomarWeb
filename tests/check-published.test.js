@@ -406,29 +406,34 @@ test("live-data health checks recent publication time against the already fetche
   assert.match(state.reason, /does not match its entry registered_at/);
 });
 
-test("every registry document the site links to is one the registry still serves", async () => {
+test("every monitored linked document is requested exactly once from its owner", async () => {
   const {
-    linkedDataDocuments,
-    linkedDataState,
+    linkedDocumentState,
+    monitoredLinkedDocuments,
     shippedSources,
   } = await import("../scripts/check-published.mjs");
   const sources = await shippedSources();
-  const documents = linkedDataDocuments(sources);
+  const documents = monitoredLinkedDocuments(sources);
   for (const path of ["browse/index.json", "feed.xml", "recent.json", "source-availability.json"]) {
     assert.ok(
       documents.has(`https://data.palomar-registry.org/${path}`),
       `${path} is absent from the shipped document reconciliation`,
     );
   }
+  assert.deepEqual(
+    [...documents.keys()].filter((href) => href.includes("PalomarRegistry/PalomarPolicy")),
+    ["https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md"],
+    "About's Policy links must collapse to one fragment-free request",
+  );
   const asked = [];
   const registry = async (url, options) => {
     asked.push([String(url), options]);
     return { ok: true, status: 200 };
   };
 
-  const state = await linkedDataState(sources, registry);
+  const state = await linkedDocumentState(sources, registry);
   assert.equal(state.healthy, true, state.reason);
-  assert.ok(documents.size, "the shipped site names no registry documents at all");
+  assert.ok(documents.size, "the shipped site names no monitored documents at all");
   assert.equal(asked.length, documents.size);
   assert.deepEqual(
     asked.map(([url]) => url).sort(),
@@ -440,8 +445,8 @@ test("every registry document the site links to is one the registry still serves
 });
 
 test("a missing current registry document is reported with the file that carries it", async () => {
-  const { linkedDataState } = await import("../scripts/check-published.mjs");
-  const state = await linkedDataState(
+  const { linkedDocumentState } = await import("../scripts/check-published.mjs");
+  const state = await linkedDocumentState(
     [["index.html", '<a href="https://data.palomar-registry.org/recent.json">Data</a>']],
     async () => ({ ok: false, status: 404 }),
   );
@@ -450,12 +455,12 @@ test("a missing current registry document is reported with the file that carries
 });
 
 test("a prefix the site builds documents out of is not itself requested", async () => {
-  const { linkedDataDocuments } = await import("../scripts/check-published.mjs");
+  const { monitoredLinkedDocuments } = await import("../scripts/check-published.mjs");
   // `connect-src https://data.palomar-registry.org` in every page's content
   // policy, and the render base the entry page resolves an artifact against.
   // Neither names a document, and requesting either would report a 404 that
   // means nothing.
-  const documents = linkedDataDocuments([
+  const documents = monitoredLinkedDocuments([
     ["index.html", "connect-src 'self' https://data.palomar-registry.org; frame-src 'self'"],
     ["assets/security.mjs", 'const base = "https://data.palomar-registry.org/";'],
   ]);

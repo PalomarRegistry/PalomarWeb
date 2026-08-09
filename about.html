@@ -67,8 +67,9 @@
             recorded formal proof proves the recorded formal statement using a
             specified version of
             <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
-            and that it depends on no axioms beyond <code>propext</code>,
-            <code>Quot.sound</code>, and <code>Classical.choice</code>. This
+            and that it uses only the axioms allowed by Palomar’s current
+            <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#23-comparator-configuration">Comparator
+            configuration policy</a>. This
             exported proof is replayed through both Lean’s kernel and the
             independent NanoDa kernel. The comparison is performed using the
             <a href="https://github.com/leanprover/comparator">Comparator</a>
@@ -262,14 +263,16 @@
         <p>
           Comparator also enforces that the compared theorems use no axioms
           beyond those listed in the configured Comparator JSON file.
-          Because that file is written by the submitter, Palomar separately
-          rejects any submission whose list extends beyond <code>propext</code>,
-          <code>Quot.sound</code>, and <code>Classical.choice</code>.
+          Because that file is written by the submitter, Palomar validates it
+          against the current
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#23-comparator-configuration">Comparator
+          configuration policy</a>, including its axiom and independent-checker
+          requirements, before Comparator runs.
         </p>
         <p>
           Lean’s replay is a second pass rather than a second implementation: it
           guards against a proof that manipulated the elaborator, not against a
-          bug in Lean’s kernel itself. Palomar therefore always enables
+          bug in Lean’s kernel itself. Palomar therefore always requires
           <code>nanoda</code> as a genuinely independent check and publishes the
           exact NanoDa commit with every registry entry. We encourage readers to
           reproduce either check themselves:
@@ -393,9 +396,10 @@
           <code>sorryAx</code>, <code>Lean.ofReduceBool</code>, a custom axiom, or
           an unnamed missing definition. The compared declarations must have the
           same names and types. Comparator rebuilds and compares them, checks the
-          permitted axioms, and verifies the proof. Palomar currently permits only
-          <code>propext</code>, <code>Quot.sound</code>, and
-          <code>Classical.choice</code>.
+          permitted axioms, and verifies the proof. Palomar validates the submitted
+          configuration against Palomar’s current
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#23-comparator-configuration">mechanical
+          requirements</a> before verification.
         </p>
         <p>
           Keep the Challenge source short and mathematically ordinary.
