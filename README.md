@@ -83,12 +83,22 @@ withdrawn record makes none. Landing and search consumers share one
 in-flight/settled read. Each attempt has one 30-second deadline. A 404 is a
 stable page-scoped absence, while a timeout, transport failure, or invalid
 document is evicted so a later explicit consumer attempt can issue one retry.
+Validation builds a private lookup for the `R` availability rows, and source
+presentation builds one private lookup for each accepted record's preservation
+rows—`D` rows in total across the page. Decorating its source controls therefore
+takes `O(R + D)` work for the page, with constant-time repository/revision
+lookups afterward, rather than rescanning both arrays for every dependency.
+These lookups and the exact fields they consume are captured in private
+`WeakMap` receipts at successful validation, so later mutation cannot change
+accepted presentation data. They do not alter the public JSON and are available
+only to documents that passed the current validators.
 
 The browser code keeps the data boundary separate from presentation:
-`security.mjs` validates registry and availability documents and owns endpoint
-freshness, `source-preservation.mjs` matches validated manifest observations to
-the preservation receipt before resolving repository locations, publishing the
-progressive entry result, and decorating existing source controls,
+`security.mjs` validates registry and availability documents, owns endpoint
+freshness, and privately indexes accepted availability rows;
+`source-preservation.mjs` privately indexes each accepted preservation receipt,
+matches its manifest observations, resolves repository locations, publishes the
+progressive entry result, and decorates existing source controls,
 `entry-pages.mjs` owns entry-route input and page-state
 transitions, `challenge-presentation.mjs` owns the named-declarations artifact's
 entry correspondence and presentation states, `formalization-presentation.mjs`

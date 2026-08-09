@@ -442,6 +442,78 @@ test("availability applies the inclusive freshness boundaries to each endpoint",
   assert.equal(recordAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS + 1_000)).status, "unknown");
 });
 
+test("validated availability uses one private index for every later lookup", () => {
+  const rows = Array.from({ length: 12 }, (_, position) => availabilityRow({
+    source_repository: `example/repository-${position}`,
+    fork_repository: `PalomarArchive/example--repository-${position}`,
+  }));
+  const manifest = validateAvailability(availabilityManifest(rows));
+  const serialized = JSON.stringify(manifest);
+  let rowReads = 0;
+  manifest.repositories = new Proxy(manifest.repositories, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && /^[0-9]+$/.test(property)) rowReads += 1;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+
+  for (let repetition = 0; repetition < 50; repetition += 1) {
+    assert.equal(
+      availabilityRecord(
+        manifest,
+        "EXAMPLE/repository-11",
+        COMMIT,
+        Date.parse("2026-08-08T12:00:00Z"),
+      ).source_repository,
+      "example/repository-11",
+    );
+  }
+
+  assert.equal(rowReads, 0, "accepted availability rows are never traversed by lookup");
+  assert.equal(JSON.stringify(manifest), serialized, "the private index does not alter JSON");
+});
+
+test("availability lookup uses the accepted snapshot rather than later row mutation", () => {
+  const now = Date.parse("2026-08-08T12:00:00Z");
+  const manifest = validateAvailability(availabilityManifest([
+    availabilityRow({
+      original: availabilityEndpoint({
+        status: "missing",
+        checked_at: "2026-08-08T12:00:00Z",
+      }),
+    }),
+  ], { generated_at: "2026-08-08T12:00:00Z" }));
+  const acceptedFork = manifest.repositories[0].fork_repository;
+
+  manifest.generated_at = "2026-08-08T13:00:00Z";
+  manifest.repositories[0].fork_repository = "PalomarArchive/example--changed";
+  manifest.repositories[0].original.status = "available";
+  manifest.repositories[0].original.checked_at = "2026-08-08T11:30:00Z";
+
+  const first = availabilityRecord(manifest, "example/challenge", COMMIT, now);
+  assert.equal(first.fork_repository, acceptedFork);
+  assert.equal(first.original.status, "missing");
+  assert.equal(first.original.checked_at, "2026-08-08T12:00:00Z");
+
+  // Lookup also must not expose its private endpoint snapshot for mutation.
+  first.original.status = "available";
+  assert.equal(
+    availabilityRecord(manifest, "example/challenge", COMMIT, now).original.status,
+    "missing",
+  );
+});
+
+test("availability lookup refuses raw and ambiguous documents", () => {
+  assert.throws(
+    () => availabilityRecord(availabilityManifest([availabilityRow()]), "example/challenge", COMMIT),
+    /availability document was not validated/,
+  );
+  assert.throws(
+    () => validateAvailability(availabilityManifest([availabilityRow(), availabilityRow()])),
+    /is duplicated/,
+  );
+});
+
 test("one malformed endpoint cannot hide its fresh sibling or unrelated rows", () => {
   const now = Date.parse("2026-08-08T12:00:00Z");
   const manifest = validateAvailability(availabilityManifest([

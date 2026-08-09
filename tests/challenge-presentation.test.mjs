@@ -6,13 +6,18 @@ import {
   validateChallengeMetadata,
 } from "../assets/challenge-presentation.mjs";
 import { createSourceAvailabilityBinding } from "../assets/source-preservation.mjs";
-import { validateAvailability } from "../assets/security.mjs";
+import { validateAvailability, validateEntry } from "../assets/security.mjs";
 import {
   availabilityEndpoint,
   availabilityManifest,
   availabilityRow,
   entry,
+  summary,
 } from "./registry-fixture.mjs";
+
+function acceptedEntry() {
+  return validateEntry(entry(), summary());
+}
 
 function renderMetadata(overrides = {}) {
   return {
@@ -80,7 +85,7 @@ function byClass(root, className) {
 }
 
 test("render metadata must correspond exactly to the accepted entry", async (t) => {
-  const record = entry();
+  const record = acceptedEntry();
   const current = renderMetadata();
   assert.equal(validateChallengeMetadata(record, current), current);
   const versionOne = renderMetadata({ schema_version: 1 });
@@ -106,7 +111,7 @@ test("render metadata must correspond exactly to the accepted entry", async (t) 
 
 test("an inline presentation keeps links confined and accepts height only from its frame", async () => {
   const browser = fakeBrowser();
-  const record = entry();
+  const record = acceptedEntry();
   const metadata = renderMetadata({ module_doc: null });
   let fetched = null;
   const present = createChallengePresentation({
@@ -164,7 +169,7 @@ test("an inline presentation keeps links confined and accepts height only from i
 
 test("late availability updates statement source controls in place", async () => {
   const browser = fakeBrowser();
-  const record = entry();
+  const record = acceptedEntry();
   let releaseAvailability;
   const sourceAvailability = createSourceAvailabilityBinding(new Promise((resolve) => {
     releaseAvailability = resolve;
@@ -203,7 +208,7 @@ test("late availability updates statement source controls in place", async () =>
 
 test("a missing large entry render keeps its source controls and uses the missing-artifact fallback", async () => {
   const browser = fakeBrowser();
-  const record = entry();
+  const record = acceptedEntry();
   record.trust.challenge_lines = 101;
   const pageCalls = [];
   const missing = new Error("404 Not Found");
@@ -229,7 +234,7 @@ test("a missing large entry render keeps its source controls and uses the missin
 });
 
 test("transport and correspondence failures remain fatal to the containing route", async (t) => {
-  const record = entry();
+  const record = acceptedEntry();
   for (const [name, failure] of [
     ["transport", Object.assign(new Error("503 Unavailable"), { status: 503 })],
     ["correspondence", renderMetadata({ declarations: ["Other.theorem"] })],
