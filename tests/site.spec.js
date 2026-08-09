@@ -355,12 +355,31 @@ test("an entry answers its reader's first three questions first", async ({ page 
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
+  // validateEntry requires the substantive formalization to be one of the
+  // immutable sources already covered by the record's preservation receipt.
+  const repository = "example/dependency";
+  const commit = "3".repeat(40);
+  await page.route(
+    "**/database/entries/PALOMAR-2026-07-29-000123-v2.json",
+    async (route) => {
+      const response = await route.fetch();
+      const entry = await response.json();
+      entry.provenance.repository_role = "thin-wrapper";
+      entry.provenance.substantive_formalization = {
+        repository,
+        repository_url: `https://github.com/${repository}`,
+        commit,
+        tree_url: `https://github.com/${repository}/tree/${commit}`,
+      };
+      await route.fulfill({ response, json: entry });
+    },
+  );
+
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   const rows = page.locator(".entry-provenance .provenance-details .detail-row dt");
-  const labels = await rows.allTextContents();
-  if (labels.includes("Substantive formalization")) {
-    expect(labels[0]).toBe("Substantive formalization");
-  }
+  await expect(rows.first()).toHaveText("Substantive formalization");
+  await expect(page.getByRole("link", { name: `${repository}@${commit.slice(0, 12)}` }))
+    .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
@@ -970,21 +989,6 @@ test("current HTML remains compatible with cached JavaScript from the previous d
   test.skip(
     entrySchemaAtPreviousDeployment() !== currentEntrySchema,
     "the published entry schema changed, so cached JavaScript cannot read current records",
-  );
-  // The same reasoning, one level up: a bundle that reads a document the
-  // registry no longer serves cannot render whatever else it gets right. The
-  // landing page moved off `index.json` and onto `recent.json`, and the
-  // published `index.json` is gone, so the deployment before that one is
-  // reading something that answers 404.
-  //
-  // This is a deliberate one-time break, taken pre-launch and worth naming.
-  // Assets are versioned, so fresh HTML always fetches fresh JavaScript; what
-  // breaks is a tab left open across the deployment, until it is reloaded. The
-  // skip clears itself once a deployment carrying this change is the previous
-  // one, which is the same way the schema guard above clears.
-  test.skip(
-    fileAtPreviousDeployment("assets/app.js").includes("index.json"),
-    "the previous deployment reads index.json, which is no longer served",
   );
   await page.route("**/assets/app.js", (route) => route.fulfill({
     body: fileAtPreviousDeployment("assets/app.js"),
