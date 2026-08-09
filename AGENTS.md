@@ -75,7 +75,11 @@
   `assets/entry-history-presentation.mjs` owns the entry page's canonical link,
   supersession notice, and immutable version-history section, while consuming
   validated records and the existing confined local-entry URL builder;
-  `assets/app.js` owns data loading and remaining page composition. Do not
+  `assets/registry-loading.mjs` composes the selected endpoints, JSON
+  transport, the bounded landing/search source-availability cache/retry policy,
+  the direct entry source-availability read, and exact recent/version/entry/
+  tombstone reads without taking validation or route ownership;
+  `assets/app.js` owns remaining page composition and controller wiring. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed
   URL identifiers before asking the document loader to do any work.
