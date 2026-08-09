@@ -76,9 +76,11 @@
   supersession notice, and immutable version-history section, while consuming
   validated records and the existing confined local-entry URL builder;
   `assets/registry-loading.mjs` composes the selected endpoints, JSON
-  transport, the bounded landing/search source-availability cache/retry policy,
-  the direct entry source-availability read, and exact recent/version/entry/
-  tombstone reads without taking validation or route ownership;
+  transport, the one bounded page-scoped source-availability cache/retry
+  policy, and exact recent/version/entry/tombstone reads without taking
+  validation or route ownership. Entry and render content must consume that
+  availability result progressively through `source-preservation.mjs`; an
+  ancillary health request must never delay a verified record or render;
   `assets/app.js` owns remaining page composition and controller wiring. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed

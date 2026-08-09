@@ -2,7 +2,168 @@ import {
   availabilityRecord,
   pinnedRepositoryDirectoryUrl,
   pinnedRepositoryFileUrl,
+  safeExternalUrl,
 } from "./security.mjs";
+
+/**
+ * Publish one fail-soft availability result to source controls as it arrives.
+ *
+ * Entry content is correct with the canonical preservation receipt alone, so
+ * consumers render against `current === null` immediately and subscribe only
+ * their source controls. A slow health document can then update those controls
+ * in place without holding verified registry content behind an ancillary read.
+ */
+export function createSourceAvailabilityBinding(
+  availabilityPromise,
+  warn = (message) => console.warn(message),
+) {
+  let current = null;
+  let listeners = [];
+
+  function report(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    warn(`Entry source availability could not be applied: ${message}`);
+  }
+
+  function settle(value) {
+    current = value;
+    const pending = listeners;
+    listeners = null;
+    for (const listener of pending) {
+      try {
+        listener(value);
+      } catch (error) {
+        report(error);
+      }
+    }
+    return value;
+  }
+
+  const ready = Promise.resolve(availabilityPromise).then(
+    settle,
+    (error) => {
+      report(error);
+      return settle(null);
+    },
+  );
+
+  return {
+    get current() {
+      return current;
+    },
+    ready,
+    whenReady(listener) {
+      if (typeof listener !== "function") throw new TypeError("listener must be a function");
+      if (listeners !== null) {
+        listeners.push(listener);
+        return;
+      }
+      try {
+        listener(current);
+      } catch (error) {
+        report(error);
+      }
+    },
+  };
+}
+
+/** Update one existing source link when the ancillary availability read settles. */
+export function bindSourceControl(link, sourceAvailability, resolve) {
+  if (typeof resolve !== "function") throw new TypeError("resolve must be a function");
+  const apply = (availability) => {
+    const reference = resolve(availability);
+    link.href = safeExternalUrl(reference.url).href;
+    if (reference.text !== undefined) link.textContent = reference.text;
+  };
+  apply(sourceAvailability?.current ?? null);
+  sourceAvailability?.whenReady(apply);
+  return link;
+}
+
+/** Build the one entry-level source notice and update that node in place. */
+export function createSourceAvailabilityNotice(
+  entry,
+  sourceAvailability,
+  { el, externalLink },
+) {
+  const notice = el("section", "source-availability");
+  notice.hidden = true;
+  notice.setAttribute("role", "status");
+
+  function apply(availability) {
+    const location = topSourceLocation(entry, availability);
+    const original = externalLink(
+      "Recorded original location",
+      pinnedRepositoryDirectoryUrl(
+        location.originalRepository,
+        location.commit,
+        entry.source.project_path || ".",
+      ),
+    );
+    original.dataset.sourceLocation = "original";
+    const archived = externalLink(
+      "Recorded Palomar copy",
+      pinnedRepositoryDirectoryUrl(
+        location.archiveRepository,
+        location.commit,
+        entry.source.project_path || ".",
+      ),
+    );
+    archived.dataset.sourceLocation = "archive";
+    notice.className = "source-availability";
+    notice.hidden = false;
+    if (location.originalStatus === "missing" && location.archiveStatus === "missing") {
+      notice.classList.add("unrecoverable");
+      notice.replaceChildren(
+        el("strong", "", "No working preserved source location"),
+        el("p", "", "Both the recorded original and Palomar's preserved copy are currently unavailable."),
+        original,
+        " · ",
+        archived,
+      );
+    } else if (location.originalStatus === "missing") {
+      notice.classList.add("original-missing");
+      const checked = location.checkedAt ? ` (checked ${location.checkedAt})` : "";
+      archived.textContent = "Palomar preserved copy";
+      notice.replaceChildren(
+        el("strong", "", "Original source unavailable"),
+        el("p", "", `Source links on this page now use Palomar's preserved copy${checked}.`),
+        archived,
+        " · ",
+        original,
+      );
+    } else if (location.archiveStatus === "missing") {
+      notice.classList.add("archive-missing");
+      const originalConfirmed = location.originalStatus === "available";
+      original.textContent = originalConfirmed ? "Original source" : "Recorded original location";
+      notice.replaceChildren(
+        el("strong", "", "Source preservation degraded"),
+        el(
+          "p",
+          "",
+          originalConfirmed
+            ? "The original source still works, but Palomar's preserved copy is unavailable."
+            : "Palomar's preserved copy is unavailable. The recorded original location remains " +
+              "linked, but its current availability has not been confirmed.",
+        ),
+        original,
+        " · ",
+        archived,
+      );
+    } else {
+      notice.classList.add("preserved");
+      archived.textContent = "Palomar preserved copy";
+      notice.replaceChildren(
+        el("strong", "", "Source preserved by Palomar"),
+        " ",
+        archived,
+      );
+    }
+  }
+
+  sourceAvailability.whenReady(apply);
+  return notice;
+}
 
 /** Resolve one immutable repository revision to its recorded or preserved copy. */
 export function sourceLocation(entry, availability, repository, commit) {

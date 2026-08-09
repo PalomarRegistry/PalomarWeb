@@ -10,6 +10,8 @@ import {
   safeInternalUrl,
 } from "./security.mjs";
 import {
+  bindSourceControl,
+  createSourceAvailabilityBinding,
   sourceFileUrl,
   topSourceLocation,
 } from "./source-preservation.mjs";
@@ -72,6 +74,14 @@ export function createChallengePresentation({ fetchJson, document, window, local
     return anchor(text, safeInternalUrl(href, window.location.href), className);
   }
 
+  function sourceLink(text, sourceAvailability, urlForAvailability, className) {
+    return bindSourceControl(
+      externalLink(text, urlForAvailability(sourceAvailability.current), className),
+      sourceAvailability,
+      (availability) => ({ url: urlForAvailability(availability) }),
+    );
+  }
+
   function challengeFrame(entry, renderBase) {
     const frame = el("iframe", "challenge-frame");
     frame.src = safeDataUrl(
@@ -122,8 +132,15 @@ export function createChallengePresentation({ fetchJson, document, window, local
   return async function challengePresentation(
     entry,
     renderBase,
-    { forceFrame = false, dependenciesOnThisPage = false, availability = null } = {},
+    {
+      forceFrame = false,
+      dependenciesOnThisPage = false,
+      sourceAvailability = null,
+      availabilityPromise = null,
+    } = {},
   ) {
+    const availability = sourceAvailability ??
+      createSourceAvailabilityBinding(availabilityPromise);
     const section = el("section", "challenge-presentation");
     const heading = el("div", "section-heading");
     const titleBlock = el("div");
@@ -145,19 +162,23 @@ export function createChallengePresentation({ fetchJson, document, window, local
     const comparatorPath = entry.formalization.comparator_config_path;
     const challengePath = entry.formalization.challenge_path;
     const challengeFilename = challengePath.split("/").at(-1);
-    const location = topSourceLocation(entry, availability);
     links.append(
-      externalLink(
+      sourceLink(
         `View full pinned statement file (${challengeFilename})`,
-        challengeSourceUrl(entry, location.repository),
+        availability,
+        (manifest) => challengeSourceUrl(
+          entry,
+          topSourceLocation(entry, manifest).repository,
+        ),
         "challenge-source",
       ),
       " · ",
       internalLink("Inspect statement dependencies", dependencyRecordUrl),
       " · ",
-      externalLink(
+      sourceLink(
         `View comparator configuration (${comparatorPath.split("/").at(-1)})`,
-        sourceFileUrl(entry, comparatorPath, availability),
+        availability,
+        (manifest) => sourceFileUrl(entry, comparatorPath, manifest),
         "comparator-source",
       ),
     );

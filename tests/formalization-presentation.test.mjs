@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createFormalizationPresentation } from "../assets/formalization-presentation.mjs";
+import { createSourceAvailabilityBinding } from "../assets/source-preservation.mjs";
 import { validateAvailability } from "../assets/security.mjs";
 import {
   COMMIT,
@@ -16,21 +17,27 @@ const CHECKED_AT = new Date(Math.floor(Date.now() / 1_000) * 1_000)
   .replace(".000Z", "Z");
 
 function fakeDocument() {
-  return {
+  const document = {
+    activeElement: null,
     createElement(tag) {
       return {
         children: [],
         className: "",
         href: "",
+        hidden: false,
         id: "",
         tagName: tag.toUpperCase(),
         textContent: "",
         append(...children) {
           this.children.push(...children);
         },
+        focus() {
+          document.activeElement = this;
+        },
       };
     },
   };
+  return document;
 }
 
 function descendants(root) {
@@ -131,8 +138,9 @@ test("the proof section presents imports and every preserved dependency kind", (
   );
 });
 
-test("confirmed missing originals switch the proof and dependency links to their copies", () => {
-  const { solutionMetadata } = createFormalizationPresentation({ document: fakeDocument() });
+test("confirmed missing originals switch the proof and dependency links to their copies", async () => {
+  const document = fakeDocument();
+  const { solutionMetadata } = createFormalizationPresentation({ document });
   const record = entry();
   const missing = availabilityEndpoint({ status: "missing", checked_at: CHECKED_AT });
   const availability = validateAvailability(availabilityManifest([
@@ -143,8 +151,22 @@ test("confirmed missing originals switch the proof and dependency links to their
       original: missing,
     }),
   ], { generated_at: CHECKED_AT }));
-  const section = solutionMetadata(record, { schema_version: 1 }, availability);
-  const links = byTag(section, "a");
+  let releaseAvailability;
+  const sourceAvailability = createSourceAvailabilityBinding(new Promise((resolve) => {
+    releaseAvailability = resolve;
+  }));
+  const section = solutionMetadata(record, { schema_version: 1 }, sourceAvailability);
+  const initialLinks = byTag(section, "a");
+  assert.deepEqual(initialLinks.map((link) => link.textContent), [
+    "Solution.lean",
+    "leanprover-community/mathlib4",
+    "Palomar preserved copy",
+  ]);
+  initialLinks.at(-1).focus();
+
+  releaseAvailability(availability);
+  await sourceAvailability.ready;
+  const links = byTag(section, "a").filter((link) => !link.hidden);
 
   assert.deepEqual(texts(section, "code"), [COMMIT.slice(0, 12)]);
   assert.deepEqual(links.map((link) => link.textContent), [
@@ -159,4 +181,6 @@ test("confirmed missing originals switch the proof and dependency links to their
     links[1].href,
     `https://github.com/PalomarArchive/mathlib4--fixture/tree/${COMMIT}`,
   );
+  assert.equal(document.activeElement, links[1]);
+  assert.equal(byClass(section, "source-archive-separator")[0].hidden, true);
 });

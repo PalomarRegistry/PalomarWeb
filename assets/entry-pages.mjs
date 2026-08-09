@@ -88,7 +88,7 @@ export async function renderChallengePage({
       renderExactTombstone(loaded.tombstone, content);
       return;
     }
-    const { entry, renderBase, availability } = loaded;
+    const { entry, renderBase, availabilityPromise } = loaded;
     document.title = `Named compared declarations — ${entry.title} — Palomar`;
     const heading = el("header", "entry-heading");
     heading.append(
@@ -98,7 +98,7 @@ export async function renderChallengePage({
     const challenge = await challengePresentation(
       entry,
       renderBase,
-      { forceFrame: true, availability },
+      { forceFrame: true, availabilityPromise },
     );
     content.append(heading, challenge.section);
     status.hidden = true;

@@ -217,13 +217,52 @@ test("an unversioned entry read resolves and validates the current immutable rec
   );
   assert.equal(loaded.databaseBase.href, "https://data.palomar-registry.org/");
   assert.equal(loaded.renderBase.href, "https://data.palomar-registry.org/");
-  assert.equal(loaded.availability, null);
-  assert.deepEqual(warnings, ["Source availability is unavailable: 404 Not Found"]);
+  assert.equal(
+    loaded.availabilityPromise,
+    loader.loadAvailabilityBounded(
+      new URL("https://data.palomar-registry.org/source-availability.json"),
+    ),
+  );
+  assert.equal(await loaded.availabilityPromise, null);
+  assert.deepEqual(warnings, []);
   assert.deepEqual(calls.map(({ url }) => url.pathname).sort(), [
     `/entries/${ID}-v2.json`,
     "/source-availability.json",
     `/versions/${ID}.json`,
   ].sort());
+});
+
+test("verified entry loading does not await a never-settling availability read", async () => {
+  let releaseAvailability;
+  const blockedAvailability = new Promise((resolve) => {
+    releaseAvailability = resolve;
+  });
+  const routes = new Map([
+    [`/versions/${ID}.json`, jsonResponse({
+      schema_version: 1,
+      id: ID,
+      entries: [summary()],
+    })],
+    [`/entries/${ID}-v1.json`, jsonResponse(entry())],
+    ["/source-availability.json", () => blockedAvailability],
+  ]);
+  const loader = createRegistryLoader({
+    fetch: routedFetch(routes),
+    location: productionLocation(),
+  });
+
+  const loaded = await loader.loadEntry(ID, 1);
+  assert.equal(loaded.entry.id, ID);
+  assert.equal(loaded.entry.version, 1);
+  let availabilitySettled = false;
+  void loaded.availabilityPromise.then(() => {
+    availabilitySettled = true;
+  });
+  await Promise.resolve();
+  assert.equal(availabilitySettled, false);
+
+  releaseAvailability(jsonResponse({}, 404));
+  assert.equal(await loaded.availabilityPromise, null);
 });
 
 test("an inactive exact version resolves only through its validated tombstone", async () => {
@@ -243,6 +282,7 @@ test("an inactive exact version resolves only through its validated tombstone", 
 
   assert.deepEqual(await loader.loadEntry(ID, 2), { tombstone });
   assert.equal(calls.some(({ url }) => url.pathname.startsWith("/entries/")), false);
+  assert.equal(calls.some(({ url }) => url.pathname === "/source-availability.json"), false);
 });
 
 test("an active exact version resolves through its immutable record", async () => {
@@ -304,17 +344,19 @@ test("non-absence failures from version indexes and tombstones propagate", async
 });
 
 test("an absent version index and tombstone produce the one public not-found error", async () => {
+  const calls = [];
   const routes = new Map([
     [`/versions/${ID}.json`, jsonResponse({}, 404)],
     [`/tombstones/${ID}-v9.json`, jsonResponse({}, 404)],
     ["/source-availability.json", jsonResponse({}, 404)],
   ]);
   const loader = createRegistryLoader({
-    fetch: routedFetch(routes),
+    fetch: routedFetch(routes, calls),
     location: productionLocation(),
     warn: () => {},
   });
 
   await assert.rejects(loader.loadEntry(ID, 9), /entry not found/);
   await assert.rejects(loader.loadEntry(ID, null), /entry not found/);
+  assert.equal(calls.some(({ url }) => url.pathname === "/source-availability.json"), false);
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createSourceAvailabilityBinding,
   decorateCardSet,
   sourceDirectoryUrl,
   sourceFileUrl,
@@ -121,6 +122,53 @@ test("source location switches only from a confirmed missing original to its rec
     sourceDirectoryUrl(record, "Palomar", availability).href,
     `https://github.com/PalomarArchive/example--challenge--fixture/tree/${COMMIT}/Palomar`,
   );
+});
+
+test("availability bindings publish once to current and late source controls", async () => {
+  let release;
+  const warnings = [];
+  const binding = createSourceAvailabilityBinding(
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+    (message) => warnings.push(message),
+  );
+  const published = [];
+  binding.whenReady((value) => published.push(value));
+  assert.equal(binding.current, null);
+
+  const availability = manifest();
+  release(availability);
+  assert.equal(await binding.ready, availability);
+  assert.equal(binding.current, availability);
+  assert.deepEqual(published, [availability]);
+  let late = null;
+  binding.whenReady((value) => {
+    late = value;
+  });
+  assert.equal(late, availability);
+  assert.deepEqual(warnings, []);
+});
+
+test("one broken availability control cannot block its siblings", async () => {
+  const warnings = [];
+  const binding = createSourceAvailabilityBinding(
+    Promise.resolve(manifest()),
+    (message) => warnings.push(message),
+  );
+  let siblingUpdated = false;
+  binding.whenReady(() => {
+    throw new Error("broken control");
+  });
+  binding.whenReady(() => {
+    siblingUpdated = true;
+  });
+
+  await binding.ready;
+  assert.equal(siblingUpdated, true);
+  assert.deepEqual(warnings, [
+    "Entry source availability could not be applied: broken control",
+  ]);
 });
 
 test("source location does not switch when both original and archive are missing", () => {

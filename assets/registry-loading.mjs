@@ -57,18 +57,9 @@ export function createRegistryLoader({
     return validateAvailability(await fetchJson(url, { signal }));
   }
 
-  async function loadAvailability(url) {
-    try {
-      return await fetchAvailability(url);
-    } catch (error) {
-      warn(`Source availability is unavailable: ${error.message}`);
-      return null;
-    }
-  }
-
-  // The landing and search controllers can need the same manifest. Share a
-  // successful bounded read, but never make one temporary failure or timeout
-  // the page's answer for the rest of its lifetime.
+  // Page controllers can need the same manifest. Share a successful bounded
+  // read, but never make one temporary failure or timeout the page's answer
+  // for the rest of its lifetime.
   const availabilityLoads = new Map();
   function loadAvailabilityBounded(url) {
     const key = url.href;
@@ -102,7 +93,6 @@ export function createRegistryLoader({
 
   async function loadEntry(id, requestedVersion) {
     const { databaseBase, renderBase, availabilityUrl } = dataSource();
-    const availabilityPromise = loadAvailability(availabilityUrl);
     // The versions of this one result, not the whole registry. Reading a
     // whole-registry index here meant fetching every record ever registered to
     // render one page, and paying for it again every time anyone else published.
@@ -134,16 +124,20 @@ export function createRegistryLoader({
         throw error;
       }
     }
+    // Availability is ancillary health information for active content. Start
+    // its bounded read in parallel with the immutable entry record, but return
+    // that verified record without awaiting it. Unknown and withdrawn records
+    // make no availability request because they have no source controls.
+    const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
     const canonicalUrl = entryRecordUrl(summary, databaseBase);
     const entry = validateEntry(await fetchJson(canonicalUrl), summary);
-    const availability = await availabilityPromise;
     return {
       entry,
       canonicalUrl,
       renderBase,
       versions,
       currentVersion,
-      availability,
+      availabilityPromise,
       databaseBase,
     };
   }

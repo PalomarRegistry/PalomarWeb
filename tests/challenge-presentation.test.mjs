@@ -5,7 +5,14 @@ import {
   createChallengePresentation,
   validateChallengeMetadata,
 } from "../assets/challenge-presentation.mjs";
-import { entry } from "./registry-fixture.mjs";
+import { createSourceAvailabilityBinding } from "../assets/source-preservation.mjs";
+import { validateAvailability } from "../assets/security.mjs";
+import {
+  availabilityEndpoint,
+  availabilityManifest,
+  availabilityRow,
+  entry,
+} from "./registry-fixture.mjs";
 
 function renderMetadata(overrides = {}) {
   return {
@@ -153,6 +160,45 @@ test("an inline presentation keeps links confined and accepts height only from i
   assert.equal(frame.dataset.heightAdjusted, "true");
   onMessage({ source: frame.contentWindow, data: { type: "palomar-render-height", height: 1_000 } });
   assert.equal(frame.style.height, "672px");
+});
+
+test("late availability updates statement source controls in place", async () => {
+  const browser = fakeBrowser();
+  const record = entry();
+  let releaseAvailability;
+  const sourceAvailability = createSourceAvailabilityBinding(new Promise((resolve) => {
+    releaseAvailability = resolve;
+  }));
+  const present = createChallengePresentation({
+    ...browser,
+    fetchJson: async () => renderMetadata(),
+    localPageUrl: () => assert.fail("the inline entry view should not build another page URL"),
+  });
+
+  const result = await present(
+    record,
+    new URL("http://127.0.0.1:4173/database/"),
+    { dependenciesOnThisPage: true, sourceAvailability },
+  );
+  const [source] = byClass(result.section, "challenge-source");
+  const [comparator] = byClass(result.section, "comparator-source");
+  assert.match(source.href, /github\.com\/example\/challenge\/blob\//);
+  assert.match(comparator.href, /github\.com\/example\/challenge\/blob\//);
+
+  const checkedAt = new Date(Math.floor(Date.now() / 1_000) * 1_000)
+    .toISOString()
+    .replace(".000Z", "Z");
+  const missing = availabilityEndpoint({ status: "missing", checked_at: checkedAt });
+  releaseAvailability(validateAvailability(availabilityManifest([
+    availabilityRow({ original: missing }),
+  ], { generated_at: checkedAt })));
+  await sourceAvailability.ready;
+
+  assert.match(source.href, /github\.com\/PalomarArchive\/example--challenge--fixture\/blob\//);
+  assert.match(
+    comparator.href,
+    /github\.com\/PalomarArchive\/example--challenge--fixture\/blob\//,
+  );
 });
 
 test("a missing large entry render keeps its source controls and uses the missing-artifact fallback", async () => {
