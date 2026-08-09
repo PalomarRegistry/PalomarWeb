@@ -573,12 +573,11 @@ export function versionsUrl(id, databaseBase) {
 /**
  * The versions of one result, from `versions/<id>.json`.
  *
- * The rows are the ones `index.json` carries, so the row grammar and
- * `entryRecordUrl` apply unchanged. What is new is coverage and ordering: this
- * document claims to be *every* active version of one identifier, so a row
- * belonging to another identifier means it is not what it says it is, and
- * reading it as if it were would show one result's history under another
- * result's name.
+ * Each row uses the registry's exact entry-summary grammar and resolves through
+ * `entryRecordUrl`. The document claims to be *every* active version of one
+ * identifier, so a row belonging to another identifier means it is not what it
+ * says it is, and reading it as if it were would show one result's history
+ * under another result's name.
  */
 export function validateVersions(value, id) {
   const document = exactObject(value, ["schema_version", "id", "entries"], "version index");
@@ -1386,20 +1385,6 @@ export function validateEntry(entry, summary) {
   return entry;
 }
 
-export function pinnedSourceFileUrl(entry, path) {
-  safeRepositoryPath(path, "source file path");
-  const expectedRepository = `https://github.com/${entry.source.repository}`;
-  if (
-    !REPOSITORY_RE.test(entry.source.repository) ||
-    entry.source.repository_url !== expectedRepository ||
-    !COMMIT_RE.test(entry.source.commit)
-  ) {
-    fail("source file link lacks canonical repository evidence");
-  }
-  const encodedPath = encodedRepositoryPath(path);
-  return safeExternalUrl(`${expectedRepository}/blob/${entry.source.commit}/${encodedPath}`);
-}
-
 export function pinnedRepositoryFileUrl(repository, revision, path) {
   if (!REPOSITORY_RE.test(repository)) fail("source repository is malformed");
   commit(revision, "source commit");
@@ -1415,20 +1400,6 @@ export function pinnedRepositoryDirectoryUrl(repository, revision, path = ".") {
   safeDependencyPath(path, "source directory path");
   const suffix = path === "." ? "" : `/${encodedRepositoryPath(path)}`;
   return safeExternalUrl(`https://github.com/${repository}/tree/${revision}${suffix}`);
-}
-
-export function pinnedSourceDirectoryUrl(entry, path) {
-  safeDependencyPath(path, "source directory path");
-  const expectedRepository = `https://github.com/${entry.source.repository}`;
-  if (
-    !REPOSITORY_RE.test(entry.source.repository) ||
-    entry.source.repository_url !== expectedRepository ||
-    !COMMIT_RE.test(entry.source.commit)
-  ) {
-    fail("source directory link lacks canonical repository evidence");
-  }
-  const suffix = path === "." ? "" : `/${encodedRepositoryPath(path)}`;
-  return safeExternalUrl(`${expectedRepository}/tree/${entry.source.commit}${suffix}`);
 }
 
 export function workflowRunId(workflowUrl) {

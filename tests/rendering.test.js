@@ -5,7 +5,6 @@ import {
   challengeArtifactUrl,
   challengeMetadataUrl,
   challengeSourceUrl,
-  entryRecordPath,
   isInlineChallenge,
 } from "../assets/rendering.js";
 
@@ -103,15 +102,4 @@ test("source URL is always the immutable canonical GitHub file", () => {
   const controlCharacter = entry();
   controlCharacter.formalization.challenge_path = "project/Task\n.lean";
   assert.throws(() => challengeSourceUrl(controlCharacter), /canonical/);
-});
-
-test("index paths cannot redirect entry fetching", () => {
-  assert.equal(
-    entryRecordPath("PALOMAR-2026-07-29-000123", 1, "entries/PALOMAR-2026-07-29-000123-v1.json"),
-    "entries/PALOMAR-2026-07-29-000123-v1.json",
-  );
-  assert.throws(
-    () => entryRecordPath("PALOMAR-2026-07-29-000123", 1, "https://attacker.invalid/entry.json"),
-    /invalid entry path/,
-  );
 });

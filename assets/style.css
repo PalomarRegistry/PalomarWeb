@@ -849,8 +849,7 @@ pre {
 }
 
 .plain-list,
-.reason-list,
-.warning-list {
+.reason-list {
   margin: .4rem 0;
   padding-left: 1.5rem;
 }
@@ -859,12 +858,6 @@ pre {
   padding: .65rem .75rem .65rem 2rem;
   border-left: 2px solid var(--caution);
   background: var(--shade);
-}
-
-.warning-list {
-  padding: .65rem .75rem .65rem 2rem;
-  border-left: 4px solid var(--warning);
-  background: #fff8f2;
 }
 
 .decision {

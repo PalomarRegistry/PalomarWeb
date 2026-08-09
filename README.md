@@ -142,7 +142,7 @@ Challenges link to a dedicated rendered view. The pinned GitHub source link is
 always present. Rendered HTML is loaded in an iframe with
 `sandbox="allow-scripts"` (deliberately without `allow-same-origin`) and no
 referrer. The frame sizes itself from a height the document posts back, clamped
-between 10rem and 42rem, so an untrusted render can ask for a sensible height
+between 160 and 672 pixels, so an untrusted render can ask for a sensible height
 without being able to take the page over.
 
 A record that arrives carrying review scores is refused rather than rendered.
@@ -175,10 +175,10 @@ their existing `schema_version: 1` protocols, as do independent render and
 evidence metadata formats. Only the accepted-entry contract is v2-only.
 
 The website is a presentation layer only. Public data and schemas live at the
-machine-readable data origin. A versioned ID
-such as `PALOMAR-2026-07-29-000001-v1` names one immutable record. An ID without
-a version means the latest record; later versions may change its theorem,
-source, authors, or subject, so stable citations must include the version.
+machine-readable data origin. A permanent ID paired with an explicit integer
+version names one immutable record. An ID without a version means the latest
+record; later versions may change its theorem, source, authors, or subject, so
+stable citations must include the version.
 
 ## RSS
 
@@ -199,7 +199,7 @@ active history when older snapshots exist.
 An entry URL with both `id` and `version` identifies one immutable snapshot:
 
 ```text
-https://palomar-registry.org/entry.html?id=PALOMAR-2026-07-29-000001&version=1
+https://palomar-registry.org/entry.html?id={permanent-ID}&version={integer-version}
 ```
 
 Its HTML canonical link points to that same official, explicit version,

@@ -33,8 +33,6 @@ import {
   VERSIONS_SCHEMA_VERSION,
   entryRecordUrl,
   isLoopbackHostname,
-  pinnedSourceDirectoryUrl,
-  pinnedSourceFileUrl,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
@@ -405,10 +403,6 @@ test("active-content and insecure data-derived links are never allowed", () => {
 
 test("a canonical accepted record validates", () => {
   assert.equal(validateEntry(entry(), summary()).id, "PALOMAR-2026-07-29-000123");
-  assert.equal(
-    pinnedSourceFileUrl(entry(), "Challenge.lean").href,
-    `https://github.com/example/challenge/blob/${COMMIT}/Challenge.lean`,
-  );
 });
 
 test("preservation must cover every immutable source", () => {
@@ -868,6 +862,27 @@ test("About describes the current review and version contracts", async () => {
   assert.doesNotMatch(about, /durable-evidence schema \(version 5\)/);
   assert.match(about, /review-failed/);
   assert.match(about, /operational fault, not a decision/);
+});
+
+test("user documentation names current examples and iframe height units", async () => {
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  assert.match(about, /https:\/\/github\.com\/robsimmons\/nanoda_lib/);
+  assert.doesNotMatch(about, /github\.com\/ammkrn\/nanoda_lib/);
+  assert.match(about, /href="https:\/\/palomar-registry\.org\/"/);
+  assert.match(about, /current registry/);
+  assert.doesNotMatch(about, /first registered result/);
+  assert.doesNotMatch(about, /entry\.html\?id=PALOMAR-2026-07-29-000001/);
+
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  const presentation = await readFile(
+    new URL("../assets/challenge-presentation.mjs", import.meta.url),
+    "utf8",
+  );
+  const bounds = /Math\.max\((\d+), Math\.min\((\d+),/.exec(presentation);
+  assert.notEqual(bounds, null, "iframe height policy must remain explicit");
+  assert.match(readme, new RegExp(`clamped\\s+between ${bounds[1]} and ${bounds[2]} pixels`));
+  assert.doesNotMatch(readme, /between 10rem and 42rem/);
+  assert.doesNotMatch(readme, /PALOMAR-2026-07-29-000001/);
 });
 
 test("About says what registration publishes, and what it does not", async () => {
