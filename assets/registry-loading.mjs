@@ -2,12 +2,14 @@ import { loadSettledBounded } from "./loading.mjs";
 import {
   databaseBaseFor,
   entryRecordUrl,
+  recentUrl,
   selectAvailabilityUrl,
   selectDatabaseUrl,
   selectRenderBase,
   tombstoneUrl,
   validateAvailability,
   validateEntry,
+  validateRecent,
   validateTombstone,
   validateVersions,
   versionsUrl,
@@ -22,7 +24,12 @@ const AVAILABILITY_TIMEOUT_MS = 30_000;
  * concurrency, and entry-pages.mjs owns route state. This boundary composes
  * those contracts into the reads shared by the app's page controllers.
  */
-export function createRegistryLoader({ fetch, location, warn }) {
+export function createRegistryLoader({
+  fetch,
+  location,
+  warn = () => {},
+  availabilityTimeoutMs = AVAILABILITY_TIMEOUT_MS,
+}) {
   function dataSource() {
     const databaseBase = databaseBaseFor(
       selectDatabaseUrl(location.href, location.search),
@@ -50,9 +57,9 @@ export function createRegistryLoader({ fetch, location, warn }) {
     return validateAvailability(await fetchJson(url, { signal }));
   }
 
-  async function loadAvailability(url, { signal } = {}) {
+  async function loadAvailability(url) {
     try {
-      return await fetchAvailability(url, { signal });
+      return await fetchAvailability(url);
     } catch (error) {
       warn(`Source availability is unavailable: ${error.message}`);
       return null;
@@ -69,7 +76,7 @@ export function createRegistryLoader({ fetch, location, warn }) {
       const loading = loadSettledBounded(
         [url],
         (selected, signal) => fetchAvailability(selected, { signal }),
-        { concurrency: 1, timeoutMs: AVAILABILITY_TIMEOUT_MS },
+        { concurrency: 1, timeoutMs: availabilityTimeoutMs },
       ).then(([loaded]) => {
         if (loaded.status === "fulfilled") return loaded.value;
         // A missing manifest is a stable absence for this page load. A
@@ -89,6 +96,10 @@ export function createRegistryLoader({ fetch, location, warn }) {
     return availabilityLoads.get(key);
   }
 
+  async function loadRecent(databaseBase) {
+    return validateRecent(await fetchJson(recentUrl(databaseBase)));
+  }
+
   async function loadEntry(id, requestedVersion) {
     const { databaseBase, renderBase, availabilityUrl } = dataSource();
     const availabilityPromise = loadAvailability(availabilityUrl);
@@ -106,7 +117,6 @@ export function createRegistryLoader({ fetch, location, warn }) {
     }
     const currentVersion = versions.length ? versions.at(-1).version : null;
     const version = requestedVersion ?? currentVersion;
-    if (version === null && requestedVersion === undefined) throw new Error("entry not found");
     const summary = versions.find((item) => item.version === version);
     if (!summary) {
       if (requestedVersion === null || requestedVersion === undefined) {
@@ -138,5 +148,5 @@ export function createRegistryLoader({ fetch, location, warn }) {
     };
   }
 
-  return { dataSource, fetchJson, loadAvailabilityBounded, loadEntry };
+  return { dataSource, fetchJson, loadAvailabilityBounded, loadRecent, loadEntry };
 }

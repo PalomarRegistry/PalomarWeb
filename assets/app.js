@@ -6,8 +6,6 @@ import {
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
-  recentUrl,
-  validateRecent,
   workflowRunId,
 } from "./security.mjs";
 import { createRegistrySearch, validateSearchQuery } from "./searching.mjs";
@@ -65,6 +63,7 @@ const {
   dataSource,
   fetchJson,
   loadAvailabilityBounded,
+  loadRecent,
   loadEntry,
 } = createRegistryLoader({
   fetch: (...args) => fetch(...args),
@@ -265,7 +264,7 @@ async function renderIndex() {
     // The publisher projects every landing-card field from validated canonical
     // entries into this bounded newest-first document. Rendering the selection
     // therefore costs one summary read, not one record read per card.
-    const recent = validateRecent(await fetchJson(recentUrl(databaseBase)));
+    const recent = await loadRecent(databaseBase);
     const entries = recent.entries;
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.

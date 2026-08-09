@@ -86,9 +86,10 @@ entry correspondence and presentation states, `formalization-presentation.mjs`
 owns statement trust labels and the statement/proof dependency presentation,
 `entry-history-presentation.mjs` owns the entry page's canonical link,
 supersession notice, and immutable version-history section;
-`registry-loading.mjs` composes selected endpoints, JSON transport,
-page-scoped source-availability reads, and exact entry-history/record/tombstone
-loading; and `app.js` composes the remaining page-level views.
+`registry-loading.mjs` composes selected endpoints, JSON transport, the bounded
+landing/search source-availability cache, the direct entry source-availability
+read, and exact recent/entry-history/record/tombstone loading; and `app.js`
+composes the remaining page-level views.
 
 Runtime reads use the browser's normal HTTP cache behavior. The public data
 service gives successful documents a 60-second browser/shared-cache lifetime,

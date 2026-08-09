@@ -5,6 +5,7 @@ import { createRegistryLoader } from "../assets/registry-loading.mjs";
 import {
   availabilityManifest,
   entry,
+  recent,
   secondVersion,
   summary,
 } from "./registry-fixture.mjs";
@@ -84,15 +85,13 @@ test("bounded availability caches absence but retries a transient failure", asyn
   const url = new URL("https://data.palomar-registry.org/source-availability.json");
   let transientReads = 0;
   const warnings = [];
-  const fresh = new Date(Math.floor(Date.now() / 1_000) * 1_000)
-    .toISOString()
-    .replace(".000Z", "Z");
+  const manifest = availabilityManifest([]);
   const transientLoader = createRegistryLoader({
     fetch: async () => {
       transientReads += 1;
       return transientReads === 1
         ? jsonResponse({}, 503, "Service Unavailable")
-        : jsonResponse(availabilityManifest([], { generated_at: fresh }));
+        : jsonResponse(manifest);
     },
     location: productionLocation("index.html"),
     warn: (message) => warnings.push(message),
@@ -100,7 +99,7 @@ test("bounded availability caches absence but retries a transient failure", asyn
 
   assert.equal(await transientLoader.loadAvailabilityBounded(url), null);
   const recovered = await transientLoader.loadAvailabilityBounded(url);
-  assert.equal(recovered.generated_at, fresh);
+  assert.equal(recovered.generated_at, manifest.generated_at);
   assert.equal(transientReads, 2);
   assert.deepEqual(warnings, ["Source availability is unavailable: 503 Service Unavailable"]);
 
@@ -116,6 +115,68 @@ test("bounded availability caches absence but retries a transient failure", asyn
   assert.equal(await absentLoader.loadAvailabilityBounded(url), null);
   assert.equal(await absentLoader.loadAvailabilityBounded(url), null);
   assert.equal(absentReads, 1);
+});
+
+test("bounded availability shares an in-flight read", async () => {
+  const url = new URL("https://data.palomar-registry.org/source-availability.json");
+  let reads = 0;
+  let release;
+  const pending = new Promise((resolve) => {
+    release = resolve;
+  });
+  const loader = createRegistryLoader({
+    fetch: async () => {
+      reads += 1;
+      return pending;
+    },
+    location: productionLocation("index.html"),
+  });
+
+  const first = loader.loadAvailabilityBounded(url);
+  const second = loader.loadAvailabilityBounded(url);
+  assert.equal(first, second);
+  assert.equal(reads, 0);
+  release(jsonResponse(availabilityManifest([])));
+  assert.equal((await first).schema_version, 1);
+  assert.equal((await second).schema_version, 1);
+  assert.equal(reads, 1);
+});
+
+test("bounded availability enforces its deadline and evicts a timed-out read", async () => {
+  const url = new URL("https://data.palomar-registry.org/source-availability.json");
+  let reads = 0;
+  const warnings = [];
+  const loader = createRegistryLoader({
+    fetch: async () => {
+      reads += 1;
+      if (reads === 1) return new Promise(() => {});
+      return jsonResponse({}, 404);
+    },
+    location: productionLocation("index.html"),
+    warn: (message) => warnings.push(message),
+    availabilityTimeoutMs: 5,
+  });
+
+  assert.equal(await loader.loadAvailabilityBounded(url), null);
+  assert.match(warnings[0], /load deadline of 5ms expired/);
+  assert.equal(await loader.loadAvailabilityBounded(url), null);
+  assert.equal(reads, 2);
+});
+
+test("the recent projection is fetched from the selected database and validated", async () => {
+  const document = recent();
+  const calls = [];
+  const routes = new Map([["/recent.json", jsonResponse(document)]]);
+  const loader = createRegistryLoader({
+    fetch: routedFetch(routes, calls),
+    location: productionLocation("index.html"),
+  });
+
+  const loaded = await loader.loadRecent(
+    new URL("https://data.palomar-registry.org/"),
+  );
+  assert.deepEqual(loaded, document);
+  assert.deepEqual(calls.map(({ url }) => url.pathname), ["/recent.json"]);
 });
 
 test("an unversioned entry read resolves and validates the current immutable record", async () => {
@@ -182,6 +243,64 @@ test("an inactive exact version resolves only through its validated tombstone", 
 
   assert.deepEqual(await loader.loadEntry(ID, 2), { tombstone });
   assert.equal(calls.some(({ url }) => url.pathname.startsWith("/entries/")), false);
+});
+
+test("an active exact version resolves through its immutable record", async () => {
+  const record = secondVersion();
+  const versions = {
+    schema_version: 1,
+    id: ID,
+    entries: [
+      summary(),
+      summary({ version: 2, title: record.title, path: `entries/${ID}-v2.json` }),
+    ],
+  };
+  const calls = [];
+  const routes = new Map([
+    [`/versions/${ID}.json`, jsonResponse(versions)],
+    [`/entries/${ID}-v1.json`, jsonResponse(entry())],
+    ["/source-availability.json", jsonResponse({}, 404)],
+  ]);
+  const loader = createRegistryLoader({
+    fetch: routedFetch(routes, calls),
+    location: productionLocation(),
+  });
+
+  const loaded = await loader.loadEntry(ID, 1);
+  assert.equal(loaded.entry.version, 1);
+  assert.equal(loaded.currentVersion, 2);
+  assert.equal(calls.some(({ url }) => url.pathname.startsWith("/tombstones/")), false);
+});
+
+test("non-absence failures from version indexes and tombstones propagate", async () => {
+  const versionFailure = createRegistryLoader({
+    fetch: routedFetch(new Map([
+      [`/versions/${ID}.json`, jsonResponse({}, 503, "Service Unavailable")],
+      ["/source-availability.json", jsonResponse({}, 404)],
+    ])),
+    location: productionLocation(),
+  });
+  await assert.rejects(
+    versionFailure.loadEntry(ID, 1),
+    (error) => error.status === 503 && error.message === "503 Service Unavailable",
+  );
+
+  const tombstoneFailure = createRegistryLoader({
+    fetch: routedFetch(new Map([
+      [`/versions/${ID}.json`, jsonResponse({
+        schema_version: 1,
+        id: ID,
+        entries: [summary()],
+      })],
+      [`/tombstones/${ID}-v2.json`, jsonResponse({}, 500, "Internal Server Error")],
+      ["/source-availability.json", jsonResponse({}, 404)],
+    ])),
+    location: productionLocation(),
+  });
+  await assert.rejects(
+    tombstoneFailure.loadEntry(ID, 2),
+    (error) => error.status === 500 && error.message === "500 Internal Server Error",
+  );
 });
 
 test("an absent version index and tombstone produce the one public not-found error", async () => {
