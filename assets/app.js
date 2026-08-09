@@ -18,6 +18,9 @@ import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
 import {
+  bindSourceControl,
+  createSourceAvailabilityBinding,
+  createSourceAvailabilityNotice,
   decorateCardSet,
   sourceFileUrl,
   sourceLocation,
@@ -608,6 +611,30 @@ function externalDetailRow(labelText, text, href, note) {
   return row;
 }
 
+function sourceLink(text, sourceAvailability, urlForAvailability, className) {
+  return bindSourceControl(
+    externalLink(text, urlForAvailability(sourceAvailability.current), className),
+    sourceAvailability,
+    (availability) => ({ url: urlForAvailability(availability) }),
+  );
+}
+
+function sourceDetailRow(
+  labelText,
+  text,
+  sourceAvailability,
+  urlForAvailability,
+  note,
+) {
+  const row = el("div", "detail-row");
+  row.append(el("dt", "", labelText));
+  const value = el("dd");
+  value.append(sourceLink(text, sourceAvailability, urlForAvailability));
+  if (note) value.append(" ", note);
+  row.append(value);
+  return row;
+}
+
 function dataDetailRow(labelText, text, href) {
   const row = el("div", "detail-row");
   row.append(el("dt", "", labelText));
@@ -662,7 +689,7 @@ function assurance(kind, sentence) {
  * ordinary case; the interesting case is when they disagree, and that is the
  * one worth spelling out.
  */
-function licenceRow(entry, availability) {
+function licenceRow(entry, sourceAvailability) {
   const licence = entry.source.license;
   const declared = licence.declared_identifier;
   const detected = licence.detected_identifier;
@@ -675,7 +702,11 @@ function licenceRow(entry, availability) {
       ? el("span", "", String(declared))
       : el("span", "licence-disagreement", `declared ${declared}, detected ${detected}`),
     " ",
-    externalLink(licence.path, sourceFileUrl(entry, licence.path, availability)),
+    sourceLink(
+      licence.path,
+      sourceAvailability,
+      (availability) => sourceFileUrl(entry, licence.path, availability),
+    ),
     " ",
     digestNote(licence.sha256),
   );
@@ -751,66 +782,6 @@ function classificationSearchUrl(scheme, code) {
   return url;
 }
 
-function sourceAvailabilityNotice(entry, availability) {
-  const location = topSourceLocation(entry, availability);
-  const notice = el("section", "source-availability");
-  const original = pinnedRepositoryDirectoryUrl(
-    location.originalRepository,
-    location.commit,
-    entry.source.project_path || ".",
-  );
-  const archived = pinnedRepositoryDirectoryUrl(
-    location.archiveRepository,
-    location.commit,
-    entry.source.project_path || ".",
-  );
-  if (location.originalStatus === "missing" && location.archiveStatus === "missing") {
-    notice.classList.add("unrecoverable");
-    notice.append(
-      el("strong", "", "No working preserved source location"),
-      el("p", "", "Both the recorded original and Palomar's preserved copy are currently unavailable."),
-      externalLink("Recorded original location", original),
-      " · ",
-      externalLink("Recorded Palomar copy", archived),
-    );
-  } else if (location.originalStatus === "missing") {
-    notice.classList.add("original-missing");
-    const checked = location.checkedAt ? ` (checked ${location.checkedAt})` : "";
-    notice.append(
-      el("strong", "", "Original source unavailable"),
-      el("p", "", `Source links on this page now use Palomar's preserved copy${checked}.`),
-      externalLink("Palomar preserved copy", archived),
-      " · ",
-      externalLink("Recorded original location", original),
-    );
-  } else if (location.archiveStatus === "missing") {
-    notice.classList.add("archive-missing");
-    const originalConfirmed = location.originalStatus === "available";
-    notice.append(
-      el("strong", "", "Source preservation degraded"),
-      el(
-        "p",
-        "",
-        originalConfirmed
-          ? "The original source still works, but Palomar's preserved copy is unavailable."
-          : "Palomar's preserved copy is unavailable. The recorded original location remains " +
-            "linked, but its current availability has not been confirmed.",
-      ),
-      externalLink(originalConfirmed ? "Original source" : "Recorded original location", original),
-      " · ",
-      externalLink("Recorded Palomar copy", archived),
-    );
-  } else {
-    notice.classList.add("preserved");
-    notice.append(
-      el("strong", "", "Source preserved by Palomar"),
-      " ",
-      externalLink("Palomar preserved copy", archived),
-    );
-  }
-  return notice;
-}
-
 function classificationSection(entry) {
   const categories = classification(entry);
   const section = el("section", "entry-classification");
@@ -865,7 +836,7 @@ function classificationSection(entry) {
   return section;
 }
 
-function provenanceSection(entry, availability) {
+function provenanceSection(entry, sourceAvailability) {
   const provenance = entry.provenance;
   const section = el("section", "entry-provenance");
   const heading = el("div", "section-heading");
@@ -880,17 +851,20 @@ function provenanceSection(entry, availability) {
   // below the repository role that exists to announce it.
   if (provenance.repository_role === "thin-wrapper") {
     const substantive = provenance.substantive_formalization;
-    const location = sourceLocation(
-      entry,
-      availability,
-      substantive.repository,
-      substantive.commit,
-    );
     details.append(
-      externalDetailRow(
+      sourceDetailRow(
         "Substantive formalization",
         `${substantive.repository}@${substantive.commit.slice(0, 12)}`,
-        pinnedRepositoryDirectoryUrl(location.repository, substantive.commit),
+        sourceAvailability,
+        (availability) => {
+          const location = sourceLocation(
+            entry,
+            availability,
+            substantive.repository,
+            substantive.commit,
+          );
+          return pinnedRepositoryDirectoryUrl(location.repository, substantive.commit);
+        },
       ),
     );
   }
@@ -964,9 +938,10 @@ async function renderEntry(
   renderBase,
   versions,
   currentVersion,
-  availability,
+  availabilityPromise,
   databaseBase,
 ) {
+  const sourceAvailability = createSourceAvailabilityBinding(availabilityPromise);
   document.title = `${entry.title} — Palomar`;
   setCanonicalEntryPage(entry);
   const heading = el("header", "entry-heading");
@@ -983,27 +958,31 @@ async function renderEntry(
   evidenceTitle.append(titleBlock);
   evidence.append(evidenceTitle, acceptanceCallout(entry, databaseBase));
   const details = el("dl", "details");
-  const location = topSourceLocation(entry, availability);
   details.append(
     // One date, not two. Acceptance and Lean verification have always been the
     // same day, so the second row said nothing the first did not; what it cost
     // was the time of day, which is now here.
     detailRow("Verified and accepted", displayTimestamp(entry.verification.verified_at)),
-    externalDetailRow(
+    sourceDetailRow(
       "Fixed source version",
       `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`,
-      pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit),
+      sourceAvailability,
+      (availability) => pinnedRepositoryDirectoryUrl(
+        topSourceLocation(entry, availability).repository,
+        entry.source.commit,
+      ),
     ),
   );
   // Only worth a row when it is somewhere. At the repository root it is the
   // absence of a fact, and the fixed source version above already links there.
   if (entry.source.project_path) {
     details.append(
-      externalDetailRow(
+      sourceDetailRow(
         "Project directory",
         entry.source.project_path,
-        pinnedRepositoryDirectoryUrl(
-          location.repository,
+        sourceAvailability,
+        (availability) => pinnedRepositoryDirectoryUrl(
+          topSourceLocation(entry, availability).repository,
           entry.source.commit,
           entry.source.project_path,
         ),
@@ -1013,22 +992,37 @@ async function renderEntry(
   details.append(
     // The digest belongs to the file, so it sits with the file rather than in
     // a row of its own two lines further down.
-    externalDetailRow(
+    sourceDetailRow(
       "Statement file",
       entry.formalization.challenge_path,
-      sourceFileUrl(entry, entry.formalization.challenge_path, availability),
+      sourceAvailability,
+      (availability) => sourceFileUrl(
+        entry,
+        entry.formalization.challenge_path,
+        availability,
+      ),
       digestNote(entry.verification.challenge_sha256),
     ),
-    externalDetailRow(
+    sourceDetailRow(
       "Proof file",
       entry.formalization.solution_path,
-      sourceFileUrl(entry, entry.formalization.solution_path, availability),
+      sourceAvailability,
+      (availability) => sourceFileUrl(
+        entry,
+        entry.formalization.solution_path,
+        availability,
+      ),
       digestNote(entry.verification.solution_sha256),
     ),
-    externalDetailRow(
+    sourceDetailRow(
       "Formalization metadata",
       entry.formalization.formalization_metadata_path,
-      sourceFileUrl(entry, entry.formalization.formalization_metadata_path, availability),
+      sourceAvailability,
+      (availability) => sourceFileUrl(
+        entry,
+        entry.formalization.formalization_metadata_path,
+        availability,
+      ),
     ),
     detailRow("Lean version", entry.formalization.lean_toolchain),
     detailRow("Theorems checked", theoremNames(entry)),
@@ -1048,10 +1042,15 @@ async function renderEntry(
   );
   {
     details.append(
-      externalDetailRow(
+      sourceDetailRow(
         "Lakefile",
         entry.formalization.lakefile_path,
-        sourceFileUrl(entry, entry.formalization.lakefile_path, availability),
+        sourceAvailability,
+        (availability) => sourceFileUrl(
+          entry,
+          entry.formalization.lakefile_path,
+          availability,
+        ),
       ),
     );
   }
@@ -1065,7 +1064,7 @@ async function renderEntry(
       ),
       detailRow("Verification workflow commit", entry.verification.workflow_commit),
       detailRow("Workflow run attempt", String(entry.verification.workflow_run_attempt)),
-      licenceRow(entry, availability),
+      licenceRow(entry, sourceAvailability),
     );
   }
   evidence.append(details);
@@ -1118,16 +1117,21 @@ async function renderEntry(
 
   const challenge = await challengePresentation(entry, renderBase, {
     dependenciesOnThisPage: true,
-    availability,
+    sourceAvailability,
   });
-  const sourceNotice = sourceAvailabilityNotice(entry, availability);
+  const sourceNotice = createSourceAvailabilityNotice(entry, sourceAvailability, {
+    el,
+    externalLink,
+  });
+  const versionNoticeNode = versionNotice(entry, currentVersion);
+  const history = versionHistory(entry, versions, currentVersion);
   content.append(heading);
   // A broken or degraded source affects every link on the page and remains a
   // warning at the top. The ordinary preservation confirmation is provenance,
-  // not an alert, so keep it with the registry history near the bottom.
-  if (!sourceNotice.classList.contains("preserved")) content.append(sourceNotice);
-  const notice = versionNotice(entry, currentVersion);
-  if (notice) content.append(notice);
+  // not an alert, so keep it with the registry history near the bottom. The
+  // ancillary observation decides that placement only after it settles; until
+  // then there is no availability claim or placeholder in the document.
+  if (versionNoticeNode) content.append(versionNoticeNode);
   // The statement first, then what was checked about it, then what it rests
   // on. A registry entry is about a theorem, and the theorem should not be
   // below the paperwork that certifies it; these three used to be the sixth,
@@ -1136,13 +1140,19 @@ async function renderEntry(
     challenge.section,
     evidence,
     trust,
-    solutionMetadata(entry, challenge.metadata, availability),
-    provenanceSection(entry, availability),
+    solutionMetadata(entry, challenge.metadata, sourceAvailability),
+    provenanceSection(entry, sourceAvailability),
     classificationSection(entry),
     editorial,
-    ...(sourceNotice.classList.contains("preserved") ? [sourceNotice] : []),
-    versionHistory(entry, versions, currentVersion),
+    history,
   );
+  sourceAvailability.whenReady(() => {
+    if (sourceNotice.classList.contains("preserved")) {
+      content.insertBefore(sourceNotice, history);
+    } else {
+      content.insertBefore(sourceNotice, versionNoticeNode || challenge.section);
+    }
+  });
 }
 
 function renderExactTombstone(tombstone, content) {
@@ -1181,7 +1191,7 @@ if (document.body.dataset.page === "entry") {
       loaded.renderBase,
       loaded.versions,
       loaded.currentVersion,
-      loaded.availability,
+      loaded.availabilityPromise,
       loaded.databaseBase,
     ),
     renderExactTombstone,

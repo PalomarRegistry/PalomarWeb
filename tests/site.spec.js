@@ -363,6 +363,104 @@ test("a thin wrapper says where the mathematics is before anything else", async 
   }
 });
 
+test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
+  const pending = [];
+  await page.route("**/database/source-availability.json", async (route) => {
+    let release;
+    const blocked = new Promise((resolve) => {
+      release = resolve;
+    });
+    pending.push({ release });
+    await blocked;
+    await route.abort("failed");
+  });
+
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+  await expect(page.locator(".entry-heading h1")).toBeVisible();
+  await expect(page.locator(".entry-evidence")).toBeVisible();
+  await expect(page.locator(".source-availability")).toBeHidden();
+  await expect(page.locator("#status")).toBeHidden();
+  await expect.poll(() => pending.length).toBe(1);
+  pending[0].release();
+
+  await page.goto(
+    `/render.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+  await expect(page.locator(".entry-heading h1")).toBeVisible();
+  await expect(page.locator(".challenge-metadata")).toBeVisible();
+  await expect(page.locator("#status")).toBeHidden();
+  await expect.poll(() => pending.length).toBe(2);
+  pending[1].release();
+});
+
+test("late availability updates source links in place without taking focus", async ({ page }) => {
+  let releaseAvailability;
+  let availabilityRequested;
+  const requested = new Promise((resolve) => {
+    availabilityRequested = resolve;
+  });
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    const response = await route.fetch();
+    availabilityRequested();
+    await new Promise((resolve) => {
+      releaseAvailability = resolve;
+    });
+    await route.fulfill({ response });
+  });
+
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}` +
+      `&availability=${missingAvailability}`,
+  );
+  await requested;
+  const source = page.getByRole("link", { name: /View full pinned statement file/ });
+  await expect(source).toHaveAttribute(
+    "href",
+    /github\.com\/example\/challenge\/blob\/1{40}\//,
+  );
+  await source.focus();
+  await expect(source).toBeFocused();
+
+  releaseAvailability();
+  await expect(source).toHaveAttribute(
+    "href",
+    /github\.com\/PalomarArchive\/example--challenge\/blob\/1{40}\//,
+  );
+  await expect(source).toBeFocused();
+  await expect(page.locator(".source-availability.original-missing")).toBeVisible();
+});
+
+test("a settled manifest reports two unavailable source copies without delaying content", async ({ page }) => {
+  await page.route("**/database/source-availability-missing.json", async (route) => {
+    const response = await route.fetch();
+    const availability = await response.json();
+    const fresh = new Date().toISOString().replace(/\.[0-9]{3}Z$/, "Z");
+    availability.generated_at = fresh;
+    for (const row of availability.repositories) {
+      row.original.status = "missing";
+      row.original.checked_at = fresh;
+      row.original.last_attempt_at = fresh;
+      row.archive.status = "missing";
+      row.archive.checked_at = fresh;
+      row.archive.last_attempt_at = fresh;
+    }
+    await route.fulfill({ response, json: availability });
+  });
+
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}` +
+      `&availability=${missingAvailability}`,
+  );
+
+  await expect(page.locator(".entry-heading h1")).toBeVisible();
+  const notice = page.getByRole("status").filter({ hasText: "No working preserved source location" });
+  await expect(notice).toHaveClass(/unrecoverable/);
+  await expect(notice.getByRole("link", { name: "Recorded original location" })).toBeVisible();
+  await expect(notice.getByRole("link", { name: "Recorded Palomar copy" })).toBeVisible();
+});
+
 test("a missing original automatically switches source links to the Palomar copy", async ({ page }) => {
   await page.goto(
     `/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}` +

@@ -75,21 +75,29 @@ Landing and verified search cards render before the source-availability
 manifest; if it arrives, their existing source controls are decorated in place.
 A linked `?q=` search does not also load the hidden recent listing; clearing the
 search starts one landing attempt, and a failed attempt can be retried.
+Entry and named-declarations pages follow the same rule: verified content and
+its recorded source links render immediately, then a validated availability
+result updates only those source controls in place. Each active entry or
+named-declarations page makes exactly one availability attempt; an unknown or
+withdrawn record makes none. Landing and search consumers share one
+in-flight/settled read. Each attempt has one 30-second deadline. A 404 is a
+stable page-scoped absence, while a timeout, transport failure, or invalid
+document is evicted so a later explicit consumer attempt can issue one retry.
 
 The browser code keeps the data boundary separate from presentation:
 `security.mjs` validates registry and availability documents and owns endpoint
 freshness, `source-preservation.mjs` matches validated manifest observations to
-the preservation receipt before resolving repository locations and decorating
-existing cards, `entry-pages.mjs` owns entry-route input and page-state
+the preservation receipt before resolving repository locations, publishing the
+progressive entry result, and decorating existing source controls,
+`entry-pages.mjs` owns entry-route input and page-state
 transitions, `challenge-presentation.mjs` owns the named-declarations artifact's
 entry correspondence and presentation states, `formalization-presentation.mjs`
 owns statement trust labels and the statement/proof dependency presentation,
 `entry-history-presentation.mjs` owns the entry page's canonical link,
 supersession notice, and immutable version-history section;
-`registry-loading.mjs` composes selected endpoints, JSON transport, the bounded
-landing/search source-availability cache, the direct entry source-availability
-read, and exact recent/entry-history/record/tombstone loading; and `app.js`
-composes the remaining page-level views.
+`registry-loading.mjs` composes selected endpoints, JSON transport, the one
+bounded page-scoped source-availability cache, and exact recent/entry-history/
+record/tombstone loading; and `app.js` composes the remaining page-level views.
 
 Runtime reads use the browser's normal HTTP cache behavior. The public data
 service gives successful documents a 60-second browser/shared-cache lifetime,

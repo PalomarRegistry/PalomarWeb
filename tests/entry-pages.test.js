@@ -203,14 +203,15 @@ test("named-declaration routes validate before loading and reveal only completed
     loadEntry: async () => ({
       entry,
       renderBase: new URL("https://render.example/"),
-      availability: { repositories: [] },
+      availabilityPromise: Promise.resolve({ repositories: [] }),
     }),
     renderExactTombstone: () => assert.fail("unexpected tombstone"),
     el: (tag, className, text = "") => ({ ...node(), tag, className, textContent: text }),
     challengePresentation: async (selected, renderBase, options) => {
       assert.equal(selected, entry);
       assert.equal(renderBase.href, "https://render.example/");
-      assert.deepEqual(options, { forceFrame: true, availability: { repositories: [] } });
+      assert.equal(options.forceFrame, true);
+      assert.deepEqual(await options.availabilityPromise, { repositories: [] });
       challengeStarted();
       await challenging;
       return { section };

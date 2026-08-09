@@ -3,6 +3,7 @@ import {
   safeExternalUrl,
 } from "./security.mjs";
 import {
+  bindSourceControl,
   sourceDirectoryUrl,
   sourceFileUrl,
   sourceLocation,
@@ -28,6 +29,21 @@ export function createFormalizationPresentation({ document }) {
     const node = el("a", "", text);
     node.href = safeExternalUrl(href).href;
     return node;
+  }
+
+  function sourceLink(text, sourceAvailability, urlForAvailability, textForAvailability) {
+    const current = sourceAvailability?.current ?? null;
+    return bindSourceControl(
+      externalLink(
+        textForAvailability ? textForAvailability(current) : text,
+        urlForAvailability(current),
+      ),
+      sourceAvailability,
+      (availability) => ({
+        url: urlForAvailability(availability),
+        ...(textForAvailability ? { text: textForAvailability(availability) } : {}),
+      }),
+    );
   }
 
   function detailRow(label, value) {
@@ -82,7 +98,7 @@ export function createFormalizationPresentation({ document }) {
     return section;
   }
 
-  function solutionMetadata(entry, renderMetadata, availability) {
+  function solutionMetadata(entry, renderMetadata, sourceAvailability = null) {
     const section = el("section", "entry-solution");
     const heading = el("div", "section-heading");
     const title = el("div");
@@ -102,9 +118,14 @@ export function createFormalizationPresentation({ document }) {
     proofRow.append(el("dt", "", "Proof file"));
     const proofValue = el("dd");
     proofValue.append(
-      externalLink(
+      sourceLink(
         entry.formalization.solution_path,
-        sourceFileUrl(entry, entry.formalization.solution_path, availability),
+        sourceAvailability,
+        (availability) => sourceFileUrl(
+          entry,
+          entry.formalization.solution_path,
+          availability,
+        ),
       ),
     );
     proofRow.append(proofValue);
@@ -136,37 +157,53 @@ export function createFormalizationPresentation({ document }) {
       const item = el("li");
       if (dependency.path !== undefined) {
         item.append(
-          externalLink(
+          sourceLink(
             dependency.name,
-            sourceDirectoryUrl(entry, dependency.path, availability),
+            sourceAvailability,
+            (availability) => sourceDirectoryUrl(entry, dependency.path, availability),
           ),
           el("code", "", dependency.path),
         );
       } else {
-        const location = sourceLocation(
+        const locationFor = (availability) => sourceLocation(
           entry,
           availability,
           dependency.repository,
           dependency.revision,
         );
+        const location = locationFor(sourceAvailability?.current ?? null);
+        const primary = externalLink(
+          dependency.repository,
+          pinnedRepositoryDirectoryUrl(location.repository, dependency.revision),
+        );
+        const archive = externalLink(
+          "Palomar preserved copy",
+          pinnedRepositoryDirectoryUrl(location.archiveRepository, dependency.revision),
+        );
+        const archiveSeparator = el("span", "source-archive-separator", " · ");
+        const applyAvailability = (availability) => {
+          const selected = locationFor(availability);
+          const useArchive = selected.useArchive;
+          primary.href = safeExternalUrl(
+            pinnedRepositoryDirectoryUrl(selected.repository, dependency.revision),
+          ).href;
+          primary.textContent = useArchive
+            ? `${dependency.repository} (Palomar copy)`
+            : dependency.repository;
+          const archiveWasFocused = document.activeElement === archive;
+          archive.hidden = useArchive;
+          archiveSeparator.hidden = useArchive;
+          if (archiveWasFocused && useArchive && typeof primary.focus === "function") {
+            primary.focus();
+          }
+        };
+        applyAvailability(sourceAvailability?.current ?? null);
+        sourceAvailability?.whenReady(applyAvailability);
         item.append(
-          externalLink(
-            location.useArchive
-              ? `${dependency.repository} (Palomar copy)`
-              : dependency.repository,
-            pinnedRepositoryDirectoryUrl(location.repository, dependency.revision),
-          ),
+          primary,
           el("code", "", dependency.revision.slice(0, 12)),
         );
-        if (!location.useArchive) {
-          item.append(
-            " · ",
-            externalLink(
-              "Palomar preserved copy",
-              pinnedRepositoryDirectoryUrl(location.archiveRepository, dependency.revision),
-            ),
-          );
-        }
+        item.append(archiveSeparator, archive);
       }
       list.append(item);
     }
