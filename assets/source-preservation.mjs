@@ -1,9 +1,40 @@
 import {
+  assertValidatedSourceRecord,
   availabilityRecord,
   pinnedRepositoryDirectoryUrl,
   pinnedRepositoryFileUrl,
   safeExternalUrl,
 } from "./security.mjs";
+
+const receiptIndexes = new WeakMap();
+
+function receiptIndex(entry) {
+  assertValidatedSourceRecord(entry);
+  if (receiptIndexes.has(entry)) return receiptIndexes.get(entry);
+
+  const index = new Map();
+  for (const row of entry.preservation.repositories) {
+    const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
+    // Validation already rejects duplicates. Keep this last check because an
+    // in-place mutation before first presentation must not make Map insertion
+    // silently choose one of two receipts.
+    if (index.has(key)) {
+      throw new Error(
+        `entry has an ambiguous source preservation receipt for ` +
+          `${row.source_repository}@${row.commit}`,
+      );
+    }
+    // Copy the three consumed fields so later presentation never observes an
+    // in-place mutation of the accepted receipt row.
+    index.set(key, {
+      source_repository: row.source_repository,
+      commit: row.commit,
+      fork_repository: row.fork_repository,
+    });
+  }
+  receiptIndexes.set(entry, index);
+  return index;
+}
 
 /**
  * Publish one fail-soft availability result to source controls as it arrives.
@@ -167,14 +198,7 @@ export function createSourceAvailabilityNotice(
 
 /** Resolve one immutable repository revision to its recorded or preserved copy. */
 export function sourceLocation(entry, availability, repository, commit) {
-  const repositories = entry?.preservation?.repositories;
-  if (!Array.isArray(repositories)) {
-    throw new Error("entry has no canonical source preservation receipt");
-  }
-  const mapping = repositories.find(
-    (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
-      row.commit === commit,
-  );
+  const mapping = receiptIndex(entry).get(`${repository.toLowerCase()}\0${commit}`);
   if (!mapping) throw new Error(`entry has no preserved copy of ${repository}@${commit}`);
   const observed = availabilityRecord(availability, repository, commit);
   const status = observed &&

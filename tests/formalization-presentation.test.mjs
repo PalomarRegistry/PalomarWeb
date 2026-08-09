@@ -3,18 +3,25 @@ import test from "node:test";
 
 import { createFormalizationPresentation } from "../assets/formalization-presentation.mjs";
 import { createSourceAvailabilityBinding } from "../assets/source-preservation.mjs";
-import { validateAvailability } from "../assets/security.mjs";
+import { validateAvailability, validateEntry } from "../assets/security.mjs";
 import {
   COMMIT,
   availabilityEndpoint,
   availabilityManifest,
   availabilityRow,
   entry,
+  summary,
 } from "./registry-fixture.mjs";
 
 const CHECKED_AT = new Date(Math.floor(Date.now() / 1_000) * 1_000)
   .toISOString()
   .replace(".000Z", "Z");
+
+function acceptedEntry(mutate = () => {}) {
+  const record = entry();
+  mutate(record);
+  return validateEntry(record, summary());
+}
 
 function fakeDocument() {
   const document = {
@@ -102,8 +109,9 @@ test("the trust badge and statement dependency section present the accepted trus
 
 test("the proof section presents imports and every preserved dependency kind", () => {
   const { solutionMetadata } = createFormalizationPresentation({ document: fakeDocument() });
-  const record = entry();
-  record.formalization.project_dependencies.unshift({ name: "shared", path: "shared" });
+  const record = acceptedEntry((value) => {
+    value.formalization.project_dependencies.unshift({ name: "shared", path: "shared" });
+  });
   const section = solutionMetadata(
     record,
     { schema_version: 2, solution_imports: ["ExampleDependency"] },
@@ -141,7 +149,7 @@ test("the proof section presents imports and every preserved dependency kind", (
 test("confirmed missing originals switch the proof and dependency links to their copies", async () => {
   const document = fakeDocument();
   const { solutionMetadata } = createFormalizationPresentation({ document });
-  const record = entry();
+  const record = acceptedEntry();
   const missing = availabilityEndpoint({ status: "missing", checked_at: CHECKED_AT });
   const availability = validateAvailability(availabilityManifest([
     availabilityRow({ original: missing }),

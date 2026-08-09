@@ -50,8 +50,22 @@ const TIMESTAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 export const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 export const AVAILABILITY_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
+// These indexes and validation receipts are deliberately out-of-band. Public
+// registry objects retain their exact JSON shape, while consumers can refuse
+// raw lookalikes instead of falling back to repeated array scans.
+const availabilityIndexes = new WeakMap();
+const validatedSourceRecords = new WeakMap();
+
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
+}
+
+export function assertValidatedSourceRecord(record) {
+  const repositories = record?.preservation?.repositories;
+  if (!Array.isArray(repositories) ||
+      validatedSourceRecords.get(record) !== repositories) {
+    fail("source record was not validated or its preservation receipt changed");
+  }
 }
 
 function object(value, field) {
@@ -359,6 +373,11 @@ export function validateRecent(value) {
       fail(`${field}.preservation does not match source`);
     }
   }
+  // Mark rows only after the complete projection succeeds. A reference to an
+  // early row from a later-rejected document must not become presentation data.
+  for (const summary of entries) {
+    validatedSourceRecords.set(summary, summary.preservation.repositories);
+  }
   return document;
 }
 
@@ -414,6 +433,7 @@ export function validateAvailability(manifest) {
   }
   const seen = new Set();
   const repositories = [];
+  const index = new Map();
   for (const [position, value] of array(
     document.repositories,
     "availability.repositories",
@@ -430,7 +450,7 @@ export function validateAvailability(manifest) {
     const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
     if (seen.has(key)) fail(`availability.repositories[${position}] is duplicated`);
     seen.add(key);
-    repositories.push({
+    const accepted = {
       ...row,
       original: availabilityEndpoint(
         row.original,
@@ -440,22 +460,25 @@ export function validateAvailability(manifest) {
         row.archive,
         `availability.repositories[${position}].archive`,
       ),
-    });
+    };
+    repositories.push(accepted);
+    index.set(key, accepted);
   }
-  return { ...document, repositories };
+  const accepted = { ...document, repositories };
+  availabilityIndexes.set(accepted, index);
+  return accepted;
 }
 
 export function availabilityRecord(manifest, repository, revision, now = Date.now()) {
   if (!manifest) return null;
+  const index = availabilityIndexes.get(manifest);
+  if (!index) fail("availability document was not validated");
   const generated = availabilityTimestamp(manifest.generated_at);
   if (generated === null || generated > now + AVAILABILITY_MAX_CLOCK_SKEW_MS ||
       now - generated > AVAILABILITY_MAX_AGE_MS) {
     return null;
   }
-  const record = manifest.repositories.find(
-    (row) => row.source_repository.toLowerCase() === repository.toLowerCase() &&
-      row.commit === revision,
-  ) || null;
+  const record = index.get(`${repository.toLowerCase()}\0${revision}`) || null;
   if (record === null) return null;
 
   // generated_at describes the publication, not the age of every observation
@@ -1327,6 +1350,7 @@ export function validateEntry(entry, summary) {
   string(render.rendered_at, "entry.challenge_render.rendered_at");
 
   validateCanonicalRecordLinks(entry);
+  validatedSourceRecords.set(entry, entry.preservation.repositories);
   return entry;
 }
 

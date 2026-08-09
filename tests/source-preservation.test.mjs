@@ -9,13 +9,14 @@ import {
   sourceLocation,
   topSourceLocation,
 } from "../assets/source-preservation.mjs";
-import { validateAvailability } from "../assets/security.mjs";
+import { validateAvailability, validateEntry } from "../assets/security.mjs";
 import {
   COMMIT,
   availabilityEndpoint,
   availabilityManifest,
   availabilityRow,
   entry,
+  summary,
 } from "./registry-fixture.mjs";
 
 const CHECKED_AT = new Date(Math.floor(Date.now() / 1_000) * 1_000)
@@ -34,6 +35,12 @@ function manifest({
       archive: availabilityEndpoint({ status: archive, checked_at: CHECKED_AT }),
     }),
   ], { generated_at: CHECKED_AT }));
+}
+
+function acceptedEntry(mutate = () => {}) {
+  const record = entry();
+  mutate(record);
+  return validateEntry(record, summary());
 }
 
 function fakeCard() {
@@ -95,7 +102,7 @@ function withFakeDocument(run) {
 }
 
 test("source location switches only from a confirmed missing original to its recorded archive", () => {
-  const record = entry();
+  const record = acceptedEntry();
   const availability = manifest({ original: "missing", archive: "available" });
   const location = sourceLocation(
     record,
@@ -173,7 +180,7 @@ test("one broken availability control cannot block its siblings", async () => {
 
 test("source location does not switch when both original and archive are missing", () => {
   const location = topSourceLocation(
-    entry(),
+    acceptedEntry(),
     manifest({ original: "missing", archive: "missing" }),
   );
   assert.equal(location.repository, "example/challenge");
@@ -184,7 +191,7 @@ test("source location does not switch when both original and archive are missing
 
 test("source location ignores availability for a different preserved fork", () => {
   const location = topSourceLocation(
-    entry(),
+    acceptedEntry(),
     manifest({
       original: "missing",
       forkRepository: "PalomarArchive/example--challenge--other",
@@ -198,23 +205,75 @@ test("source location ignores availability for a different preserved fork", () =
 
 test("source location rejects a repository revision absent from the preservation receipt", () => {
   assert.throws(
-    () => sourceLocation(entry(), null, "example/other", COMMIT),
+    () => sourceLocation(acceptedEntry(), null, "example/other", COMMIT),
     /entry has no preserved copy of example\/other@/,
   );
 });
 
-test("source location rejects a missing preservation receipt instead of falling back", () => {
+test("source location rejects raw records and receipts changed after validation", () => {
+  assert.throws(
+    () => topSourceLocation(entry(), null),
+    /source record was not validated/,
+  );
+
+  const missing = acceptedEntry();
+  delete missing.preservation;
+  assert.throws(
+    () => topSourceLocation(missing, null),
+    /preservation receipt changed/,
+  );
+
+  const replaced = acceptedEntry();
+  replaced.preservation = {
+    ...replaced.preservation,
+    repositories: [...replaced.preservation.repositories],
+  };
+  assert.throws(
+    () => topSourceLocation(replaced, null),
+    /preservation receipt changed/,
+  );
+});
+
+test("one accepted receipt traversal serves every later source lookup", () => {
   const record = entry();
-  delete record.preservation;
+  const rows = record.preservation.repositories;
+  let rowReads = 0;
+  record.preservation.repositories = new Proxy(rows, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && /^[0-9]+$/.test(property)) rowReads += 1;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  validateEntry(record, summary());
+  const serialized = JSON.stringify(record);
+  rowReads = 0;
+
+  for (let repetition = 0; repetition < 25; repetition += 1) {
+    sourceLocation(record, null, record.source.repository, record.source.commit);
+    sourceLocation(
+      record,
+      null,
+      record.formalization.project_dependencies[0].repository,
+      record.formalization.project_dependencies[0].revision,
+    );
+  }
+
+  assert.equal(rowReads, rows.length, "the receipt is traversed exactly once to build its index");
+  assert.equal(JSON.stringify(record), serialized, "the private index does not alter serialized data");
+});
+
+test("a post-validation ambiguous receipt fails closed before it is cached", () => {
+  const record = acceptedEntry();
+  record.preservation.repositories.push({ ...record.preservation.repositories[0] });
   assert.throws(
     () => topSourceLocation(record, null),
-    /no canonical source preservation receipt/,
+    /ambiguous source preservation receipt/,
   );
 });
 
 test("card decoration isolates a malformed entry and still decorates its peer", () => {
   withFakeDocument((warnings) => {
-    const bad = entry();
+    const bad = acceptedEntry();
     bad.source = {
       ...bad.source,
       repository: "example/unpreserved",
@@ -224,7 +283,7 @@ test("card decoration isolates a malformed entry and still decorates its peer", 
 
     decorateCardSet(
       cards.map((card) => card.element),
-      [bad, entry()],
+      [bad, acceptedEntry()],
       manifest({ original: "missing", archive: "available" }),
       "Fixture card",
     );
@@ -243,7 +302,7 @@ test("card decoration reports length mismatches without throwing in its error ha
     const cards = [fakeCard(), fakeCard()];
     assert.doesNotThrow(() => decorateCardSet(
       cards.map((card) => card.element),
-      [entry()],
+      [acceptedEntry()],
       manifest({ original: "missing", archive: "available" }),
       "Fixture card",
     ));
@@ -262,7 +321,7 @@ test("card decoration transfers focus before hiding the archive link", () => {
 
     decorateCardSet(
       [card.element],
-      [entry()],
+      [acceptedEntry()],
       manifest({ original: "missing", archive: "available" }),
       "Fixture card",
     );

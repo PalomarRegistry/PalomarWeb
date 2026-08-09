@@ -442,6 +442,48 @@ test("availability applies the inclusive freshness boundaries to each endpoint",
   assert.equal(recordAt(stamp(AVAILABILITY_MAX_CLOCK_SKEW_MS + 1_000)).status, "unknown");
 });
 
+test("validated availability uses one private index for every later lookup", () => {
+  const rows = Array.from({ length: 12 }, (_, position) => availabilityRow({
+    source_repository: `example/repository-${position}`,
+    fork_repository: `PalomarArchive/example--repository-${position}`,
+  }));
+  const manifest = validateAvailability(availabilityManifest(rows));
+  const serialized = JSON.stringify(manifest);
+  let rowReads = 0;
+  manifest.repositories = new Proxy(manifest.repositories, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && /^[0-9]+$/.test(property)) rowReads += 1;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+
+  for (let repetition = 0; repetition < 50; repetition += 1) {
+    assert.equal(
+      availabilityRecord(
+        manifest,
+        "EXAMPLE/repository-11",
+        COMMIT,
+        Date.parse("2026-08-08T12:00:00Z"),
+      ).source_repository,
+      "example/repository-11",
+    );
+  }
+
+  assert.equal(rowReads, 0, "accepted availability rows are never traversed by lookup");
+  assert.equal(JSON.stringify(manifest), serialized, "the private index does not alter JSON");
+});
+
+test("availability lookup refuses raw and ambiguous documents", () => {
+  assert.throws(
+    () => availabilityRecord(availabilityManifest([availabilityRow()]), "example/challenge", COMMIT),
+    /availability document was not validated/,
+  );
+  assert.throws(
+    () => validateAvailability(availabilityManifest([availabilityRow(), availabilityRow()])),
+    /is duplicated/,
+  );
+});
+
 test("one malformed endpoint cannot hide its fresh sibling or unrelated rows", () => {
   const now = Date.parse("2026-08-08T12:00:00Z");
   const manifest = validateAvailability(availabilityManifest([
