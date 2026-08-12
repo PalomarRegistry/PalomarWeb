@@ -147,6 +147,37 @@
         </p>
       </section>
 
+      <section id="lean-and-mathlib-updates">
+        <h2>What happens to an entry when Lean or Mathlib is updated?</h2>
+        <p>
+          Nothing. Each entry verifies one immutable snapshot of a repository
+          against the exact Lean toolchain and the exact dependency revisions
+          that snapshot pinned, and the entry records all of them. Palomar never
+          re-runs a verified entry against a later Lean or Mathlib, so an entry
+          neither improves nor decays as those projects move: it continues to say
+          what was true of that snapshot, with those versions.
+        </p>
+        <p>
+          To record a result against newer versions, submit the updated commit
+          and give the existing Palomar ID on the submission form. The new
+          submission is verified and reviewed from scratch, and if it is accepted
+          and you choose to register it, it becomes the next version of that same
+          identifier. Palomar requires the repository, project directory, and
+          Comparator configuration to match the existing entry, so an update
+          cannot be attached to an unrelated result — and because every
+          submission proves push access, only someone who can push to that
+          repository can add a version to it.
+        </p>
+        <p>
+          Leave the field blank and the submission becomes a separate entry with
+          its own identifier instead; nothing is inferred from a repository
+          matching an earlier one. Every version stays permanently resolvable at
+          its explicit version URL, while an identifier on its own resolves to
+          the newest active version — which is why a citation should name the
+          version.
+        </p>
+      </section>
+
       <section id="what-palomar-is-not">
         <h2>What Palomar is <em>not</em></h2>
         <ol class="not-list">
