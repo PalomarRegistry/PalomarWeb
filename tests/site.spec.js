@@ -870,6 +870,17 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
     "Editorial assurance",
   );
   await expect(page.locator(".acceptance-callout")).toContainText("AI-mediated review");
+  const mechanicalAssurance = page.locator(".acceptance-callout p", {
+    hasText: "Mechanical assurance",
+  });
+  await expect(mechanicalAssurance.locator("code")).toHaveText([
+    "Solution.lean",
+    "Challenge.lean",
+  ]);
+  const editorialAssurance = page.locator(".acceptance-callout p", {
+    hasText: "Editorial assurance",
+  });
+  await expect(editorialAssurance.locator("code")).toHaveText("Challenge.lean");
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
   await expect(page.getByText("Verification workflow commit")).toBeVisible();
   await expect(page.getByRole("link", { name: "Archived editorial review" })).toBeVisible();
