@@ -419,6 +419,25 @@
           kind relaxes the stricter transitive Challenge-import rule.
         </p>
 
+        <h3 id="extra-axioms">My formalization needs axioms beyond the standard set. Can it still be registered?</h3>
+        <p>
+          Not as axioms. A proved Solution declaration may depend only on the
+          axioms Palomar’s current
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#23-comparator-configuration">Comparator
+          configuration policy</a> permits: in particular <code>sorryAx</code>
+          and <code>Lean.ofReduceBool</code>, which <code>sorry</code> and
+          <code>native_decide</code> introduce, are not among them, and adding
+          them to your own Comparator configuration does not change that.
+          Ordinary <code>decide</code> is fine. The Challenge module, by
+          contrast, is expected to contain <code>sorry</code>.
+        </p>
+        <p>
+          If a result really is conditional, state the condition instead of
+          assuming it, for instance writing
+          <code>theorem euler_product (h : RiemannHypothesis) : …</code> instead
+          of <code>axiom RiemannHypothesis : …</code>.
+        </p>
+
         <h3 id="formalization-yaml">What belongs in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>?</h3>
         <p>
           The structured metadata must include the project name, authors,
