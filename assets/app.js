@@ -675,9 +675,9 @@ const {
 } = createEntryHistoryPresentation({ document, localPageUrl, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
-function assurance(kind, sentence) {
+function assurance(kind, ...content) {
   const paragraph = el("p");
-  paragraph.append(el("strong", "", `${kind}: `), document.createTextNode(sentence));
+  paragraph.append(el("strong", "", `${kind}: `), ...content);
   return paragraph;
 }
 
@@ -742,11 +742,17 @@ function acceptanceCallout(entry, databaseBase) {
     el("strong", "", `Registered on ${displayDate(registrationDate(entry.registered_at))}`),
     assurance(
       "Mechanical assurance",
-      "Comparator checked that the recorded Solution proves the recorded formal Challenge under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",
+      "Comparator checked that the recorded ",
+      el("code", "", "Solution.lean"),
+      " proves the recorded formal ",
+      el("code", "", "Challenge.lean"),
+      " under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",
     ),
     assurance(
       "Editorial assurance",
-      "an AI-mediated review judged whether that formal Challenge matches the informal mathematical claim under the recorded policy. This is not human peer review or a novelty certificate.",
+      "an AI-mediated review judged whether that formal ",
+      el("code", "", "Challenge.lean"),
+      " matches the informal mathematical claim under the recorded policy. This is not human peer review or a novelty certificate.",
     ),
     evidenceLinks,
   );
