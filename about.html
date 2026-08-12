@@ -152,7 +152,7 @@
         <p>
           Nothing. Each entry verifies one immutable snapshot of a repository
           against the exact Lean toolchain and the exact dependency revisions
-          that snapshot pinned, and the entry records all of them. Palomar never
+          that snapshot pinned, and the entry records these details. Palomar never
           re-runs a verified entry against a later Lean or Mathlib, so an entry
           neither improves nor decays as those projects move.
         </p>
@@ -165,9 +165,7 @@
           configuration must match the existing entry.
         </p>
         <p>
-          Leave the field blank and the submission becomes a separate entry with
-          its own identifier instead; nothing is inferred from a repository
-          matching an earlier one. Every version stays permanently resolvable at
+          Every version stays permanently resolvable at
           its explicit version URL, while an identifier on its own resolves to
           the newest active version.
         </p>
