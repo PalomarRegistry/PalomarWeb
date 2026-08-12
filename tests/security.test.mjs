@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { htmlFiles } from "../scripts/build-site.mjs";
 import {
@@ -63,6 +64,42 @@ import {
 // The website's own origin, for the cross-origin assertion below.
 const CANONICAL_WEB_BASE_FOR_TEST = "https://palomar-registry.org/";
 const AVAILABILITY_PRODUCER_COMMIT = "7e446fda08d26b5c1290a9e3ec0947ece0c4994e";
+
+/**
+ * The sibling PalomarDatabase checkout, as a filesystem path.
+ *
+ * `new URL(...).pathname` is a URL component, not a path: on Windows it is
+ * `/c:/Users/...`, which git rejects outright. That reached `git -C` at the
+ * source-availability contract below, and its catch reported a stale checkout
+ * for what was a malformed argument -- a confident wrong diagnosis that only
+ * ever appears off CI, since CI is Linux and the two spellings agree there.
+ */
+function databaseCheckout() {
+  return (
+    process.env.PALOMAR_DATABASE_CHECKOUT
+    ?? fileURLToPath(new URL("../../PalomarDatabase/", import.meta.url))
+  );
+}
+
+/**
+ * The Python that can run the producer's contract module.
+ *
+ * `python3` is the name on CI and on a developer's Linux or macOS machine, and
+ * is not a name Windows has: there the interpreter is `python`, and the stub
+ * Windows ships under the other name answers by advertising the Store. Trying
+ * both keeps the contract exercised rather than reported as broken.
+ */
+function pythonInterpreter() {
+  for (const candidate of ["python3", "python"]) {
+    try {
+      execFileSync(candidate, ["-c", ""], { stdio: "ignore" });
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  assert.fail("no Python interpreter is available to run the producer contract");
+}
 
 test("production ignores every database query override", () => {
   for (const override of [
@@ -182,8 +219,7 @@ test("recent validation accepts the Database-owned landing-card fixture", async 
   // This is the same mandatory cross-repository contract mechanism used for
   // canonical schemas below. Locally it reads PalomarDatabase's checked
   // fixture; CI supplies the published producer output at the same path.
-  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
-    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const checkout = databaseCheckout();
   const fixture = JSON.parse(
     await readFile(new URL("tests/fixtures/recent.json", `file://${checkout}/`), "utf8"),
   );
@@ -591,8 +627,7 @@ test("availability keeps whole-document freshness inclusive and fail-closed", ()
 });
 
 test("availability agrees with the Database producer contract", async () => {
-  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
-    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const checkout = databaseCheckout();
   const executable = new URL("tools/source_availability_contract.py", `file://${checkout}/`);
   try {
     await readFile(executable, "utf8");
@@ -645,7 +680,7 @@ test("availability agrees with the Database producer contract", async () => {
     "value = normalize_manifest(json.load(sys.stdin), as_of=dt.datetime(2026, 8, 8, 12, tzinfo=dt.UTC))",
     "json.dump(value, sys.stdout, sort_keys=True)",
   ].join("; ");
-  const produced = JSON.parse(execFileSync("python3", ["-c", script], {
+  const produced = JSON.parse(execFileSync(pythonInterpreter(), ["-c", script], {
     encoding: "utf8",
     input: JSON.stringify(raw),
   }));
@@ -967,8 +1002,7 @@ test("every provenance value the schema allows has an explicit label", async () 
   // sets PALOMAR_DATABASE_CHECKOUT; locally a sibling clone is assumed. This
   // test exists because the site drifting from the schema is what took the
   // registry down, so an unavailable schema is a failure, not a skip.
-  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
-    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const checkout = databaseCheckout();
   const schema = JSON.parse(
     await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
   );
@@ -986,8 +1020,7 @@ test("every provenance value the schema allows has an explicit label", async () 
 });
 
 test("the site requires the Database entry version and exact preservation shape", async () => {
-  const checkout = process.env.PALOMAR_DATABASE_CHECKOUT
-    ?? new URL("../../PalomarDatabase/", import.meta.url).pathname;
+  const checkout = databaseCheckout();
   const schema = JSON.parse(
     await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
   );
