@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -221,7 +222,7 @@ test("recent validation accepts the Database-owned landing-card fixture", async 
   // fixture; CI supplies the published producer output at the same path.
   const checkout = databaseCheckout();
   const fixture = JSON.parse(
-    await readFile(new URL("tests/fixtures/recent.json", `file://${checkout}/`), "utf8"),
+    await readFile(join(checkout, "tests", "fixtures", "recent.json"), "utf8"),
   );
   assert.ok(fixture.entries.length > 0, "the external contract fixture must exercise a row");
   assert.equal(validateRecent(fixture), fixture);
@@ -628,7 +629,7 @@ test("availability keeps whole-document freshness inclusive and fail-closed", ()
 
 test("availability agrees with the Database producer contract", async () => {
   const checkout = databaseCheckout();
-  const executable = new URL("tools/source_availability_contract.py", `file://${checkout}/`);
+  const executable = join(checkout, "tools", "source_availability_contract.py");
   try {
     await readFile(executable, "utf8");
   } catch (error) {
@@ -638,7 +639,7 @@ test("availability agrees with the Database producer contract", async () => {
     // the same checkout root. This remains a mandatory exercised contract,
     // not a skip; local development invokes the exact executable below.
     const fixture = JSON.parse(await readFile(
-      new URL("tests/fixtures/source-availability.json", `file://${checkout}/`),
+      join(checkout, "tests", "fixtures", "source-availability.json"),
       "utf8",
     ));
     assert.ok(fixture.repositories.length > 0, "the deployed contract must exercise a row");
@@ -1004,7 +1005,7 @@ test("every provenance value the schema allows has an explicit label", async () 
   // registry down, so an unavailable schema is a failure, not a skip.
   const checkout = databaseCheckout();
   const schema = JSON.parse(
-    await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
+    await readFile(join(checkout, "schema-v2.json"), "utf8"),
   );
   const provenance = schema.properties.provenance.properties;
   for (const [field, labels] of [
@@ -1022,7 +1023,7 @@ test("every provenance value the schema allows has an explicit label", async () 
 test("the site requires the Database entry version and exact preservation shape", async () => {
   const checkout = databaseCheckout();
   const schema = JSON.parse(
-    await readFile(new URL("schema-v2.json", `file://${checkout}/`), "utf8"),
+    await readFile(join(checkout, "schema-v2.json"), "utf8"),
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
   assert.ok(schema.required.includes("preservation"));
