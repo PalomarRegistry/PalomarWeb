@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+
+function expandHex(hex) {
+  const raw = hex.slice(1);
+  if (raw.length === 3) return [...raw].map((channel) => channel.repeat(2)).join("");
+  if (raw.length === 6) return raw;
+  throw new Error(`unsupported colour ${hex}`);
+}
+
+function luminance(hex) {
+  const channels = expandHex(hex).match(/../g).map((pair) => {
+    const value = parseInt(pair, 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrast(a, b) {
+  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (high + 0.05) / (low + 0.05);
+}
+
+function palette(css, index) {
+  const blocks = [...css.matchAll(/:root\s*\{([^}]*)\}/g)];
+  const values = {};
+  for (const [, name, value] of blocks[index][1].matchAll(/(--[a-z-]+):\s*(#[^;\s]+)/gi)) {
+    if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) {
+      throw new Error(`${name} uses unsupported colour ${value}`);
+    }
+    values[name] = value;
+  }
+  return values;
+}
+
+const css = await readFile(new URL("../assets/style.css", import.meta.url), "utf8");
+const light = palette(css, 0);
+const dark = { ...light, ...palette(css, 1) };
+
+for (const [mode, colours] of [["light", light], ["dark", dark]]) {
+  test(`${mode} text colours meet WCAG AA`, () => {
+    for (const [foreground, background] of [
+      ["--ink", "--paper"], ["--muted", "--paper"], ["--faint", "--paper"],
+      ["--link", "--paper"], ["--visited", "--paper"], ["--hover", "--paper"],
+      ["--caution", "--notice-paper"], ["--warning", "--paper"],
+      ["--copied", "--paper"], ["--success", "--success-paper"],
+      ["--missing", "--missing-paper"], ["--unrecoverable", "--unrecoverable-paper"],
+      ["--ink", "--shade"], ["--ink", "--notice-paper"],
+    ]) {
+      const ratio = contrast(colours[foreground], colours[background]);
+      assert.ok(
+        ratio >= 4.5,
+        `${mode} ${foreground} on ${background} is ${ratio.toFixed(2)}:1, needs 4.5`,
+      );
+    }
+  });
+
+  test(`${mode} non-text indicators retain contrast`, () => {
+    for (const token of ["--field", "--available"]) {
+      const ratio = contrast(colours[token], colours["--paper"]);
+      assert.ok(ratio >= 3, `${mode} ${token} is ${ratio.toFixed(2)}:1 on paper, needs 3`);
+    }
+  });
+
+  test(`${mode} acceptance mark meets text contrast`, () => {
+    const ratio = contrast(colours["--paper"], colours["--success-mark"]);
+    assert.ok(ratio >= 4.5, `${mode} acceptance mark is ${ratio.toFixed(2)}:1, needs 4.5`);
+  });
+
+  test(`${mode} filter states retain text contrast`, () => {
+    for (const background of ["--control", "--control-hover", "--paper"]) {
+      const ratio = contrast(colours["--ink"], colours[background]);
+      assert.ok(ratio >= 4.5, `${mode} filter on ${background} is ${ratio.toFixed(2)}:1, needs 4.5`);
+    }
+  });
+}
+
+test("all page colours are palette variables", () => {
+  const rules = css.slice(css.indexOf("* {"));
+  const literals = [...rules.matchAll(/#[0-9a-f]{3,8}\b/gi)].map((match) => match[0]);
+  assert.deepEqual(literals, []);
+});
+
+for (const file of ["index.html", "entry.html", "about.html", "render.html", "404.html"]) {
+  test(`${file} advertises browser-selected light and dark chrome colours`, async () => {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.match(html, /name="theme-color" content="#ffffff" media="\(prefers-color-scheme: light\)"/);
+    assert.match(html, /name="theme-color" content="#101216" media="\(prefers-color-scheme: dark\)"/);
+  });
+}

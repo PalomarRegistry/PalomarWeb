@@ -38,6 +38,27 @@ const currentEntrySchema = Number(
   )[1],
 );
 
+test("the registry follows the browser's light and dark preference", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(16, 18, 22)");
+  await expect(page.locator("body")).toHaveCSS("color", "rgb(232, 234, 238)");
+  await expect(page.locator(".toolbar")).toHaveCSS("background-color", "rgb(28, 32, 39)");
+  await expect(page.locator(".filter:not(.active)").first()).toHaveCSS(
+    "background-color", "rgb(36, 41, 51)",
+  );
+  await expect(page.locator(".filter.active")).toHaveCSS("background-color", "rgb(16, 18, 22)");
+
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(page.locator("body")).toHaveCSS("color", "rgb(17, 17, 17)");
+  await expect(page.locator(".toolbar")).toHaveCSS("background-color", "rgb(242, 242, 242)");
+  await expect(page.locator(".filter:not(.active)").first()).toHaveCSS(
+    "background-color", "rgb(232, 232, 232)",
+  );
+  await expect(page.locator(".filter.active")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+});
+
 test("about headings expose hoverable links that copy their section URL", async ({ context, page }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/about.html");
