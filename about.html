@@ -4,7 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="About Palomar and submitting machine-checked formal mathematics.">
-    <meta name="theme-color" content="#ffffff">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://data.palomar-registry.org; frame-src 'self' https://data.palomar-registry.org; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
     <title>About — Palomar</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -137,6 +138,25 @@
         </p>
       </section>
 
+      <section id="disagreeing-with-the-review">
+        <h2>I disagree with the review’s assessment of my result. What can I do?</h2>
+        <p>
+          There is no appeal for an individual result: reopening a few decisions
+          for whoever writes in would make the outcome depend on who complained.
+          A rejected submission leaves no public record, and it can be revised
+          and resubmitted after a waiting period. Repeated submissions lengthen
+          that wait steeply, but carry no other penalty.
+        </p>
+        <p>
+          If you think the <a href="#editorial-floor">editorial floor</a> itself
+          is wrong, or you have run into anything else that looks like a defect
+          in Palomar rather than a disagreement about one result, please raise it
+          in the
+          <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar
+          channel on the Lean Zulip</a>.
+        </p>
+      </section>
+
       <section id="licences">
         <h2>What does the licence check cover?</h2>
         <p>
@@ -144,6 +164,30 @@
           for the submitted repository at its pinned commit. This is not legal
           or ownership verification: cited papers, reused formalizations, and
           dependencies retain their own licences.
+        </p>
+      </section>
+
+      <section id="lean-and-mathlib-updates">
+        <h2>What happens to an entry when Lean or Mathlib is updated?</h2>
+        <p>
+          Nothing. Each entry verifies one immutable snapshot of a repository
+          against the exact Lean toolchain and the exact dependency revisions
+          that snapshot pinned, and the entry records these details. Palomar never
+          re-runs a verified entry against a later Lean or Mathlib, so an entry
+          neither improves nor decays as those projects move.
+        </p>
+        <p>
+          To record a result against newer versions, submit the updated commit
+          and give the existing Palomar ID on the submission form. The new
+          submission is verified and reviewed from scratch, and if it is accepted
+          and you choose to register it, it becomes the next version of that same
+          identifier. The repository, project directory, and Comparator
+          configuration must match the existing entry.
+        </p>
+        <p>
+          Every version stays permanently resolvable at
+          its explicit version URL, while an identifier on its own resolves to
+          the newest active version.
         </p>
       </section>
 
@@ -236,6 +280,24 @@
             original repository disappears.
           </li>
         </ol>
+      </section>
+
+      <section id="commenting">
+        <h2>Is there a way to leave comments on a registry entry?</h2>
+        <p>
+          Not on Palomar, which does not have the resources to moderate
+          discussion.
+        </p>
+        <p>
+          The repository an entry points at is the natural home for technical
+          discussion, and most accept issues and pull requests. Beyond that, the
+          registry metadata is dedicated to the public domain under
+          <a href="https://data.palomar-registry.org/LICENSE">CC0</a> and
+          published with
+          <a href="https://data.palomar-registry.org/feed.xml">feeds</a>, so
+          anyone can build a commentary layer over Palomar. However, Palomar
+          does not run or endorse any such site.
+        </p>
       </section>
 
       <section id="check-it-yourself">
