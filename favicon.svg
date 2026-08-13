@@ -3,9 +3,9 @@
   <style>
     /* Dark blue vanishes against a dark tab strip, so the mark follows the
        same pairing as the rest of the site. */
-    path, circle { fill: #123a6b; }
+    path, circle { fill: #0000cc; }
     @media (prefers-color-scheme: dark) {
-      path, circle { fill: #7fb2f0; }
+      path, circle { fill: #8ab4f8; }
     }
   </style>
   <!-- One continuous taper, rather than a tube and a separate objective,
