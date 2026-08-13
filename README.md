@@ -28,10 +28,14 @@ future, or one second older is treated as unknown without discarding fresh
 sibling rows; a stale or unavailable whole manifest is likewise never believed.
 `last_attempt_at` may be null when the bounded producer has never attempted that
 endpoint.
-Registry cards display arXiv and MSC2020 classifications, and the toolbar can
-filter the rows the landing page holds by either taxonomy. The classification
-fields suggest codes represented by those rows but also accept any exact code,
-so a deep link such as `?arxiv=math.AG` produces a useful empty result even
+Registry cards lead with the identifier, registration date, title, abstract, and
+source links; the arXiv and MSC2020 classifications sit with the other entry
+details behind an "Entry details" toggle on each card. The toolbar filters the
+rows the landing page holds by text or trust, with the arXiv and MSC2020
+subject inputs tucked behind a "Subject filters" disclosure until a deep link
+such as `?arxiv=math.AG` opens it. The classification fields suggest codes
+represented by those rows but also accept any exact code, so a deep link such
+as `?arxiv=math.AG` produces a useful empty result even
 before that classification has an entry. The filter is over `recent.json`, which
 is the newest 200 current versions and not the registry, so it narrows what is
 on the page rather than searching everything; the search box does the latter,
@@ -212,6 +216,10 @@ Entry pages list all active versions. Older pages display a prominent link
 to the current version. Each page renders the selected version's own authorship,
 statement, proof, trust information, and review comments; information is never
 borrowed from a newer record. The site provides links, not computed diffs.
+The statement and the acceptance callout come first; the verification table,
+statement dependencies, proof, provenance, and review comments sit behind
+section disclosures that open when their heading is selected, and a fragment
+link into one (such as `#statement-dependencies`) opens it before scrolling.
 The registry does not define change summaries or major/minor versions, so the
 website does not infer them. If a richer version
 scheme is adopted later, it will require a new URL contract; existing integer

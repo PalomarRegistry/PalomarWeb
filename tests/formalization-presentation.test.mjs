@@ -84,6 +84,20 @@ test("the trust badge and statement dependency section present the accepted trus
   assert.deepEqual(texts(highSection, "code"), ["Mathlib"]);
   assert.equal(byClass(highSection, "reason-list").length, 0);
 
+  const singleLibrary = entry();
+  singleLibrary.trust = {
+    ...singleLibrary.trust,
+    challenge_dependencies: [{ repository: "leanprover-community/mathlib4" }],
+  };
+  const merged = presentation.statementDependencies(singleLibrary);
+  assert.deepEqual(
+    byClass(merged, "statement-import-line")[0].children.map((node) => node.textContent),
+    ["Mathlib", " · leanprover-community/mathlib4"],
+  );
+  assert.ok(!texts(merged, "h3").includes("Source repositories"));
+  assert.equal(byClass(merged, "plain-list").length, 0);
+  assert.equal(byClass(merged, "token-list").length, 0);
+
   const qualified = entry();
   qualified.trust = {
     ...qualified.trust,

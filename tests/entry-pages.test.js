@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  expandDetailsForTarget,
   renderChallengePage,
   renderEntryPage,
 } from "../assets/entry-pages.mjs";
@@ -22,6 +23,18 @@ function node({ hidden = false } = {}) {
     textContent: "",
     append(...children) {
       this.children.push(...children);
+    },
+  };
+}
+
+function detailsElement() {
+  return {
+    children: [],
+    open: false,
+    parentElement: null,
+    tagName: "DETAILS",
+    querySelector() {
+      return null;
     },
   };
 }
@@ -176,6 +189,36 @@ test("entry routes preserve exact tombstones and load failures", async (t) => {
     assert.equal(view.status.classList.contains("error"), true);
     assert.equal(view.content.hidden, true);
   });
+});
+
+test("expandDetailsForTarget opens the disclosure that would hide a fragment", () => {
+  const disclosure = detailsElement();
+  const ancestor = detailsElement();
+  const section = {
+    tagName: "SECTION",
+    parentElement: ancestor,
+    querySelector(selector) {
+      assert.equal(selector, "details.section-collapse");
+      return disclosure;
+    },
+  };
+  ancestor.children.push(section);
+
+  expandDetailsForTarget(section);
+
+  assert.equal(disclosure.open, true);
+  assert.equal(ancestor.open, true);
+});
+
+test("expandDetailsForTarget opens a details target itself", () => {
+  const target = detailsElement();
+  expandDetailsForTarget(target);
+  assert.equal(target.open, true);
+});
+
+test("expandDetailsForTarget tolerates stub elements without DOM hooks", () => {
+  const stub = { scrollIntoView() {} };
+  expandDetailsForTarget(stub);
 });
 
 test("named-declaration routes validate before loading and reveal only completed views", async () => {
