@@ -67,16 +67,19 @@ export function createFormalizationPresentation({ document }) {
     const disclosure = el("details", "section-collapse");
     const heading = el("div", "section-heading");
     const title = el("div");
-    title.append(
-      el("div", "eyebrow", "Statement dependencies"),
-      el(
-        "h2",
-        "",
-        entry.trust.level === "high"
-          ? "Depends only on Mathlib"
-          : "Depends on additional libraries",
-      ),
+    // Named from its own heading, so the section is a landmark even where a
+    // summary's contents are flattened into its accessible name and the
+    // heading inside it is not exposed as one.
+    const sectionHeading = el(
+      "h2",
+      "",
+      entry.trust.level === "high"
+        ? "Depends only on Mathlib"
+        : "Depends on additional libraries",
     );
+    sectionHeading.id = "statement-dependencies-heading";
+    section.setAttribute("aria-labelledby", sectionHeading.id);
+    title.append(el("div", "eyebrow", "Statement dependencies"), sectionHeading);
     heading.append(title);
     const summary = el("summary");
     summary.append(heading);
@@ -116,7 +119,10 @@ export function createFormalizationPresentation({ document }) {
     const disclosure = el("details", "section-collapse");
     const heading = el("div", "section-heading");
     const title = el("div");
-    title.append(el("div", "eyebrow", "Accepted proof"), el("h2", "", "Verified proof"));
+    const sectionHeading = el("h2", "", "Verified proof");
+    sectionHeading.id = "proof-heading";
+    section.setAttribute("aria-labelledby", sectionHeading.id);
+    title.append(el("div", "eyebrow", "Accepted proof"), sectionHeading);
     heading.append(title, el("span", "decision accepted-decision", "Accepted"));
     const summary = el("summary");
     summary.append(heading);

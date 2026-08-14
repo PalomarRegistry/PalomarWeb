@@ -28,6 +28,7 @@ function fakeDocument() {
     activeElement: null,
     createElement(tag) {
       return {
+        attributes: {},
         children: [],
         className: "",
         href: "",
@@ -37,6 +38,12 @@ function fakeDocument() {
         textContent: "",
         append(...children) {
           this.children.push(...children);
+        },
+        setAttribute(name, value) {
+          this.attributes[name] = String(value);
+        },
+        getAttribute(name) {
+          return Object.hasOwn(this.attributes, name) ? this.attributes[name] : null;
         },
         focus() {
           document.activeElement = this;
@@ -81,6 +88,11 @@ test("the trust badge and statement dependency section present the accepted trus
   const highSection = presentation.statementDependencies(high);
   assert.equal(highSection.id, "statement-dependencies");
   assert.ok(texts(highSection, "h2").includes("Depends only on Mathlib"));
+  // The heading sits inside a summary, so the section carries its own name:
+  // a reader whose browser flattens the summary still has a landmark here.
+  const highHeading = byTag(highSection, "h2")[0];
+  assert.equal(highSection.getAttribute("aria-labelledby"), highHeading.id);
+  assert.equal(highHeading.textContent, "Depends only on Mathlib");
   assert.deepEqual(texts(highSection, "code"), ["Mathlib"]);
   assert.equal(byClass(highSection, "reason-list").length, 0);
 

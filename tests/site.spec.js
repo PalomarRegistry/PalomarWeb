@@ -171,27 +171,19 @@ test("landing cards show the registration date and dated identifier", async ({ p
   expect(dynamicRequests).toHaveLength(2);
 });
 
-test("card metadata stays collapsed until the entry details toggle is opened", async ({ page }) => {
+test("card metadata is on the card, not behind a toggle", async ({ page }) => {
   await page.goto(`/?database=${database}`);
   const card = page.locator(".entry-card").first();
-  const details = card.locator(".card-details");
 
-  // The landing card leads with identity, title, abstract and source links;
-  // authors, theorems, subjects and the project directory wait behind a toggle.
-  await expect(details.locator("summary")).toHaveText("Entry details");
-  await expect(details.locator(".card-meta")).toBeHidden();
-  await expect(card.locator(".entry-id")).toBeVisible();
-  await expect(card.locator(".card-abstract")).toBeVisible();
-  await expect(card.locator(".repo-link")).toBeVisible();
-
-  await details.locator("summary").click();
-  await expect(details.locator(".card-meta")).toBeVisible();
-  await expect(details.locator(".card-subjects")).toContainText("math.CO");
-  await expect(details.locator(".card-project")).toContainText("Project directory");
-
-  // Collapse again to leave the listing compact.
-  await details.locator("summary").click();
-  await expect(details.locator(".card-meta")).toBeHidden();
+  // Titles in this registry are repository names, so the authors and the
+  // theorem are what make a row identifiable while scanning the list. They
+  // are read without opening anything, and there is nothing to open.
+  await expect(card.locator(".card-meta")).toBeVisible();
+  await expect(card.locator(".card-meta")).toContainText("Example");
+  await expect(card.locator(".card-meta")).toContainText("Example.theorem");
+  await expect(card.locator(".card-subjects")).toContainText("math.CO");
+  await expect(card.locator(".card-project")).toContainText("Project directory");
+  await expect(card.locator("details")).toHaveCount(0);
 });
 
 test("landing cards preserve the publisher's newest-first order", async ({ page }) => {
@@ -410,6 +402,57 @@ test("an entry answers its reader's first three questions first", async ({ page 
     "",
   );
   expect(page.url().split("#")[0]).toBe(before.split("#")[0]);
+});
+
+test("a hash that arrives without a click still opens its section", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator("#statement-dependencies")).toBeVisible();
+  await expect(page.locator("#statement-dependencies .section-collapse")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+
+  // What the address bar and the history buttons do: the fragment changes on a
+  // page that is already loaded, with no link to intercept.
+  await page.evaluate(() => {
+    window.location.hash = "#statement-dependencies";
+  });
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute(
+    "open",
+    "",
+  );
+  await expect(page.locator("#statement-dependencies")).toBeInViewport();
+});
+
+test("the licence caveat travels with the licence evidence it qualifies", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const collapse = page.locator(".entry-evidence .section-collapse");
+
+  // A page that says this licence evidence covers the snapshot only, while the
+  // licence row is folded away, is a caveat about nothing on the page.
+  await expect(collapse).toBeVisible();
+  await expect(collapse.locator(".licence-boundary")).toHaveCount(1);
+  await expect(page.locator(".licence-boundary")).toBeHidden();
+
+  await collapse.locator("summary").click();
+  await expect(collapse).toHaveAttribute("open", "");
+  await expect(page.locator(".licence-boundary")).toBeVisible();
+  await expect(collapse.locator("dl.details")).toContainText("Repository licence");
+});
+
+test("the subject filters make room in the toolbar instead of covering the list", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").first();
+  const top = await card.boundingBox();
+
+  await page.locator(".advanced-filters summary").click();
+  const inputs = await page.locator(".advanced-filters .category-filters").boundingBox();
+  const moved = await card.boundingBox();
+
+  // The opened panel pushes the list down; nothing it would otherwise float
+  // over, such as the first card's trust label, is hidden by it.
+  expect(inputs.y + inputs.height).toBeLessThanOrEqual(moved.y);
+  expect(moved.y).toBeGreaterThan(top.y);
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {

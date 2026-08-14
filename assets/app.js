@@ -203,8 +203,6 @@ function entryCard(
     );
     meta.append(project);
   }
-  const details = el("details", "card-details");
-  details.append(el("summary", "", "Entry details"), meta);
   const footer = el("div", "card-footer");
   const location = topSourceLocation(entry, null);
   const historyUrl = new URL(localPageUrl("entry.html", entry));
@@ -233,7 +231,7 @@ function entryCard(
     historyLink.setAttribute("aria-label", `${versionCount} versions of ${entry.id}`);
     footer.append(historyLink);
   }
-  card.append(top, title, abstract, details, footer);
+  card.append(top, title, abstract, meta, footer);
   return card;
 }
 
@@ -859,7 +857,15 @@ function provenanceSection(entry, sourceAvailability) {
   const disclosure = el("details", "section-collapse");
   const heading = el("div", "section-heading");
   const title = el("div");
-  title.append(el("div", "eyebrow", "Provenance"), el("h2", "", "Mathematical origin"));
+  // A heading inside a summary is exposed as a heading by Chromium, but the
+  // engines that flatten a summary's contents into its own accessible name
+  // would leave the section with no way to find it. Naming the section from
+  // the same text makes it a landmark, which is a second route to it that does
+  // not depend on how the disclosure treats what is inside the summary.
+  const sectionHeading = el("h2", "", "Mathematical origin");
+  sectionHeading.id = "provenance-heading";
+  section.setAttribute("aria-labelledby", sectionHeading.id);
+  title.append(el("div", "eyebrow", "Provenance"), sectionHeading);
   heading.append(title);
   const summary = el("summary");
   summary.append(heading);
@@ -1092,7 +1098,10 @@ async function renderEntry(
   }
   evidenceDetails.append(details);
   {
-    evidence.append(
+    // The sentence qualifies the licence row of the table above it, so it
+    // lives inside the same disclosure. Outside it, a collapsed page carries a
+    // caveat about licence evidence that is nowhere on the page.
+    evidenceDetails.append(
       el(
         "p",
         "licence-boundary",
@@ -1107,7 +1116,10 @@ async function renderEntry(
   const editorialDisclosure = el("details", "section-collapse");
   const editorialTitle = el("div", "section-heading");
   const editorialBlock = el("div");
-  editorialBlock.append(el("div", "eyebrow", "Editorial record"), el("h2", "", "Automated review"));
+  const editorialHeading = el("h2", "", "Automated review");
+  editorialHeading.id = "review-heading";
+  editorial.setAttribute("aria-labelledby", editorialHeading.id);
+  editorialBlock.append(el("div", "eyebrow", "Editorial record"), editorialHeading);
   editorialTitle.append(editorialBlock, el("span", "decision", "Accepted"));
   const editorialSummary = el("summary");
   editorialSummary.append(editorialTitle);
@@ -1219,6 +1231,19 @@ if (document.body.dataset.page === "entry") {
     if (fragment === "#") return;
     const target = document.getElementById(decodeURIComponent(fragment.slice(1)));
     if (target) expandDetailsForTarget(target);
+  });
+  // The click above covers links on this page and the initial render covers a
+  // fragment the page was opened with. A hash that arrives any other way, from
+  // the address bar or from history navigation, gets the same treatment: the
+  // browser has already scrolled to a collapsed heading, so the section is
+  // opened and the target brought back into view.
+  window.addEventListener("hashchange", () => {
+    const fragment = window.location.hash.slice(1);
+    if (!fragment) return;
+    const target = document.getElementById(decodeURIComponent(fragment));
+    if (!target) return;
+    expandDetailsForTarget(target);
+    target.scrollIntoView();
   });
   renderEntryPage({
     params,
