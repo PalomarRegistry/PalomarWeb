@@ -171,6 +171,17 @@ referrer. The frame sizes itself from a height the document posts back, clamped
 between 160 and 672 pixels, so an untrusted render can ask for a sensible height
 without being able to take the page over.
 
+The frame follows the browser's light and dark preference, and nothing is sent
+across the origin boundary to make it. A media query is answered by whichever
+browser lays the document out, and that is the same browser either side of the
+frame, so the render bundle carries its own palette and reads
+`prefers-color-scheme` for itself. There is no theme message to look for. The
+palettes are held level by a browser test that asserts the page and the framed
+document land on the same background in both modes; the bundle side is generated
+by PalomarSubmission's `render_challenge.py`. Renders published before that
+palette existed are immutable and stay light, because a bundle's bytes are what
+its recorded hash is of.
+
 A record that arrives carrying review scores is refused rather than rendered.
 The scores are not published and are not in the record; a served record that had
 them would mean something upstream had gone wrong, and displaying it would be

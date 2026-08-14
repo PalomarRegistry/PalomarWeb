@@ -641,6 +641,19 @@ class Handler(SimpleHTTPRequestHandler):
 <title>Hostile render fixture</title>
 <style>html, body {{ height: auto; overflow: auto; }} body {{ margin: 0; }}
 .theorem {{ padding: 1rem; }} .theorem-lines {{ height: 70rem; }}</style>
+<style id="palomar-declaration-style">
+/* The two colours a real bundle's palette binds for the frame's own canvas.
+   PalomarSubmission injects the whole palette; only these reach a browser
+   here, because what this fixture is for is the boundary: the frame reads
+   prefers-color-scheme for itself, and has to land on the paper the page
+   around it is drawn on. If PalomarWeb's --paper moves and this does not,
+   the frame is a rectangle of the wrong colour and the spec says so. */
+:root {{ color-scheme: light dark; --palomar-paper: #ffffff; --palomar-ink: #24292e; }}
+@media (prefers-color-scheme: dark) {{
+  :root {{ --palomar-paper: #101216; --palomar-ink: #e8eaee; }}
+}}
+html, body {{ background: var(--palomar-paper); color: var(--palomar-ink); }}
+</style>
 <body><main><p class="docstring">The theorem doc-string.</p>
 <div class="theorem"><pre>theorem Example.theorem :</pre><div class="theorem-lines"></div>
 <pre id="theorem-end">  True := by trivial</pre></div>
