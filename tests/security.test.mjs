@@ -956,6 +956,32 @@ test("About says what registration publishes, and what it does not", async () =>
   }
 });
 
+test("both pages say the authorization evidence is public from verification", async () => {
+  // The dispatch that starts mechanical verification runs in the public
+  // submission repository, and the Server puts the declared relationship, the
+  // free-text evidence and any corrected identifier into its inputs, where a
+  // run page shows them to anyone. A draft of the privacy policy said the
+  // evidence stayed private until registration, which is the reassuring
+  // direction to be wrong in and the one a submitter acts on: the form warns
+  // about it precisely because writing a name there publishes the name. The
+  // notes field is the one that really is withheld, so the two must not drift
+  // into each other.
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  assert.match(about, /Public from verification onward:[\s\S]{0,220}approval evidence you wrote/);
+  assert.match(privacy, /public early, not on registration/);
+  assert.match(privacy, /authorization\s+evidence if you wrote any/);
+  for (const [name, html] of [["about.html", about], ["privacy.html", privacy]]) {
+    assert.doesNotMatch(
+      html,
+      /evidence[^.]{0,80}(?:not (?:sent|public)|stays private|is private)[^.]{0,60}until you register/i,
+      `${name} claims the authorization evidence is withheld until registration`,
+    );
+  }
+  // The notes are the field that is genuinely kept out of the public dispatch.
+  assert.match(privacy, /deliberately kept out of the public verification\s+dispatch/);
+});
+
 test("About describes both ways push access is proved", async () => {
   // A sign-in and the agent's tag-and-gist do not establish the same thing,
   // and step 3 used to name only the first.

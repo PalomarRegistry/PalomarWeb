@@ -99,19 +99,23 @@
             <strong>Free-text context, if you write any.</strong> The notes
             field, for whatever you want the editorial review to know. It is
             held in the private submission state and shown to the automated
-            review. It is not sent to the public verification workflow. There is
-            one way it can travel: if you go on to register, the review’s
-            comments become part of the public record, and a review answering
-            your note may repeat what it says. Do not put anything sensitive in
-            this field.
+            review. It is deliberately kept out of the public verification
+            dispatch, and the workflow never reads it. There is one way it can
+            travel: if you go on to register, the review’s comments become part
+            of the public record, and a review answering your note may repeat
+            what it says. Do not put anything sensitive in this field.
           </li>
           <li>
             <strong>Authorization evidence, if you provide any.</strong> Also
-            free text, and this one is published if you register: it becomes
-            part of the permanent registry record, beside the authorization
-            relationship you declared. It is not sent to the public verification
-            workflow either, so before registration it is private. Write it for
-            a reader.
+            free text, and this one is public early, not on registration. It
+            travels in the dispatch that starts mechanical verification, and the
+            inputs of a workflow run in a public repository are readable by
+            anyone who opens its page, so your evidence is public from
+            verification onward whether or not you ever register. It appears in
+            the public mechanical report as well, and registration then makes it
+            permanent by putting it in the registry record. The submission form
+            says this where you type it: do not name anyone who has not agreed
+            to be named.
           </li>
           <li>
             <strong>Your address, while a request is being counted.</strong>
@@ -157,10 +161,14 @@
           authors, and a field recording whether those authors participated in,
           endorsed, declined, did not respond to, or were never contacted about
           the formalization. Notes about related formalizations are free text
-          and routinely name people and describe what they did. The editorial
-          review’s comments, published on registration, can also discuss named
-          people, because discussing the literature means discussing its
-          authors.
+          and routinely name people and describe what they did. A record also
+          names the repository and the account that owns it, which for a
+          personal repository is a person’s login. The editorial review’s
+          comments, published on registration, can also discuss named people,
+          because discussing the literature means discussing its authors. And
+          the preserved copy of the source carries whatever its git history
+          carries, which is the name and the email address in every commit,
+          from everyone who ever committed to that repository.
         </p>
         <p>
           <strong>Where it comes from.</strong> The submitter’s repository,
@@ -170,11 +178,19 @@
           Palomar also preserves the submitted repository as a public fork under
           the <a href="https://github.com/PalomarArchive">PalomarArchive</a>
           organization, with an immutable tag at the verified commit, so that
-          the exact source Palomar checked stays retrievable. A fork carries the
-          repository’s git history, and git history carries the names and email
-          addresses its committers put in their own commits. Palomar does not
+          the exact source Palomar checked stays retrievable. Palomar does not
           add that data and does not index it; forking is how the source is kept
           honest, and the history comes with it.
+        </p>
+        <p>
+          <strong>How you are told.</strong> Not individually. Palomar does not
+          write to the people a record names to tell them a record names them,
+          and for the authors of a cited paper it usually has no way to. This
+          page is the notice instead: it lives at a fixed address, is linked
+          from the foot of every page and from the lawful-request document, and
+          says what is held, why, and who to write to. If that reached you late,
+          or only because you went looking, the rights below are not diminished
+          by it.
         </p>
         <p>
           <strong>Who sees it.</strong> Everyone. These fields are in the public
@@ -185,9 +201,13 @@
           <strong>On what basis.</strong> Palomar’s legitimate interest, and the
           public interest, in a durable and checkable scholarly record. The
           fields are of the kind a paper, a preprint server, or a bibliography
-          carries about the same people, they come from a public repository
-          their subjects published, and Palomar does not enrich, profile, or
-          contact anyone from them. If you are named in a record and think that
+          carries about the same people, they come from a public repository, and
+          Palomar does not enrich, profile, or contact anyone from them. What
+          Palomar cannot tell you is that you put them there yourself: a
+          submitter names the authors, and may name someone who never saw the
+          submission, and a commit in the preserved history may have been pushed
+          by somebody other than the person named in it. If you are named in a
+          record and think that
           balance came out wrong for you, that is exactly what the objection
           right below is for, and you do not need to have submitted anything to
           use it.
@@ -268,20 +288,26 @@
         </p>
         <p>
           Public from verification dispatch onward, not from the moment you
-          press submit: your repository, your commit, and the submission
-          identifier, which appear in a public GitHub Actions run whose logs are
-          public. The dispatch carries the repository, the commit, the
-          submission identifier, the verification mode, and any optional project
-          paths you gave. It does not carry your account, your notes, or your
-          authorization evidence. Whether you later registered is inferable from
-          the registry.
+          press submit. Palomar starts the run in a public repository, and the
+          inputs a run was dispatched with are readable by anyone who opens its
+          page, as are its logs. That dispatch carries, exactly: your
+          repository, your commit, the submission identifier, the verification
+          mode, whichever of the optional project paths you gave, the
+          authorization relationship you declared, your free-text authorization
+          evidence if you wrote any, and the Palomar identifier of the existing
+          record if you are submitting a correction to one. It does not carry
+          your notes, which are kept out of it deliberately, and it does not
+          carry the account that proved push access. Whether you later
+          registered is inferable from the registry.
         </p>
         <p>
-          Public only if you register: the registry record, which carries the
-          authorization relationship you declared and the free-text evidence you
-          wrote, and the editorial review and its verdict. Withdraw instead and
-          none of it is published. The verification run that already ran stays
-          public; it cannot be recalled.
+          Public only if you register: the registry record and the editorial
+          review with its verdict. The record also carries the authorization
+          relationship and the evidence, but those were already public from
+          dispatch; what registration adds is permanence. Withdraw instead and
+          no record and no review are published. The verification run that
+          already ran stays public, with everything its inputs carried; it
+          cannot be recalled.
         </p>
         <p>
           Not published whichever you choose: your identity as the submitter.
@@ -292,8 +318,9 @@
           submitted. What Palomar does not do is put your name in the record.
         </p>
         <p>
-          As About says: “private” here means access-controlled, not
-          confidential.
+          As About says, “private” here means not public, not confidential. The
+          protocol specification puts the same thing as access-controlled: the
+          material has an audience, and that audience is not only you.
         </p>
       </section>
 
@@ -360,32 +387,44 @@
           ones withdrawn since.
         </p>
         <p>
-          <strong>Removed:</strong> the free-text context you wrote, the
-          free-text authorization evidence, the login name of the account that
-          proved push access, and the top-level submitter field. An event is
-          appended saying identifying details were removed, so the audit trail
-          records that it happened.
+          <strong>Removed:</strong> the free-text context you wrote and the
+          top-level submitter field are set to null, which is the shape a record
+          with no notes has anyway. The free-text authorization evidence and the
+          login inside the push-access proof are deleted outright rather than
+          nulled, because a record that never carried them has no such key at
+          all, and writing null would invent a shape intake never produces. An
+          event is appended saying identifying details were removed, so the
+          audit trail records that it happened.
         </p>
         <p>
-          <strong>Kept:</strong> the numeric id of that account, and the
-          authorization relationship you declared. The numeric id stays because
-          the integrity checks that keep one person’s submission from being
-          handed to another verify it, and a record without it fails closed
-          rather than harmlessly. Keeping it is a trade and not a claim that the
-          result is anonymous: a GitHub account id is stable, and GitHub will
-          answer who it belongs to without asking anyone for permission. So a
-          withdrawn record still leads back to the account that sent it, and the
-          honest description of withdrawal is that it removes what you wrote and
-          the readable name, not that it makes you unknown.
+          <strong>Kept:</strong> the numeric id of that account, the
+          authorization relationship you declared, and the repository and its
+          owner. The numeric id stays because the integrity checks that keep one
+          person’s submission from being handed to another verify it, and a
+          record without it fails closed rather than harmlessly. Keeping it is a
+          trade and not a claim that the result is anonymous: a GitHub account
+          id is stable, and GitHub will answer who it belongs to without asking
+          anyone for permission.
+        </p>
+        <p>
+          The owner is the blunter point. A submission records the repository it
+          named and the account that owns it, and for a repository under your
+          own account that is the same readable login the scrub deletes from the
+          proof. So the accurate description is narrow: withdrawal removes what
+          you wrote and the login from the fields that recorded who submitted.
+          It does not remove your name from the record, and it does not make you
+          unknown.
         </p>
         <p>
           <strong>Unaffected:</strong> the git history of the submission state,
           which retains what was committed before the scrub. Erasing that too is
           a request under the process below rather than an automatic consequence
           of withdrawing. Also unaffected is the public verification run, which
-          keeps the repository, the commit, and the submission identifier in a
-          public log until GitHub expires it. Your account, your notes, and your
-          authorization evidence were never in that run.
+          keeps everything its dispatch carried: the repository, the commit, the
+          submission identifier, the authorization relationship, your
+          authorization evidence if you wrote any, and the identifier of any
+          record you were correcting. Withdrawing does not reach it. Your notes
+          and the account that proved push access were never in it.
         </p>
       </section>
 
@@ -474,7 +513,8 @@
             provider is not asked to keep the response object. It is not a claim
             that nothing is retained at the provider. OpenAI’s published API
             terms describe their own abuse-monitoring retention, of up to thirty
-            days, and state that API inputs and outputs are not used to train
+            days by default and subject to the legal and safety exceptions they
+            state, and say that API inputs and outputs are not used to train
             their models by default. Those are OpenAI’s statements about
             OpenAI’s systems, reproduced here because you are entitled to know
             what Palomar is relying on. They are not Palomar guarantees:
@@ -497,18 +537,45 @@
         </p>
         <p>
           Palomar relies on the transfer terms in each provider’s published data
-          protection agreement, linked in the previous section, and has not
-          negotiated separate terms with any of them. Each of those documents
-          states the safeguards its own transfers rest on: Cloudflare’s, for
-          instance, applies the European Commission’s standard contractual
-          clauses as amended by the United Kingdom addendum. This page does not
-          summarise the other two, and deliberately so. Those documents are the
-          providers’ own, they change, and the current text of each is the
-          accurate statement rather than a paraphrase written here. If you want
-          to know how a specific piece of your data is handled, ask at
+          protection agreement and has not negotiated separate terms with any of
+          them. What each provider says it relies on, in its own words:
+        </p>
+        <ol class="not-list">
+          <li>
+            <strong>GitHub</strong> states that for transfers from the EU, the
+            UK and Switzerland to countries without an adequacy decision it
+            generally relies on the European Commission’s standard contractual
+            clauses under Implementing Decision 2021/914, and separately that it
+            has certified to the EU-U.S. Data Privacy Framework, with the UK
+            Extension and the Swiss-U.S. Framework.
+            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
+            Privacy Statement</a>.
+          </li>
+          <li>
+            <strong>Cloudflare</strong> applies the EU standard contractual
+            clauses, deemed amended by the UK Addendum for transfers out of the
+            United Kingdom, and additionally names its certification under the
+            Global Cross-Border Privacy Rules system.
+            <a href="https://www.cloudflare.com/cloudflare-customer-dpa/">Cloudflare
+            Data Processing Addendum</a>.
+          </li>
+          <li>
+            <strong>OpenAI</strong> states its safeguards in its
+            <a href="https://openai.com/policies/data-processing-addendum/">Data
+            Processing Addendum</a>. That document refused to open from the
+            machine this page was drafted on, so rather than write down a
+            mechanism nobody here has read, this line says only where it is.
+            Ask and you will be told what it currently says.
+          </li>
+        </ol>
+        <p>
+          Those documents are the providers’ own and they change, so each one is
+          the accurate statement and this summary is not. A copy of the terms in
+          force for any of them is available on request. If you want to know how
+          a specific piece of your data is handled, ask at
           <a href="mailto:privacy@palomar-registry.org">privacy@palomar-registry.org</a>
-          and you will be told which provider holds it and pointed at the terms
-          in force.
+          and you will be told which provider holds it and sent the terms it is
+          held under.
         </p>
       </section>
 
