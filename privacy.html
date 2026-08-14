@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="What Palomar collects, where it is kept, who can read it, and what you can ask for.">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://data.palomar-registry.org; frame-src 'self' https://data.palomar-registry.org; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+    <title>Privacy — Palomar</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="assets/style.css">
+  </head>
+  <body data-page="privacy">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="./">Palomar</a>
+      <nav aria-label="Main navigation">
+        <a href="./">Registry</a>
+        <a href="about.html">About</a>
+        <a href="https://submit.palomar-registry.org/">Submit</a>
+      </nav>
+    </header>
+
+    <main id="content" class="about faq">
+      <h1>Privacy at Palomar</h1>
+      <p class="subtitle">What Palomar collects, where it is kept, who can read it, and what you can ask for</p>
+
+      <p class="lede">
+        Palomar is a registry of mathematics, not of people, and most of what it
+        publishes is about a repository and a commit. This page covers the part
+        that is about people: what a submitter hands over, what Palomar takes
+        from the repository itself about people who never submitted anything,
+        where all of it lives, and what can still be asked for afterwards.
+        <a href="about.html#what-is-public">About</a> describes the same
+        arrangement from the submitter’s side; if the two ever disagree, that is
+        a bug, and <a href="mailto:privacy@palomar-registry.org">tell us</a>.
+      </p>
+
+      <section id="who-is-responsible">
+        <h2>Who is responsible</h2>
+        <p>
+          Palomar is operated by Kim Morrison, who is the data controller for
+          the personal data described here. The word “controller” is the legal
+          one for whoever decides what is collected and why; in practice it
+          means that the decisions on this page are hers to answer for.
+        </p>
+        <p>
+          Write to
+          <a href="mailto:privacy@palomar-registry.org">privacy@palomar-registry.org</a>
+          about anything on this page: a question, a correction, a request to
+          exercise one of the rights below, or a complaint. That address is
+          read; it is not an autoresponder.
+        </p>
+      </section>
+
+      <section id="reading-the-site">
+        <h2>Reading this site</h2>
+        <p>
+          Reading Palomar involves no account, no cookie, and no analytics. The
+          pages are static files served by GitHub Pages, and they read the
+          registry itself from <code>data.palomar-registry.org</code>, which is
+          a Cloudflare Worker. Both of those see the requests any web server
+          sees, and each handles that traffic as its own controller under its
+          own terms and for its own platform security and abuse purposes.
+          Palomar adds no tracker to them and receives no report of who read
+          what.
+        </p>
+        <p>
+          These pages can be embedded in a frame on another site, and Palomar
+          does not try to prevent it. It could not: a page served from GitHub
+          Pages cannot send the header that refuses framing, and the content
+          policy each page carries in its own markup has no way to say it. That
+          is acceptable here rather than merely unavoidable. There is nothing on
+          these pages to act on your behalf: no session, no cookie, no button
+          that changes anything, only registry records being read. Framing them
+          is quotation, not impersonation.
+        </p>
+      </section>
+
+      <section id="what-is-collected">
+        <h2>What a submitter hands over</h2>
+        <p>
+          None of this is collected from a reader. All of it comes from someone
+          who chose to submit a repository.
+        </p>
+        <ol class="not-list">
+          <li>
+            <strong>A GitHub account, at sign-in.</strong> The browser route
+            asks you to sign in to GitHub so that Palomar can ask GitHub one
+            question: can this account push to the repository you named?
+            Palomar keeps the account’s login name and its numeric id in the
+            private submission state, and discards the access token; the token
+            is never stored. The numeric id is kept because logins can be
+            renamed and reused, and a record that says only “alice” may later
+            name someone else.
+          </li>
+          <li>
+            <strong>Free-text context, if you write any.</strong> The notes
+            field, for whatever you want the editorial review to know. It is
+            held in the private submission state and shown to the automated
+            review. It is deliberately kept out of the public verification
+            dispatch, and the workflow never reads it. There is one way it can
+            travel: if you go on to register, the review’s comments become part
+            of the public record, and a review answering your note may repeat
+            what it says. Do not put anything sensitive in this field.
+          </li>
+          <li>
+            <strong>Authorization evidence, if you provide any.</strong> Also
+            free text, and this one is public early, not on registration. It
+            travels in the dispatch that starts mechanical verification, and the
+            inputs of a workflow run in a public repository are readable by
+            anyone who opens its page, so your evidence is public from
+            verification onward whether or not you ever register. It appears in
+            the public mechanical report as well, and registration then makes it
+            permanent by putting it in the registry record. The submission form
+            says this where you type it: do not name anyone who has not agreed
+            to be named.
+          </li>
+          <li>
+            <strong>Your address, while a request is being counted.</strong>
+            Starting a submission is rate-limited by connecting address before
+            anything else happens. Palomar passes the address to Cloudflare’s
+            rate limiter as a counting key and writes it nowhere of its own: not
+            into the submission state, not into a Palomar log. Cloudflare sees
+            it because Cloudflare is carrying the request. A second, slower
+            limit is counted per account rather than per address, and it is
+            durable: it lives in the private submission state under a file name
+            derived from your numeric account id. What it holds is counters and
+            times. No rate document in that state carries a name, and the server
+            writes only a fixed list of fields into one, so a name cannot
+            reappear there quietly. Earlier documents did carry a login, and
+            git history keeps those bodies.
+          </li>
+        </ol>
+        <p>
+          An agent submitting without a browser proves write access differently,
+          by pushing a tag at the submitted commit and posting a gist carrying
+          the same challenge. Both are artifacts on GitHub made by whichever
+          account the agent used, and the gist is how that account names itself.
+          <a href="about.html#how-to-submit">About</a> explains why that route
+          establishes less than a sign-in does.
+        </p>
+      </section>
+
+      <section id="from-the-repository">
+        <h2>What Palomar takes from the repository, about other people</h2>
+        <p>
+          This is the part a submitter is least likely to expect, so it gets its
+          own section. A registry record describes a piece of mathematics, and
+          mathematics has authors. Most of the personal data Palomar publishes
+          is therefore not about the submitter at all, and Palomar obtains it
+          from the submitted repository and its metadata rather than from the
+          people it concerns.
+        </p>
+        <p>
+          <strong>What it is.</strong> The public entry schema carries a list of
+          authors, each with a name and optionally a GitHub handle and an ORCID;
+          a list of responsible maintainers in the same shape; and, for each
+          mathematical source the work builds on, that source’s title, its
+          authors, and a field recording whether those authors participated in,
+          endorsed, declined, did not respond to, or were never contacted about
+          the formalization. Notes about related formalizations are free text
+          and routinely name people and describe what they did. A record also
+          names the repository and the account that owns it, which for a
+          personal repository is a person’s login. The editorial review’s
+          comments, published on registration, can also discuss named people,
+          because discussing the literature means discussing its authors. And
+          the preserved copy of the source carries whatever its git history
+          carries, which is the name and the email address in every commit,
+          from everyone who ever committed to that repository.
+        </p>
+        <p>
+          <strong>Where it comes from.</strong> The submitter’s repository,
+          principally its
+          <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>,
+          which is where a project declares its authors and its sources.
+          Palomar also preserves the submitted repository as a public fork under
+          the <a href="https://github.com/PalomarArchive">PalomarArchive</a>
+          organization, with an immutable tag at the verified commit, so that
+          the exact source Palomar checked stays retrievable. Palomar does not
+          add that data and does not index it; forking is how the source is kept
+          honest, and the history comes with it.
+        </p>
+        <p>
+          <strong>How you are told.</strong> Not individually. Palomar does not
+          write to the people a record names to tell them a record names them,
+          and for the authors of a cited paper it usually has no way to. This
+          page is the notice instead: it lives at a fixed address, is linked
+          from the foot of every page and from the lawful-request document, and
+          says what is held, why, and who to write to. If that reached you late,
+          or only because you went looking, the rights below are not diminished
+          by it.
+        </p>
+        <p>
+          <strong>Who sees it.</strong> Everyone. These fields are in the public
+          record by design, which is what makes a registry entry citable and
+          checkable.
+        </p>
+        <p>
+          <strong>On what basis.</strong> Palomar’s legitimate interest, and the
+          public interest, in a durable and checkable scholarly record. The
+          fields are of the kind a paper, a preprint server, or a bibliography
+          carries about the same people, they come from a public repository, and
+          Palomar does not enrich, profile, or contact anyone from them. What
+          Palomar cannot tell you is that you put them there yourself: a
+          submitter names the authors, and may name someone who never saw the
+          submission, and a commit in the preserved history may have been pushed
+          by somebody other than the person named in it. If you are named in a
+          record and think that
+          balance came out wrong for you, that is exactly what the objection
+          right below is for, and you do not need to have submitted anything to
+          use it.
+        </p>
+      </section>
+
+      <section id="lawful-bases">
+        <h2>The basis for each purpose</h2>
+        <p>
+          Different parts of Palomar rest on different things, and lumping them
+          together would hide the part that matters: which of them you can stop,
+          and when.
+        </p>
+        <ol class="not-list">
+          <li>
+            <strong>Intake and editorial review</strong> rest on your consent.
+            You choose to submit, and you can withdraw at any point before
+            registration.
+          </li>
+          <li>
+            <strong>Mechanical verification, which is public,</strong> also
+            rests on your consent, given when you submit: dispatching the public
+            run is how a submission gets verified, and there is no unpublic way
+            to do it. What that dispatch carries is listed below. Withdrawing
+            afterwards does not unpublish a run that has already happened.
+          </li>
+          <li>
+            <strong>Publishing a registry record</strong> rests on your consent,
+            acted on at the moment you register. The schema is explicit about
+            this: the registration timestamp is defined as the moment the
+            submitter’s consent was acted on.
+          </li>
+          <li>
+            <strong>Personal data about third parties in the record</strong>
+            rests on legitimate interests, as set out in the previous section.
+          </li>
+          <li>
+            <strong>Keeping the private submission state for audit</strong>
+            rests on legitimate interests: a decision nobody can reconstruct is
+            a decision nobody can challenge, including the submitter who wants
+            to challenge it.
+          </li>
+          <li>
+            <strong>Rate limiting and abuse prevention</strong> rest on
+            legitimate interests. The registry shares one pool of credentials
+            and API calls, so an unthrottled loop is a way to stop Palomar
+            recording anything at all.
+          </li>
+          <li>
+            <strong>Correspondence with the privacy address</strong> rests on
+            legitimate interests in answering you, and, where what you sent is a
+            data-protection request, on Palomar’s legal obligation to handle it
+            and to be able to show that it did.
+          </li>
+        </ol>
+        <p>
+          The honest part about consent. Before registration, withdrawing your
+          consent stops the thing: no registry record and no editorial review
+          are published, and the private record is scrubbed as described below.
+          After registration it does not work that way, and no wording here can
+          make it. Withdrawing consent stops future processing but does not
+          reverse what was lawfully published while it stood, and a published
+          record is already in other people’s hands. What is available instead
+          is the lawful-request process: suppression of the public projection,
+          or correction by a new version, with the canonical bytes ordinarily
+          retained privately. An upheld statutory right can reach further; that
+          is described under
+          <a href="#after-registration">correction, takedown, and erasure</a>.
+        </p>
+      </section>
+
+      <section id="public-and-private">
+        <h2>What becomes public, and when</h2>
+        <p>
+          This restates
+          <a href="about.html#what-is-public">the same section of About</a>,
+          which remains the fuller account.
+        </p>
+        <p>
+          Public from verification dispatch onward, not from the moment you
+          press submit. Palomar starts the run in a public repository, and the
+          inputs a run was dispatched with are readable by anyone who opens its
+          page, as are its logs. That dispatch carries, exactly: your
+          repository, your commit, the submission identifier, the verification
+          mode, whichever of the optional project paths you gave, the
+          authorization relationship you declared, your free-text authorization
+          evidence if you wrote any, and the Palomar identifier of the existing
+          record if you are submitting a correction to one. It does not carry
+          your notes, which are kept out of it deliberately, and it does not
+          carry the account that proved push access. Whether you later
+          registered is inferable from the registry.
+        </p>
+        <p>
+          Public only if you register: the registry record and the editorial
+          review with its verdict. The record also carries the authorization
+          relationship and the evidence, but those were already public from
+          dispatch; what registration adds is permanence. Withdraw instead and
+          no record and no review are published. The verification run that
+          already ran stays public, with everything its inputs carried; it
+          cannot be recalled.
+        </p>
+        <p>
+          Not published whichever you choose: your identity as the submitter.
+          The registry record has no field for the person who sent a submission,
+          no schema has one, and registration does not add one. That is a design
+          decision rather than a redaction. Your repository is public and the
+          account that owns it remains as visible as it was before you
+          submitted. What Palomar does not do is put your name in the record.
+        </p>
+        <p>
+          As About says, “private” here means not public, not confidential. The
+          protocol specification puts the same thing as access-controlled: the
+          material has an audience, and that audience is not only you.
+        </p>
+      </section>
+
+      <section id="where-it-lives">
+        <h2>Where it lives and who can read it</h2>
+        <p>
+          The private submission state is an access-controlled GitHub
+          repository. Three parties can see material in it, each limited to what
+          its role needs: Palomar’s operators, who run the registry and decide
+          submissions; GitHub, which hosts the repository and runs the
+          workflows; and the model provider behind the automated review, which
+          receives the material that review is run on. That is what makes it not
+          confidential.
+        </p>
+        <p>
+          The public registry record is the other side. It is append-only in
+          ordinary operation: published versions are not rewritten, and a
+          correction is a new version rather than an edit to an old one. A named
+          Moderator can suppress one exact version from the public service,
+          which then answers 404 for that version’s record, evidence and render,
+          leaving a tombstone carrying the identifier, the version, and the UTC
+          date of removal, and nothing else. The canonical bytes of what was
+          published are kept privately even then, because a record of what the
+          registry once asserted is the thing that lets a later dispute be
+          settled.
+        </p>
+      </section>
+
+      <section id="how-long">
+        <h2>How long it is kept</h2>
+        <p>
+          The packet each automated review runs on is kept for 90 days as a
+          GitHub Actions workflow artifact, and then expires. Public workflow
+          logs follow GitHub’s own 90-day retention.
+        </p>
+        <p>
+          The submission state records themselves are kept indefinitely, so that
+          any decision can still be audited. Because that state lives in git,
+          its history keeps earlier values of the fields as well as the current
+          ones. This is worth saying plainly rather than in passing: a value
+          that has been changed or scrubbed is still in the history.
+        </p>
+        <p>
+          Published records, and the preserved forks of the repositories behind
+          them, are kept for as long as the registry exists. That is what
+          publication means here.
+        </p>
+        <p>
+          Correspondence with the privacy address is kept while the matter it
+          concerns is open, and while any window for complaining about how it
+          was handled is still open. After that, what is kept durably is a
+          minimum-necessary summary filed with the moderation record: enough to
+          show what was asked and what was decided, and no more.
+        </p>
+      </section>
+
+      <section id="withdrawing">
+        <h2>Withdrawing before registration</h2>
+        <p>
+          Until you register, you can withdraw, and withdrawal is not only a
+          change of status. It scrubs the current private record. It was applied
+          to the records withdrawn before it existed as well, so what it removes
+          is absent from every withdrawn record in the state, not only from the
+          ones withdrawn since.
+        </p>
+        <p>
+          <strong>Removed:</strong> the free-text context you wrote and the
+          top-level submitter field are set to null, which is the shape a record
+          with no notes has anyway. The free-text authorization evidence and the
+          login inside the push-access proof are deleted outright rather than
+          nulled, because a record that never carried them has no such key at
+          all, and writing null would invent a shape intake never produces. An
+          event is appended saying identifying details were removed, so the
+          audit trail records that it happened.
+        </p>
+        <p>
+          <strong>Kept:</strong> the numeric id of that account, the
+          authorization relationship you declared, and the repository and its
+          owner. The numeric id stays because the integrity checks that keep one
+          person’s submission from being handed to another verify it, and a
+          record without it fails closed rather than harmlessly. Keeping it is a
+          trade and not a claim that the result is anonymous: a GitHub account
+          id is stable, and GitHub will answer who it belongs to without asking
+          anyone for permission.
+        </p>
+        <p>
+          The owner is the blunter point. A submission records the repository it
+          named and the account that owns it, and for a repository under your
+          own account that is the same readable login the scrub deletes from the
+          proof. So the accurate description is narrow: withdrawal removes what
+          you wrote and the login from the fields that recorded who submitted.
+          It does not remove your name from the record, and it does not make you
+          unknown.
+        </p>
+        <p>
+          <strong>Unaffected:</strong> the git history of the submission state,
+          which retains what was committed before the scrub. Erasing that too is
+          a request under the process below rather than an automatic consequence
+          of withdrawing. Also unaffected is the public verification run, which
+          keeps everything its dispatch carried: the repository, the commit, the
+          submission identifier, the authorization relationship, your
+          authorization evidence if you wrote any, and the identifier of any
+          record you were correcting. Withdrawing does not reach it. Your notes
+          and the account that proved push access were never in it.
+        </p>
+      </section>
+
+      <section id="after-registration">
+        <h2>Correction, takedown, and erasure after registration</h2>
+        <p>
+          Registration is meant to be permanent, and the canonical history is
+          append-only in ordinary operation. That is the point of it: a citation
+          to a Palomar record has to keep resolving to the thing that was cited.
+          So the ordinary answers to a problem with a published record are not
+          deletion. “Ordinarily” and “meant to be” are doing real work in those
+          sentences: an append-only rule Palomar wrote for itself does not
+          override a legal obligation Palomar is under, and the process below is
+          how such an obligation reaches the ledger.
+        </p>
+        <p>
+          Requests go through Palomar’s lawful-request process, which sets out
+          who may ask, what Palomar asks for in return, how a request is
+          recorded, and what is published about it:
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/lawful-requests.md">docs/lawful-requests.md</a>
+          in Palomar Policy. Send the request itself to
+          <a href="mailto:privacy@palomar-registry.org">privacy@palomar-registry.org</a>.
+        </p>
+        <p>
+          The two default outcomes are suppression of the public projection, so
+          the version stops being served and leaves the date-only tombstone
+          described above, and correction by a new version, so the record says
+          the right thing going forward without the old version ceasing to have
+          existed. In both, the canonical bytes are ordinarily retained in the
+          access-controlled private ledger rather than destroyed. An upheld
+          statutory right can reach that retained data too, and a named
+          Moderator can authorize it. Palomar’s preference for retention is a
+          default, not a claim that the private ledger is beyond the law.
+        </p>
+        <p>
+          One limit is physical rather than editorial. Records are public and
+          machine-readable, deliberately, and are fetched, cached, mirrored and
+          quoted by people Palomar has no relationship with. Suppression stops
+          Palomar serving something. It cannot reach a copy somebody else
+          already has, and this page will not pretend otherwise.
+        </p>
+      </section>
+
+      <section id="services">
+        <h2>The services Palomar relies on</h2>
+        <p>
+          Palomar is small and runs on other people’s infrastructure. Which hat
+          a provider is wearing depends on the activity, and the distinction is
+          worth keeping.
+        </p>
+        <ol class="not-list">
+          <li>
+            <strong>GitHub</strong> hosts this site, the private submission
+            state, the registry repositories and the public archive forks, and
+            runs the workflows that perform verification and review. For that
+            work it acts for Palomar, under the
+            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-data-protection-agreement">GitHub
+            Data Protection Agreement</a>. When you visit a page or a repository
+            yourself, GitHub is handling your request on its own account, for
+            its own security and logging purposes, under the
+            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
+            Privacy Statement</a>.
+          </li>
+          <li>
+            <strong>Cloudflare</strong> runs the submission server and the data
+            origin as Workers, holds the public registry projection in storage
+            that is not itself public, provides the rate limiter, and routes
+            mail for the addresses on this site. For that work it acts for
+            Palomar, under the
+            <a href="https://www.cloudflare.com/cloudflare-customer-dpa/">Cloudflare
+            Data Processing Addendum</a>. As the network carrying your request
+            it also processes traffic on its own account for platform security,
+            under the
+            <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare
+            Privacy Policy</a>.
+          </li>
+          <li>
+            <strong>OpenAI</strong> provides the model behind the automated
+            editorial review, which production runs as a Codex engine. Its
+            requests do not carry a reusable provider key: they go through a
+            loopback credential broker Palomar runs beside the review, which
+            holds the real key outside the review’s sandbox, serves exactly one
+            route and one configured model, and refuses stored, background,
+            continued, priority and provider-hosted-tool requests. Refusing
+            stored requests is the specific thing it does about retention: the
+            provider is not asked to keep the response object. It is not a claim
+            that nothing is retained at the provider. OpenAI’s published API
+            terms describe their own abuse-monitoring retention, of up to thirty
+            days by default and subject to the legal and safety exceptions they
+            state, and say that API inputs and outputs are not used to train
+            their models by default. Those are OpenAI’s statements about
+            OpenAI’s systems, reproduced here because you are entitled to know
+            what Palomar is relying on. They are not Palomar guarantees:
+            Palomar cannot verify them, and a promise it cannot check is not one
+            worth making to you. Processing is under the
+            <a href="https://openai.com/policies/data-processing-addendum/">OpenAI
+            Data Processing Addendum</a>.
+          </li>
+        </ol>
+      </section>
+
+      <section id="transfers">
+        <h2>Where in the world it is processed</h2>
+        <p>
+          All three providers are United States companies operating global
+          infrastructure, so personal data described on this page is processed
+          outside the United Kingdom and the European Economic Area. Palomar
+          does not choose a region for any of them and does not operate servers
+          of its own.
+        </p>
+        <p>
+          Palomar relies on the transfer terms in each provider’s published data
+          protection agreement and has not negotiated separate terms with any of
+          them. What each provider says it relies on, in its own words:
+        </p>
+        <ol class="not-list">
+          <li>
+            <strong>GitHub</strong> states that for transfers from the EU, the
+            UK and Switzerland to countries without an adequacy decision it
+            generally relies on the European Commission’s standard contractual
+            clauses under Implementing Decision 2021/914, and separately that it
+            has certified to the EU-U.S. Data Privacy Framework, with the UK
+            Extension and the Swiss-U.S. Framework.
+            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
+            Privacy Statement</a>.
+          </li>
+          <li>
+            <strong>Cloudflare</strong> applies the EU standard contractual
+            clauses, deemed amended by the UK Addendum for transfers out of the
+            United Kingdom, and additionally names its certification under the
+            Global Cross-Border Privacy Rules system.
+            <a href="https://www.cloudflare.com/cloudflare-customer-dpa/">Cloudflare
+            Data Processing Addendum</a>.
+          </li>
+          <li>
+            <strong>OpenAI</strong> states its safeguards in its
+            <a href="https://openai.com/policies/data-processing-addendum/">Data
+            Processing Addendum</a>. That document refused to open from the
+            machine this page was drafted on, so rather than write down a
+            mechanism nobody here has read, this line says only where it is.
+            Ask and you will be told what it currently says.
+          </li>
+        </ol>
+        <p>
+          Those documents are the providers’ own and they change, so each one is
+          the accurate statement and this summary is not. A copy of the terms in
+          force for any of them is available on request. If you want to know how
+          a specific piece of your data is handled, ask at
+          <a href="mailto:privacy@palomar-registry.org">privacy@palomar-registry.org</a>
+          and you will be told which provider holds it and sent the terms it is
+          held under.
+        </p>
+      </section>
+
+      <section id="your-rights">
+        <h2>Your rights</h2>
+        <p>
+          Under the UK GDPR and the EU GDPR you can ask for access to the
+          personal data Palomar holds about you, for it to be corrected, for it
+          to be erased, for its processing to be restricted, and for a copy in a
+          portable form. You can object to processing that rests on legitimate
+          interests, which includes everything in the record that is about
+          somebody other than the submitter, and you can withdraw consent at any
+          time, which stops future processing without making what happened
+          before it unlawful.
+        </p>
+        <p>
+          Ask by writing to
+          <a href="mailto:privacy@palomar-registry.org">privacy@palomar-registry.org</a>.
+          You do not need to have submitted anything to ask. Anything that would
+          remove or change published registry material also goes through
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/lawful-requests.md">the
+          lawful-request process</a>, because those requests are recorded and
+          answered under it.
+        </p>
+        <p>
+          Palomar will ask you to prove who you are only where there is
+          reasonable doubt about it, and will ask for no more than is necessary
+          and proportionate to settle that doubt. Since the usual case is a
+          submitter writing about their own submission, the usual answer is that
+          nothing further is needed.
+        </p>
+        <p>
+          One thing these rights are not for. The editorial review is automated,
+          but what it decides about is a submitted repository at one commit
+          rather than a person, and disagreeing with its mathematics is not a
+          data-protection question.
+          <a href="about.html#disagreeing-with-the-review">About</a> says what to
+          do about that instead.
+        </p>
+      </section>
+
+      <section id="complaints">
+        <h2>Complaints</h2>
+        <p>
+          If Palomar handles your data or your request badly, you can complain
+          to a supervisory authority: in the United Kingdom the
+          <a href="https://ico.org.uk/make-a-complaint/">Information
+          Commissioner’s Office</a>, and in the European Union the authority for
+          your country of residence, place of work, or the place the problem
+          happened. You can also go to court. Neither depends on complaining to
+          Palomar first, though it is welcome, and often faster.
+        </p>
+      </section>
+
+      <section id="changes">
+        <h2>Changes to this policy</h2>
+        <p>
+          This page is a file in a public repository, so its
+          <a href="https://github.com/PalomarRegistry/PalomarWeb/commits/main/privacy.html">commit
+          history</a> is its changelog: every wording change is dated, attributed,
+          and readable. There is no mailing list to be on, because Palomar does
+          not collect an address to put you on one.
+        </p>
+      </section>
+      <span id="anchor-status" class="visually-hidden" role="status"></span>
+    </main>
+
+    <footer>
+      <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
+      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="privacy.html">Privacy</a><a href="https://data.palomar-registry.org/browse/index.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
+    </footer>
+    <script type="module" src="assets/about.js"></script>
+  </body>
+</html>

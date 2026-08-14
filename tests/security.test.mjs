@@ -866,9 +866,15 @@ test("About describes the current review and version contracts", async () => {
   assert.doesNotMatch(about, /durable-evidence schema \(version 5\)/);
   assert.match(about, /review-failed/);
   assert.match(about, /operational fault, not a decision/);
-  assert.match(about, /append-only canonical history/);
-  assert.match(about, /Moderator may exceptionally retract one exact version/);
+  assert.match(about, /canonical history, which is\s+append-only in ordinary operation/);
+  assert.match(about, /Moderator may exceptionally\s+retract one exact version/);
   assert.doesNotMatch(about, /registered record is never removed/);
+  // The append-only rule is Palomar's own, and About may not state it as
+  // though it outranked the law: an unqualified "permanent" would promise a
+  // submitter something the lawful-request process can override.
+  assert.match(about, /does not do is override a\s+legal obligation/);
+  assert.match(about, /href="privacy\.html#after-registration"/);
+  assert.doesNotMatch(about, /Registration is permanent/);
 });
 
 test("About publishes the three distinct governance rosters", async () => {
@@ -948,6 +954,32 @@ test("About says what registration publishes, and what it does not", async () =>
       `About should link the specification at ${anchor} rather than restate it`,
     );
   }
+});
+
+test("both pages say the authorization evidence is public from verification", async () => {
+  // The dispatch that starts mechanical verification runs in the public
+  // submission repository, and the Server puts the declared relationship, the
+  // free-text evidence and any corrected identifier into its inputs, where a
+  // run page shows them to anyone. A draft of the privacy policy said the
+  // evidence stayed private until registration, which is the reassuring
+  // direction to be wrong in and the one a submitter acts on: the form warns
+  // about it precisely because writing a name there publishes the name. The
+  // notes field is the one that really is withheld, so the two must not drift
+  // into each other.
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  assert.match(about, /Public from verification onward:[\s\S]{0,220}approval evidence you wrote/);
+  assert.match(privacy, /public early, not on registration/);
+  assert.match(privacy, /authorization\s+evidence if you wrote any/);
+  for (const [name, html] of [["about.html", about], ["privacy.html", privacy]]) {
+    assert.doesNotMatch(
+      html,
+      /evidence[^.]{0,80}(?:not (?:sent|public)|stays private|is private)[^.]{0,60}until you register/i,
+      `${name} claims the authorization evidence is withheld until registration`,
+    );
+  }
+  // The notes are the field that is genuinely kept out of the public dispatch.
+  assert.match(privacy, /deliberately kept out of the public verification\s+dispatch/);
 });
 
 test("About describes both ways push access is proved", async () => {
@@ -1033,7 +1065,9 @@ test("the favicon ships with the site and every page asks for it", async () => {
   assert.match(build, /"favicon\.svg"/);
   for (const name of htmlFiles) {
     const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
-    assert.match(html, /rel="icon" href="favicon\.svg"/, `${name} does not ask for the favicon`);
+    // 404.html asks for it from the root, because it is served at addresses
+    // that are not its own; the rest ask for it beside themselves.
+    assert.match(html, /rel="icon" href="\/?favicon\.svg"/, `${name} does not ask for the favicon`);
   }
   const icon = await readFile(new URL("../favicon.svg", import.meta.url), "utf8");
   // One flat colour per scheme, and nothing that a strict policy would refuse.

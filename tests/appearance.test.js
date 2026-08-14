@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
+import { htmlFiles } from "../scripts/build-site.mjs";
+
 function expandHex(hex) {
   const raw = hex.slice(1);
   if (raw.length === 3) return [...raw].map((channel) => channel.repeat(2)).join("");
@@ -82,10 +84,50 @@ test("all page colours are palette variables", () => {
   assert.deepEqual(literals, []);
 });
 
-for (const file of ["index.html", "entry.html", "about.html", "render.html", "404.html"]) {
+// Driven by the build manifest rather than a list written here: a page added
+// to the deployment and forgotten by this test is exactly the page that ships
+// without the chrome colours, and `subject.html` had already been missed once.
+for (const file of htmlFiles) {
   test(`${file} advertises browser-selected light and dark chrome colours`, async () => {
     const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
     assert.match(html, /name="theme-color" content="#ffffff" media="\(prefers-color-scheme: light\)"/);
     assert.match(html, /name="theme-color" content="#101216" media="\(prefers-color-scheme: dark\)"/);
   });
 }
+
+// The privacy policy is only useful if it can be found from wherever a reader
+// happens to be standing, which is the finding that produced it.
+test("every shipped page carries a footer link to the privacy policy", async () => {
+  for (const file of htmlFiles) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    const footer = html.slice(html.indexOf("<footer>"), html.indexOf("</footer>"));
+    assert.ok(footer, `${file} has no footer to carry the privacy link`);
+    assert.match(
+      footer,
+      /<a href="\/?privacy\.html">Privacy<\/a>/,
+      `${file} does not link the privacy policy from its footer`,
+    );
+  }
+});
+
+// GitHub Pages answers every address it cannot resolve with this one file, so
+// it is read at `/entry/missing/thing` as readily as at `/404.html`. A relative
+// href there resolves against the directory the reader was aiming at: the
+// stylesheet becomes a second 404, and the two links out of the page land one
+// level up from home. Every local reference on this page must therefore be
+// root-absolute, and only this page has that requirement.
+test("404.html addresses everything from the site root", async () => {
+  const html = await readFile(new URL("../404.html", import.meta.url), "utf8");
+  const references = [...html.matchAll(/(?:href|src)="([^"]*)"/g)].map((match) => match[1]);
+  assert.ok(references.length >= 6, "404.html was expected to carry links and assets");
+  const relative = references.filter((reference) =>
+    !/^(?:https?:|mailto:|data:|#|\/)/.test(reference));
+  assert.deepEqual(
+    relative,
+    [],
+    `404.html has references that break when it answers a nested address: ${relative.join(", ")}`,
+  );
+  assert.match(html, /href="\/assets\/style\.css"/);
+  assert.match(html, /<a href="\/">Return to the registry<\/a>/);
+  assert.match(html, /<a href="\/privacy\.html">Privacy<\/a>/);
+});

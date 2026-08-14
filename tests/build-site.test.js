@@ -51,7 +51,12 @@ test("deployment build versions coupled browser assets", async () => {
       path.join(destination, "assets", "searching.mjs"),
       "utf8",
     );
+    const notFound = await readFile(path.join(destination, "404.html"), "utf8");
     assert.match(index, /assets\/style\.css\?v=0123456789abcdef/);
+    // 404.html addresses its assets from the root, so it needs the other
+    // spelling of the same rewrite; an unversioned stylesheet would be served
+    // from cache after a palette change.
+    assert.match(notFound, /href="\/assets\/style\.css\?v=0123456789abcdef"/);
     assert.match(index, /assets\/app\.js\?v=0123456789abcdef/);
     assert.match(about, /assets\/style\.css\?v=0123456789abcdef/);
     assert.match(about, /assets\/about\.js\?v=0123456789abcdef/);

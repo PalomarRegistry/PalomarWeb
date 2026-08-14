@@ -7,15 +7,27 @@
     <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://data.palomar-registry.org; frame-src 'self' https://data.palomar-registry.org; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
     <title>Not found — Palomar</title>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="assets/style.css">
+    <!--
+      Every link and asset on this page is root-absolute, unlike its siblings.
+      GitHub Pages serves this one file for every address it cannot resolve, so
+      it is read at /nonsense as readily as at /404.html, and a relative href
+      would resolve against whatever directory the reader was aiming at. That
+      turns the stylesheet into another 404 and sends "Return to the registry"
+      one level up rather than home.
+    -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/style.css">
   </head>
   <body>
     <main class="about">
       <p class="entry-id">404</p>
       <h1>That record isn’t here</h1>
       <p class="lede">The address may be wrong, or the entry may not have been published.</p>
-      <p><a href="./">Return to the registry</a></p>
+      <p><a href="/">Return to the registry</a></p>
     </main>
+    <footer>
+      <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
+      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="/privacy.html">Privacy</a><a href="https://data.palomar-registry.org/browse/index.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
+    </footer>
   </body>
 </html>
