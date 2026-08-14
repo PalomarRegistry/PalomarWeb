@@ -137,8 +137,8 @@ test("bounded availability shares an in-flight read", async () => {
   assert.equal(first, second);
   assert.equal(reads, 0);
   release(jsonResponse(availabilityManifest([])));
-  assert.equal((await first).schema_version, 1);
-  assert.equal((await second).schema_version, 1);
+  assert.equal((await first).schema_version, 2);
+  assert.equal((await second).schema_version, 2);
   assert.equal(reads, 1);
 });
 

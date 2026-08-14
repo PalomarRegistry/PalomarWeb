@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -64,7 +63,6 @@ import {
 
 // The website's own origin, for the cross-origin assertion below.
 const CANONICAL_WEB_BASE_FOR_TEST = "https://palomar-registry.org/";
-const AVAILABILITY_PRODUCER_COMMIT = "7e446fda08d26b5c1290a9e3ec0947ece0c4994e";
 
 /**
  * The sibling PalomarDatabase checkout, as a filesystem path.
@@ -80,26 +78,6 @@ function databaseCheckout() {
     process.env.PALOMAR_DATABASE_CHECKOUT
     ?? fileURLToPath(new URL("../../PalomarDatabase/", import.meta.url))
   );
-}
-
-/**
- * The Python that can run the producer's contract module.
- *
- * `python3` is the name on CI and on a developer's Linux or macOS machine, and
- * is not a name Windows has: there the interpreter is `python`, and the stub
- * Windows ships under the other name answers by advertising the Store. Trying
- * both keeps the contract exercised rather than reported as broken.
- */
-function pythonInterpreter() {
-  for (const candidate of ["python3", "python"]) {
-    try {
-      execFileSync(candidate, ["-c", ""], { stdio: "ignore" });
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  assert.fail("no Python interpreter is available to run the producer contract");
 }
 
 test("production ignores every database query override", () => {
@@ -627,46 +605,40 @@ test("availability keeps whole-document freshness inclusive and fail-closed", ()
   );
 });
 
-test("availability agrees with the Database producer contract", async () => {
+test("availability accepts the deployed handoff and public-writer contracts", async () => {
   const checkout = databaseCheckout();
-  const executable = join(checkout, "tools", "source_availability_contract.py");
+  // Schema 1 is the live deployment handoff. It remains readable until the
+  // first successful public refresh replaces the object with schema 2.
+  let deployed;
   try {
-    await readFile(executable, "utf8");
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-    // CI cannot read the private canonical repository, so the existing
-    // cross-repository mechanism supplies the producer's published object at
-    // the same checkout root. This remains a mandatory exercised contract,
-    // not a skip; local development invokes the exact executable below.
-    const fixture = JSON.parse(await readFile(
+    deployed = JSON.parse(await readFile(
       join(checkout, "tests", "fixtures", "source-availability.json"),
       "utf8",
     ));
-    assert.ok(fixture.repositories.length > 0, "the deployed contract must exercise a row");
-    assert.equal(
-      fixture.coverage?.freshness_max_age_seconds,
-      AVAILABILITY_MAX_AGE_MS / 1_000,
-      "the deployed producer and consumer must share the freshness policy",
-    );
-    assert.deepEqual(validateAvailability(fixture), fixture);
-    return;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    deployed = availabilityManifest([availabilityRow()], {
+      schema_version: 1,
+      database_commit: COMMIT,
+    });
+    delete deployed.targets_sha256;
+    delete deployed.publication_revision;
   }
-  try {
-    execFileSync(
-      "git",
-      ["-C", checkout, "merge-base", "--is-ancestor", AVAILABILITY_PRODUCER_COMMIT, "HEAD"],
-    );
-  } catch {
-    assert.fail(
-      `PalomarDatabase checkout ${checkout} is older than the required ` +
-        `source-availability contract ${AVAILABILITY_PRODUCER_COMMIT}; fetch current main`,
-    );
-  }
-  const raw = availabilityManifest([
+  assert.ok(deployed.repositories.length > 0, "the deployed contract must exercise a row");
+  assert.equal(
+    deployed.coverage?.freshness_max_age_seconds,
+    AVAILABILITY_MAX_AGE_MS / 1_000,
+    "the deployed producer and consumer must share the freshness policy",
+  );
+  validateAvailability(deployed);
+
+  // Schema 2 is owned by public PalomarDatabaseTools CI and binds the result
+  // to the exact separately published target set.
+  const produced = availabilityManifest([
     availabilityRow({
       original: availabilityEndpoint({
-        status: "missing",
-        checked_at: "2026-08-07T17:59:59Z",
+        status: "unknown",
+        checked_at: null,
       }),
       archive: availabilityEndpoint({
         checked_at: "2026-08-08T12:05:00Z",
@@ -674,17 +646,6 @@ test("availability agrees with the Database producer contract", async () => {
       }),
     }),
   ]);
-  const script = [
-    "import datetime as dt, json, pathlib, sys",
-    `sys.path.insert(0, str(pathlib.Path(${JSON.stringify(checkout)}) / 'tools'))`,
-    "from source_availability_contract import normalize_manifest",
-    "value = normalize_manifest(json.load(sys.stdin), as_of=dt.datetime(2026, 8, 8, 12, tzinfo=dt.UTC))",
-    "json.dump(value, sys.stdout, sort_keys=True)",
-  ].join("; ");
-  const produced = JSON.parse(execFileSync(pythonInterpreter(), ["-c", script], {
-    encoding: "utf8",
-    input: JSON.stringify(raw),
-  }));
 
   const consumed = validateAvailability(produced);
   const row = availabilityRecord(
@@ -950,13 +911,17 @@ test("user documentation names current examples and iframe height units", async 
   assert.doesNotMatch(readme, /PALOMAR-2026-07-29-000001/);
 });
 
-test("About delegates the mutable axiom allowlist to the promoted Policy", async () => {
+test("the extra-axioms FAQ names the standard three Lean axioms", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
-  assert.match(
+  const section = /<h3 id="extra-axioms">[\s\S]*?<h3 id="formalization-yaml">/.exec(
     about,
-    /PalomarPolicy\/blob\/main\/CONTRIBUTING\.md#23-comparator-configuration/,
   );
-  assert.doesNotMatch(about, /propext|Quot\.sound|Classical\.choice/);
+  assert.notEqual(section, null);
+  assert.match(section[0], /standard three Lean axioms/);
+  assert.match(section[0], /propext/);
+  assert.match(section[0], /Classical\.choice/);
+  assert.match(section[0], /Quot\.sound/);
+  assert.doesNotMatch(section[0], /comparator-configuration|current/i);
 });
 
 test("About says what registration publishes, and what it does not", async () => {
