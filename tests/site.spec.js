@@ -1668,10 +1668,69 @@ test("typing runs one search at the pause, not one per keystroke", async ({ page
 
   // There is no button to press, so the pause is the whole of the instruction.
   await page.locator("#query").pressSequentially("quasicoherent", { delay: 10 });
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
 
   expect(heads).toEqual(["/database/search/t/quasicoherent/head.json"]);
   await expect(page).toHaveURL(/q=quasicoherent/);
+});
+
+test("a keystroke abandons the answer to the query it just replaced", async ({ page }) => {
+  // The gap the generation counter alone does not close: it turns over when a
+  // search starts, and the next one does not start until the pause. Between
+  // the two, an answer to what the reader has already typed past would arrive
+  // verified and undimmed under a box that says something else.
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+
+  // One real keystroke, and then the old answer is let go immediately -- well
+  // inside the pause that would otherwise still be running.
+  await page.locator("#query").press("End");
+  await page.locator("#query").press("x");
+  await expect(page.locator("#query")).toHaveValue("quasicoherentx");
+  held.release();
+  await page.waitForTimeout(150);
+
+  // Nothing the abandoned query found may be standing here, verified or not.
+  // Nothing in hand carries "quasicoherentx" either, so the page is honestly
+  // empty rather than showing the two cards the old query had just confirmed.
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-status")).toContainText("Searching the registry");
+
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-status")).toContainText("No result carries all of");
+});
+
+test("confirming a result keeps the reader on the card they were standing on", async ({ page }) => {
+  // The provisional cards are replaced wholesale, so without this the reader's
+  // focus goes with the node that carried it and lands on the document.
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  const card = (id) => page.locator(`#search-results .entry-card[data-id="${id}"]`);
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000123");
+  await card("PALOMAR-2026-07-29-000123").locator("h3 a").focus();
+
+  held.release();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  // Verified results come back in posting order, so this result is no longer
+  // the first card. Focus follows the result, not the position.
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000124");
+  await expect(card("PALOMAR-2026-07-29-000123").locator("h3 a")).toBeFocused();
 });
 
 test("a pause shows the entries already loaded, marked as not yet the answer", async ({ page }) => {
@@ -1682,8 +1741,13 @@ test("a pause shows the entries already loaded, marked as not yet the answer", a
   await startSearch(page, "quasicoherent");
   await held.requested;
   await expect(page.locator("#search-results")).toHaveClass(/preview/);
+  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "0.55");
+  // Set apart by ground, not by fading: these are cards a reader reads and may
+  // click, so the text stays at full contrast.
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveCSS("background-color", "rgb(242, 242, 242)");
+  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "1");
   await expect(page.locator("#search-status")).toContainText("while the registry search runs");
   await expect(page.locator("#search-status")).toContainText("newest 2 entries");
   await expect(page.locator("#search-spinner")).toBeVisible();
@@ -1693,8 +1757,10 @@ test("a pause shows the entries already loaded, marked as not yet the answer", a
   held.release();
   await expect(page.locator("#search-spinner")).toBeHidden();
   await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-results")).not.toHaveAttribute("aria-busy", "true");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "1");
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 });
 
 test("nothing loaded to show leaves the wait to the spinner alone", async ({ page }) => {

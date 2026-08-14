@@ -192,6 +192,7 @@ function entryCard(
 ) {
   const categories = classification(entry);
   const card = el("article", "entry-card");
+  card.dataset.id = entry.id;
   card.dataset.trust = entry.trust.level;
   card.dataset.arxiv = categories.arxiv.join(" ");
   card.dataset.msc = categories.msc2020.join(" ");
@@ -321,6 +322,11 @@ async function renderIndex() {
       console.warn(`Landing card source availability could not be applied: ${error.message}`);
     });
     let trust = "all";
+    // Cached HTML from the previous deployment still carries the filter box
+    // this JavaScript no longer wires. Leaving it on the page would offer a
+    // reader a control that silently does nothing.
+    const legacyFilter = document.querySelector(".toolbar .search");
+    if (legacyFilter) legacyFilter.hidden = true;
     // The fallback selectors keep new JavaScript compatible with cached HTML
     // from the previous GitHub Pages deployment.
     const arxiv = document.querySelector("#arxiv-query, #arxiv-filter");
@@ -498,9 +504,37 @@ function renderPreviewCards(results, entries) {
   return cards;
 }
 
-function setSearchBusy(busy) {
+function setSearchBusy(results, busy) {
   const spinner = document.querySelector("#search-spinner");
   if (spinner) spinner.hidden = !busy;
+  // The results grid is a polite live region. Without this it reads out the
+  // provisional cards and then reads the whole verified set again, which is
+  // two announcements for one search and the first of them not yet true.
+  if (busy) results.setAttribute("aria-busy", "true");
+  else results.removeAttribute("aria-busy");
+}
+
+/** The result a reader is standing on, so that replacing the set can put them back. */
+function focusedEntryId(results) {
+  const active = document.activeElement;
+  if (!active || !results.contains(active)) return null;
+  return active.closest(".entry-card")?.dataset.id || null;
+}
+
+/**
+ * Put the reader back where they were once the provisional cards are replaced.
+ *
+ * Without this, confirming a result silently drops focus to the document body,
+ * because the node the reader was on is one of the ones thrown away.
+ */
+function restoreFocusAfterSwap(results, entryId) {
+  if (!entryId) return;
+  // Matched by walking the cards rather than by building a selector out of a
+  // value that came from data, which is the rule everywhere else here.
+  const card = [...results.children].find((node) => node.dataset.id === entryId);
+  const link = card?.querySelector("a");
+  if (link) link.focus();
+  else document.querySelector("#query")?.focus();
 }
 
 function clearSearchQueryWarning(input) {
@@ -516,7 +550,16 @@ function showSearchQueryWarning(input, status, error) {
   input?.setAttribute("aria-describedby", status.id);
 }
 
-async function renderSearch(query) {
+/**
+ * Show what this query looks like from here, and unless told otherwise, ask.
+ *
+ * `ask: false` is the keystroke half. A reader who has typed on has already
+ * left the answer on the page behind, so the request in flight for it is
+ * abandoned and the provisional set is repainted at once, without waiting out
+ * the pause first. Waiting would leave one query in the box and a different
+ * query's results, verified and undimmed, underneath it.
+ */
+async function renderSearch(query, { ask = true } = {}) {
   const generation = searchGeneration + 1;
   searchGeneration = generation;
   activeSearchController?.abort(new Error("superseded registry search"));
@@ -527,7 +570,7 @@ async function renderSearch(query) {
   if (!status || !results) return;
   results.replaceChildren();
   results.classList.remove("preview");
-  setSearchBusy(false);
+  setSearchBusy(results, false);
   status.className = "status";
   let asked;
   try {
@@ -550,8 +593,6 @@ async function renderSearch(query) {
     ensureLanding();
     return;
   }
-  const controller = new AbortController();
-  activeSearchController = controller;
   status.hidden = false;
   // Something to read while the registry is asked. It is drawn from a smaller
   // pool by a looser rule, so the status says so rather than letting it pass
@@ -565,7 +606,10 @@ async function renderSearch(query) {
   } else {
     status.textContent = "Searching the registry…";
   }
-  setSearchBusy(true);
+  setSearchBusy(results, true);
+  if (!ask) return;
+  const controller = new AbortController();
+  activeSearchController = controller;
   try {
     const { databaseBase, availabilityUrl } = dataSource();
     const found = await searchRegistry(query, databaseBase, { signal: controller.signal });
@@ -578,7 +622,11 @@ async function renderSearch(query) {
     }
     // Availability changes only where a source link points. It must never hold
     // verified registry results behind its own long timeout.
+    // Read immediately before the swap, not when the search began: the reader
+    // had the whole wait in which to go and stand on one of these cards.
+    const wasOn = focusedEntryId(results);
     const cards = renderSearchCards(results, found.entries);
+    restoreFocusAfterSwap(results, wasOn);
     if (found.entries.length) {
       void loadAvailabilityBounded(availabilityUrl).then((availability) => {
         if (availability !== null && generation === searchGeneration) {
@@ -640,7 +688,7 @@ async function renderSearch(query) {
     if (generation === searchGeneration) {
       activeSearchController = null;
       results.classList.remove("preview");
-      setSearchBusy(false);
+      setSearchBusy(results, false);
     }
   }
 }
@@ -671,6 +719,11 @@ function wireSearch() {
   };
   const scheduleQuery = () => {
     window.clearTimeout(queryTimer);
+    // Repaint from what is already loaded now, and ask the registry once the
+    // typing stops. Only the request is worth waiting for: filtering entries
+    // the page is already holding costs nothing, and doing it on the same
+    // delay would leave the last query's answer sitting under the new one.
+    renderSearch(input.value, { ask: false });
     queryTimer = window.setTimeout(runQuery, SEARCH_UPDATE_DELAY_MS);
   };
   input.addEventListener("input", scheduleQuery);

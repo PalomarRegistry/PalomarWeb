@@ -287,9 +287,14 @@ h3 {
  * Provisional matches, drawn from the entries the page already holds. They are
  * a different question than the one the registry index answers, so they are
  * shown as unfinished business rather than as results.
+ *
+ * Set apart by their ground rather than by opacity. These are cards a reader is
+ * meant to read and may click, so fading the text would put it under the
+ * contrast a reader is owed, and shifting the box would make the whole set jump
+ * when the verified cards land in their place.
  */
 #search-results.preview .entry-card {
-  opacity: .55;
+  background: var(--shade);
 }
 
 .toolbar {
