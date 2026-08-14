@@ -982,6 +982,50 @@ test("both pages say the authorization evidence is public from verification", as
   assert.match(privacy, /deliberately kept out of the public verification\s+dispatch/);
 });
 
+test("publication rests on legitimate interests, and the objection right is stated", async () => {
+  // The first published version of this page based publishing a registry
+  // record on the submitter's consent while also saying the record keeps
+  // being served afterwards. Those cannot both hold: consent must be as easy
+  // to withdraw as to give, withdrawal has to stop the processing, and a
+  // controller cannot move that same processing onto another basis once the
+  // consent fails. Withdrawal exists only before registration, so consent
+  // stops at that line and publication is a legitimate-interests case that has
+  // to name its interest and carry the Article 21 right that comes with it.
+  // A page can regress here silently, because nothing else in the site reads
+  // this section.
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  const section = /<section id="lawful-bases">[\s\S]*?<\/section>/.exec(privacy);
+  assert.notEqual(section, null, "the privacy policy must keep its basis mapping");
+  const bases = section[0];
+  assert.match(bases, /Serving a registered record, and keeping it for as long as\s+the registry exists,<\/strong>\s+rest on legitimate interests/);
+  assert.doesNotMatch(
+    bases,
+    /Publishing a registry record<\/strong> rests on your consent/,
+    "publication may not be based on the submitter's consent",
+  );
+  // The interest has to be named rather than asserted, and the Article 21
+  // right has to say that an objection is decided and where to send it.
+  assert.match(bases, /permanence of a\s+certification record/);
+  assert.match(bases, /cannot support that claim\s+about the entries it still has/);
+  assert.match(bases, /Article 21/);
+  assert.match(bases, /An objection is decided, not automatic/);
+  assert.match(bases, /compelling legitimate grounds/);
+  assert.match(bases, /mailto:privacy@palomar-registry\.org/);
+  assert.match(bases, /PalomarPolicy\/blob\/main\/docs\/lawful-requests\.md/);
+  // Consent keeps the part where withdrawal genuinely stops the processing,
+  // and the page has to say plainly that registration ends that.
+  assert.match(bases, /Withdrawing it there genuinely stops the processing/);
+  assert.match(bases, /After registration you cannot take it back yourself/);
+  assert.match(bases, /no button that unpublishes it/);
+  // No balancing assessment exists as a separate document, so the page must
+  // not send anyone looking for one.
+  assert.match(bases, /There is\s+no separate balancing document/);
+  assert.doesNotMatch(bases, /legitimate interests assessment is available/i);
+  // Rights and retention must not drift back into describing publication as
+  // consent-based once this section stops doing so.
+  assert.doesNotMatch(privacy, /withdraw consent at any\s+time, which stops future processing/);
+});
+
 test("About describes both ways push access is proved", async () => {
   // A sign-in and the agent's tag-and-gist do not establish the same thing,
   // and step 3 used to name only the first.
