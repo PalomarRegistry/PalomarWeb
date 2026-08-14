@@ -85,6 +85,25 @@ test("the registry follows the browser's light and dark preference", async ({ pa
   await expect(page.locator(".filter.active")).toHaveCSS("background-color", "rgb(255, 255, 255)");
 });
 
+test("the render frame lands on the same paper as the page around it", async ({ page }) => {
+  // The framed render is a separate document on a separate origin, so the page
+  // cannot reach in and theme it, and does not try: the frame reads
+  // prefers-color-scheme itself. That only looks right if the two palettes
+  // agree, which is what is asserted on both sides of the boundary here.
+  const paper = { dark: "rgb(16, 18, 22)", light: "rgb(255, 255, 255)" };
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto(`/render.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+  const frame = page.locator(".challenge-presentation iframe");
+  for (const scheme of ["dark", "light"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect(page.locator("html")).toHaveCSS("background-color", paper[scheme]);
+    await expect(frame).toHaveCSS("background-color", paper[scheme]);
+    await expect(
+      page.frameLocator(".challenge-presentation iframe").locator("body"),
+    ).toHaveCSS("background-color", paper[scheme]);
+  }
+});
+
 test("about headings expose hoverable links that copy their section URL", async ({ context, page }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/about.html");
