@@ -38,14 +38,7 @@
         </div>
       </section>
 
-      <section class="registry-section" id="registry" aria-labelledby="registry-heading">
-        <div class="section-heading">
-          <h2 id="registry-heading">Accepted results</h2>
-          <a class="data-link" href="https://data.palomar-registry.org/browse/index.json">
-            Machine-readable index
-          </a>
-        </div>
-
+      <section class="registry-section" id="registry" aria-label="Accepted results">
         <form id="registry-search" class="registry-search" role="search">
           <label for="query">Search the registry:</label>
           <input id="query" name="q" type="search" placeholder="title, author, abstract, theorem, or repository" autocomplete="off" spellcheck="false" maxlength="4096">
@@ -63,22 +56,25 @@
             looks for it can still be served.
           -->
           <input id="search" type="search" hidden aria-hidden="true" tabindex="-1">
-          <div class="category-filters" role="group" aria-label="Subject filters">
-            <label>arXiv:
-              <input id="arxiv-query" type="search" list="arxiv-options" maxlength="32" placeholder="e.g. math.CO" autocomplete="off" spellcheck="false">
-            </label>
-            <datalist id="arxiv-options"></datalist>
-            <label>MSC:
-              <input id="msc-query" type="search" list="msc-options" maxlength="5" placeholder="e.g. 05C10" autocomplete="off" spellcheck="false">
-            </label>
-            <datalist id="msc-options"></datalist>
-          </div>
           <div class="filters" role="group" aria-label="Statement dependency filters">
             <span>Show:</span>
             <button class="filter active" type="button" data-trust="all" aria-pressed="true">All</button>
             <button class="filter" type="button" data-trust="high" aria-pressed="false">Mathlib only</button>
             <button class="filter" type="button" data-trust="qualified" aria-pressed="false">Additional libraries</button>
           </div>
+          <details class="advanced-filters">
+            <summary>Subject filters</summary>
+            <div class="category-filters" role="group" aria-label="Subject filters">
+              <label>arXiv:
+                <input id="arxiv-query" type="search" list="arxiv-options" maxlength="32" placeholder="e.g. math.CO" autocomplete="off" spellcheck="false">
+              </label>
+              <datalist id="arxiv-options"></datalist>
+              <label>MSC:
+                <input id="msc-query" type="search" list="msc-options" maxlength="5" placeholder="e.g. 05C10" autocomplete="off" spellcheck="false">
+              </label>
+              <datalist id="msc-options"></datalist>
+            </div>
+          </details>
         </div>
 
         <div id="status" class="status" role="status">

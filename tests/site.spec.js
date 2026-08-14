@@ -197,6 +197,21 @@ test("landing cards show the registration date and dated identifier", async ({ p
   expect(dynamicRequests).toHaveLength(2);
 });
 
+test("card metadata is on the card, not behind a toggle", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").first();
+
+  // Titles in this registry are repository names, so the authors and the
+  // theorem are what make a row identifiable while scanning the list. They
+  // are read without opening anything, and there is nothing to open.
+  await expect(card.locator(".card-meta")).toBeVisible();
+  await expect(card.locator(".card-meta")).toContainText("Example");
+  await expect(card.locator(".card-meta")).toContainText("Example.theorem");
+  await expect(card.locator(".card-subjects")).toContainText("math.CO");
+  await expect(card.locator(".card-project")).toContainText("Project directory");
+  await expect(card.locator("details")).toHaveCount(0);
+});
+
 test("landing cards preserve the publisher's newest-first order", async ({ page }) => {
   const registeredAt = new Map([
     ["PALOMAR-2026-07-29-000124", "2026-07-29T23:00:00Z"],
@@ -276,6 +291,9 @@ test("an unavailable recent summary reports failure instead of emptiness", async
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
+  // The subject inputs sit behind the toolbar's disclosure until opened.
+  await page.locator(".advanced-filters summary").click();
+  await expect(page.locator('.advanced-filters')).toHaveAttribute("open", "");
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
   await expect(page.locator('#msc-options option[value="05C10"]')).toHaveCount(1);
 
@@ -295,6 +313,8 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
 
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
+  // A linked subject filter opens the disclosure that holds its inputs.
+  await expect(page.locator(".advanced-filters")).toHaveAttribute("open", "");
   await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
@@ -391,14 +411,74 @@ test("an entry answers its reader's first three questions first", async ({ page 
 
   // The dependencies are further down this page, so following the link scrolls
   // rather than loading anything. (The href is absolute either way, so what is
-  // worth asserting is where it lands.)
+  // worth asserting is where it lands.) The dense sections start collapsed, so
+  // the fragment link has to open the section before the browser scrolls to it.
+  await expect(page.locator("#statement-dependencies .section-collapse")).not.toHaveAttribute(
+    "open",
+    "",
+  );
   const before = page.url();
   await page
     .locator(".challenge-links")
     .getByRole("link", { name: "Inspect statement dependencies" })
     .click();
   await expect(page.locator("#statement-dependencies")).toBeInViewport();
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute(
+    "open",
+    "",
+  );
   expect(page.url().split("#")[0]).toBe(before.split("#")[0]);
+});
+
+test("a hash that arrives without a click still opens its section", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator("#statement-dependencies")).toBeVisible();
+  await expect(page.locator("#statement-dependencies .section-collapse")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+
+  // What the address bar and the history buttons do: the fragment changes on a
+  // page that is already loaded, with no link to intercept.
+  await page.evaluate(() => {
+    window.location.hash = "#statement-dependencies";
+  });
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute(
+    "open",
+    "",
+  );
+  await expect(page.locator("#statement-dependencies")).toBeInViewport();
+});
+
+test("the licence caveat travels with the licence evidence it qualifies", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const collapse = page.locator(".entry-evidence .section-collapse");
+
+  // A page that says this licence evidence covers the snapshot only, while the
+  // licence row is folded away, is a caveat about nothing on the page.
+  await expect(collapse).toBeVisible();
+  await expect(collapse.locator(".licence-boundary")).toHaveCount(1);
+  await expect(page.locator(".licence-boundary")).toBeHidden();
+
+  await collapse.locator("summary").click();
+  await expect(collapse).toHaveAttribute("open", "");
+  await expect(page.locator(".licence-boundary")).toBeVisible();
+  await expect(collapse.locator("dl.details")).toContainText("Repository licence");
+});
+
+test("the subject filters make room in the toolbar instead of covering the list", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").first();
+  const top = await card.boundingBox();
+
+  await page.locator(".advanced-filters summary").click();
+  const inputs = await page.locator(".advanced-filters .category-filters").boundingBox();
+  const moved = await card.boundingBox();
+
+  // The opened panel pushes the list down; nothing it would otherwise float
+  // over, such as the first card's trust label, is hidden by it.
+  expect(inputs.y + inputs.height).toBeLessThanOrEqual(moved.y);
+  expect(moved.y).toBeGreaterThan(top.y);
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
@@ -425,7 +505,7 @@ test("a thin wrapper says where the mathematics is before anything else", async 
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   const rows = page.locator(".entry-provenance .provenance-details .detail-row dt");
   await expect(rows.first()).toHaveText("Substantive formalization");
-  await expect(page.getByRole("link", { name: `${repository}@${commit.slice(0, 12)}` }))
+  await expect(page.getByRole("link", { name: `${repository}@${commit.slice(0, 12)}`, includeHidden: true }))
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
@@ -544,6 +624,7 @@ test("a missing original automatically switches source links to the Palomar copy
     "href",
     /github\.com\/PalomarArchive\/example--challenge\/blob\/1{40}\/project\/Comparator\/Task\.lean$/,
   );
+  await page.locator(".entry-solution .section-collapse > summary").click();
   await page.locator("details.solution-dependencies > summary").click();
   await expect(page.getByRole("link", { name: "example/dependency (Palomar copy)" })).toHaveAttribute(
     "href",
@@ -657,6 +738,7 @@ test("a card says the original is unavailable exactly when the manifest says so"
   const card = page.locator(".entry-card").first();
   await expect(card).toHaveCount(1);
   await availabilityRequested;
+  await page.locator(".advanced-filters summary").click();
   await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await page.locator("#arxiv-query").evaluate((input) => input.focus());
@@ -740,7 +822,7 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
   const fullRecord = page.locator(".entry-evidence .detail-row", {
     has: page.getByText("Full registry record", { exact: true }),
   });
-  await expect(fullRecord.getByRole("link")).toHaveText(
+  await expect(fullRecord.getByRole("link", { includeHidden: true })).toHaveText(
     "PALOMAR-2026-07-29-000123-v1.json",
   );
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
@@ -770,7 +852,7 @@ test("entries display repository licence evidence and its boundary", async ({ pa
   // One row, not four: the licence, the file, and the digest. Declared and
   // detected are the same fact when they agree, which is the ordinary case.
   await expect(evidence).toContainText("Repository licence");
-  await expect(evidence.getByRole("link", { name: "LICENSE.md" })).toHaveAttribute(
+  await expect(evidence.getByRole("link", { name: "LICENSE.md", includeHidden: true })).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/LICENSE.md`,
   );
@@ -929,9 +1011,9 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   });
   await expect(editorialAssurance.locator("code")).toHaveText("Challenge.lean");
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
-  await expect(page.getByText("Verification workflow commit")).toBeVisible();
+  await expect(page.locator(".entry-evidence")).toContainText("Verification workflow commit");
   await expect(page.getByRole("link", { name: "Archived editorial review" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean" }).first()).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean", includeHidden: true }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Answer.lean`,
   );
@@ -952,6 +1034,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".entry-evidence")).toContainText("Project directory");
   await expect(page.locator(".entry-evidence")).toContainText("project");
   await expect(page.locator(".entry-solution .token-list code")).toHaveText("ExampleDependency");
+  await page.locator(".entry-solution .section-collapse > summary").click();
   await page.locator(".solution-dependencies summary").click();
   await expect(page.locator(".dependency-list")).toContainText("example/dependency");
   await expect(page.getByRole("link", { name: "shared" })).toHaveAttribute(
@@ -1017,9 +1100,6 @@ test("qualified statement and proof dependencies retain their distinct presentat
   const statement = page.locator("#statement-dependencies");
   await expect(statement.getByRole("heading", { name: "Depends on additional libraries" }))
     .toBeVisible();
-  await expect(statement.locator(".trust-badge")).toHaveText(
-    "Statement dependencies: additional libraries",
-  );
   await expect(statement.locator(".plain-list li")).toHaveText([
     "leanprover-community/mathlib4",
     "TauCetiProject/TauCeti",
@@ -1031,6 +1111,7 @@ test("qualified statement and proof dependencies retain their distinct presentat
   await expect(proof.locator(".solution-dependencies summary")).toHaveText(
     "1 project dependencies used by the proof",
   );
+  await proof.locator(".section-collapse > summary").click();
   await proof.locator(".solution-dependencies summary").click();
   await expect(proof.getByRole("link", { name: "example/dependency" })).toHaveAttribute(
     "href",
@@ -1795,6 +1876,7 @@ test("a provisional match the index does not confirm is taken away", async ({ pa
 test("emptying the box gives the listing and its filters back", async ({ page }) => {
   await page.goto(`/?database=${database}`);
   // Set before searching, because a search takes the toolbar off the page.
+  await page.locator(".advanced-filters summary").click();
   await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 

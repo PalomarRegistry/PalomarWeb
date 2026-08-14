@@ -28,10 +28,16 @@ future, or one second older is treated as unknown without discarding fresh
 sibling rows; a stale or unavailable whole manifest is likewise never believed.
 `last_attempt_at` may be null when the bounded producer has never attempted that
 endpoint.
-Registry cards display arXiv and MSC2020 classifications, and the toolbar can
-filter the rows the landing page holds by either taxonomy. The classification
-fields suggest codes represented by those rows but also accept any exact code,
-so a deep link such as `?arxiv=math.AG` produces a useful empty result even
+Registry cards display the identifier, registration date, title, abstract,
+authors, theorems, arXiv and MSC2020 classifications, and source links, all
+without opening anything: a title here is a repository name, so the authors and
+the theorem are what identify a row while scanning. The toolbar filters the
+rows the landing page holds by text or trust, with the arXiv and MSC2020
+subject inputs tucked behind a "Subject filters" disclosure until a deep link
+such as `?arxiv=math.AG` opens it; the opened inputs take room in the toolbar
+rather than floating over the rows below. The classification fields suggest codes
+represented by those rows but also accept any exact code, so a deep link such
+as `?arxiv=math.AG` produces a useful empty result even
 before that classification has an entry. The filter is over `recent.json`, which
 is the newest 200 current versions and not the registry, so it narrows what is
 on the page rather than searching everything; the search box does the latter,
@@ -212,6 +218,14 @@ Entry pages list all active versions. Older pages display a prominent link
 to the current version. Each page renders the selected version's own authorship,
 statement, proof, trust information, and review comments; information is never
 borrowed from a newer record. The site provides links, not computed diffs.
+The statement and the acceptance callout come first; the verification table,
+statement dependencies, proof, provenance, and review comments sit behind
+section disclosures that open when their heading is selected, and a fragment
+link into one (such as `#statement-dependencies`) opens it before scrolling,
+whether the fragment arrives from a link, from the address bar, or from the
+history buttons. Each collapsed section is named by its own heading, so it is
+reachable as a landmark on a browser that folds a summary's contents into the
+disclosure's name rather than exposing the heading inside it.
 The registry does not define change summaries or major/minor versions, so the
 website does not infer them. If a richer version
 scheme is adopted later, it will require a new URL contract; existing integer

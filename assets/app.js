@@ -15,6 +15,7 @@ import {
   validateSearchQuery,
 } from "./searching.mjs";
 import {
+  expandDetailsForTarget,
   renderChallengePage,
   renderEntryPage,
 } from "./entry-pages.mjs";
@@ -364,6 +365,14 @@ async function renderIndex() {
     };
     applyCategoryParameter(arxiv, "arxiv", 32);
     applyCategoryParameter(msc, "msc", 5);
+    // A deep link that filters by subject is a request to act on it, so the
+    // hidden-until-opened controls are opened by the parameters that use them.
+    // The fallback selector keeps cached HTML from the previous deployment
+    // (which has no disclosure) working unchanged.
+    const advancedFilters = document.querySelector(".advanced-filters");
+    if (advancedFilters && (params.has("arxiv") || params.has("msc"))) {
+      advancedFilters.open = true;
+    }
     // Words are the registry search's business now. What is left here narrows
     // the landing selection by facts the cards already carry, which is why it
     // can stay instant and local.
@@ -1004,11 +1013,23 @@ function classificationSection(entry) {
 function provenanceSection(entry, sourceAvailability) {
   const provenance = entry.provenance;
   const section = el("section", "entry-provenance");
+  const disclosure = el("details", "section-collapse");
   const heading = el("div", "section-heading");
   const title = el("div");
-  title.append(el("div", "eyebrow", "Provenance"), el("h2", "", "Mathematical origin"));
+  // A heading inside a summary is exposed as a heading by Chromium, but the
+  // engines that flatten a summary's contents into its own accessible name
+  // would leave the section with no way to find it. Naming the section from
+  // the same text makes it a landmark, which is a second route to it that does
+  // not depend on how the disclosure treats what is inside the summary.
+  const sectionHeading = el("h2", "", "Mathematical origin");
+  sectionHeading.id = "provenance-heading";
+  section.setAttribute("aria-labelledby", sectionHeading.id);
+  title.append(el("div", "eyebrow", "Provenance"), sectionHeading);
   heading.append(title);
-  section.append(heading);
+  const summary = el("summary");
+  summary.append(heading);
+  disclosure.append(summary);
+  section.append(disclosure);
 
   const details = el("dl", "details provenance-details");
   // Where the mathematics actually lives comes first. For a thin wrapper it is
@@ -1051,10 +1072,10 @@ function provenanceSection(entry, sourceAvailability) {
   if (entry.submission.authorization.evidence) {
     details.append(detailRow("Authorization evidence", entry.submission.authorization.evidence));
   }
-  section.append(details);
+  disclosure.append(details);
 
   if (provenance.mathematical_sources.length) {
-    section.append(el("h3", "", "Mathematical sources"));
+    disclosure.append(el("h3", "", "Mathematical sources"));
     const sources = el("ul", "plain-list provenance-sources");
     for (const source of provenance.mathematical_sources) {
       const item = el("li");
@@ -1072,13 +1093,13 @@ function provenanceSection(entry, sourceAvailability) {
       }
       sources.append(item);
     }
-    section.append(sources);
+    disclosure.append(sources);
   } else {
-    section.append(el("p", "no-sources", "No prior mathematical source is recorded."));
+    disclosure.append(el("p", "no-sources", "No prior mathematical source is recorded."));
   }
 
   if (provenance.related_formalizations.length) {
-    section.append(el("h3", "", "Related formalizations"));
+    disclosure.append(el("h3", "", "Related formalizations"));
     const related = el("ul", "plain-list related-formalizations");
     for (const formalization of provenance.related_formalizations) {
       const item = el("li");
@@ -1091,7 +1112,7 @@ function provenanceSection(entry, sourceAvailability) {
       if (formalization.note) item.append(`: ${formalization.note}`);
       related.append(item);
     }
-    section.append(related);
+    disclosure.append(related);
   }
   return section;
 }
@@ -1121,7 +1142,9 @@ async function renderEntry(
   const titleBlock = el("div");
   titleBlock.append(el("div", "eyebrow", "Verification"), el("h2", "", "What was checked"));
   evidenceTitle.append(titleBlock);
-  evidence.append(evidenceTitle, acceptanceCallout(entry, databaseBase));
+  const evidenceDetails = el("details", "section-collapse evidence-collapse");
+  evidenceDetails.append(el("summary", "", "Verification details"));
+  evidence.append(evidenceTitle, acceptanceCallout(entry, databaseBase), evidenceDetails);
   const details = el("dl", "details");
   details.append(
     // One date, not two. Acceptance and Lean verification have always been the
@@ -1232,9 +1255,12 @@ async function renderEntry(
       licenceRow(entry, sourceAvailability),
     );
   }
-  evidence.append(details);
+  evidenceDetails.append(details);
   {
-    evidence.append(
+    // The sentence qualifies the licence row of the table above it, so it
+    // lives inside the same disclosure. Outside it, a collapsed page carries a
+    // caveat about licence evidence that is nowhere on the page.
+    evidenceDetails.append(
       el(
         "p",
         "licence-boundary",
@@ -1246,17 +1272,24 @@ async function renderEntry(
   const trust = statementDependencies(entry);
 
   const editorial = el("section", "entry-editorial");
+  const editorialDisclosure = el("details", "section-collapse");
   const editorialTitle = el("div", "section-heading");
   const editorialBlock = el("div");
-  editorialBlock.append(el("div", "eyebrow", "Editorial record"), el("h2", "", "Automated review"));
+  const editorialHeading = el("h2", "", "Automated review");
+  editorialHeading.id = "review-heading";
+  editorial.setAttribute("aria-labelledby", editorialHeading.id);
+  editorialBlock.append(el("div", "eyebrow", "Editorial record"), editorialHeading);
   editorialTitle.append(editorialBlock, el("span", "decision", "Accepted"));
-  editorial.append(editorialTitle);
+  const editorialSummary = el("summary");
+  editorialSummary.append(editorialTitle);
+  editorialDisclosure.append(editorialSummary);
+  editorial.append(editorialDisclosure);
   // No scores. They decide whether a submission is accepted and they are kept
   // beside the database, but they never reach here: the same repository at
   // the same commit has scored 5 and then 4 on the same axis across runs, and a
   // number that moves like that reads as a judgement it cannot support. What
   // it can support is the decision, which is above.
-  editorial.append(
+  editorialDisclosure.append(
     el(
       "p",
       "review-explanation",
@@ -1266,14 +1299,14 @@ async function renderEntry(
     ),
   );
   if (entry.review.warnings.length) {
-    editorial.append(el("h3", "", "AI review comments"));
+    editorialDisclosure.append(el("h3", "", "AI review comments"));
     const comments = el("ul", "review-comments");
     for (const comment of entry.review.warnings) comments.append(el("li", "", comment));
-    editorial.append(comments);
+    editorialDisclosure.append(comments);
   } else {
-    editorial.append(el("p", "no-warnings", "The review recorded no comments on this result."));
+    editorialDisclosure.append(el("p", "no-warnings", "The review recorded no comments on this result."));
   }
-  editorial.append(
+  editorialDisclosure.append(
     dataLink(
       "Read the archived review",
       evidenceDataUrl(entry, databaseBase, "review.json"),
@@ -1342,6 +1375,35 @@ if (document.body.dataset.page === "index") {
   if (!hasInitialSearch) ensureLanding();
 }
 if (document.body.dataset.page === "entry") {
+  // A same-page anchor into a collapsed section must open that section first,
+  // or the fragment lands on a heading whose content is still hidden. The
+  // browser runs this before the default fragment navigation, so the target
+  // is already expanded by the time it scrolls.
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest?.('a[href*="#"]');
+    if (!link) return;
+    const href = link.getAttribute("href");
+    if (!href) return;
+    const fragmentIndex = href.indexOf("#");
+    if (fragmentIndex === -1) return;
+    const fragment = href.slice(fragmentIndex);
+    if (fragment === "#") return;
+    const target = document.getElementById(decodeURIComponent(fragment.slice(1)));
+    if (target) expandDetailsForTarget(target);
+  });
+  // The click above covers links on this page and the initial render covers a
+  // fragment the page was opened with. A hash that arrives any other way, from
+  // the address bar or from history navigation, gets the same treatment: the
+  // browser has already scrolled to a collapsed heading, so the section is
+  // opened and the target brought back into view.
+  window.addEventListener("hashchange", () => {
+    const fragment = window.location.hash.slice(1);
+    if (!fragment) return;
+    const target = document.getElementById(decodeURIComponent(fragment));
+    if (!target) return;
+    expandDetailsForTarget(target);
+    target.scrollIntoView();
+  });
   renderEntryPage({
     params,
     document,

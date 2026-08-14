@@ -28,6 +28,7 @@ function fakeDocument() {
     activeElement: null,
     createElement(tag) {
       return {
+        attributes: {},
         children: [],
         className: "",
         href: "",
@@ -37,6 +38,12 @@ function fakeDocument() {
         textContent: "",
         append(...children) {
           this.children.push(...children);
+        },
+        setAttribute(name, value) {
+          this.attributes[name] = String(value);
+        },
+        getAttribute(name) {
+          return Object.hasOwn(this.attributes, name) ? this.attributes[name] : null;
         },
         focus() {
           document.activeElement = this;
@@ -81,8 +88,27 @@ test("the trust badge and statement dependency section present the accepted trus
   const highSection = presentation.statementDependencies(high);
   assert.equal(highSection.id, "statement-dependencies");
   assert.ok(texts(highSection, "h2").includes("Depends only on Mathlib"));
+  // The heading sits inside a summary, so the section carries its own name:
+  // a reader whose browser flattens the summary still has a landmark here.
+  const highHeading = byTag(highSection, "h2")[0];
+  assert.equal(highSection.getAttribute("aria-labelledby"), highHeading.id);
+  assert.equal(highHeading.textContent, "Depends only on Mathlib");
   assert.deepEqual(texts(highSection, "code"), ["Mathlib"]);
   assert.equal(byClass(highSection, "reason-list").length, 0);
+
+  const singleLibrary = entry();
+  singleLibrary.trust = {
+    ...singleLibrary.trust,
+    challenge_dependencies: [{ repository: "leanprover-community/mathlib4" }],
+  };
+  const merged = presentation.statementDependencies(singleLibrary);
+  assert.deepEqual(
+    byClass(merged, "statement-import-line")[0].children.map((node) => node.textContent),
+    ["Mathlib", " · leanprover-community/mathlib4"],
+  );
+  assert.ok(!texts(merged, "h3").includes("Source repositories"));
+  assert.equal(byClass(merged, "plain-list").length, 0);
+  assert.equal(byClass(merged, "token-list").length, 0);
 
   const qualified = entry();
   qualified.trust = {
