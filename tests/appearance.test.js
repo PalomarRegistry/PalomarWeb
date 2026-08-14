@@ -131,14 +131,21 @@ test("privacy.html discloses that GitHub Free carries no data protection agreeme
   // The consequence, and the data it applies to, not only the missing paper.
   assert.match(text, /access-controlled submission state/);
   assert.match(text, /private ledger/);
-  assert.match(text, /workflow artifacts each automated review runs on/);
+  assert.match(text, /sparse clone of the private database/);
   assert.match(text, /no processor agreement standing behind it/);
 
-  // The transfers section must not re-import the agreement it just disclaimed.
-  assert.match(
-    text,
-    /different instrument from the Data Protection Agreement Palomar does not have/,
-  );
+  // The absence is stated and left standing. Reassurance that it is fine, or a
+  // view on what should be bought instead, are both out of this page's scope.
+  assert.doesNotMatch(text, /settled arrangement/);
+  assert.doesNotMatch(text, /gap waiting to close/);
+
+  // The transfers section must not re-import the agreement it just disclaimed,
+  // nor overcorrect: GitHub's terms do take the Privacy Statement in, and its
+  // clauses are scoped to GitHub's own controller processing, so what Palomar
+  // can say about Palomar's uploads is that it does not know.
+  assert.match(text, /take the Privacy Statement in as part of the agreement/);
+  assert.match(text, /scopes itself to the personal data GitHub handles as its own controller/);
+  assert.match(text, /a question the statement does not answer/);
   assert.doesNotMatch(
     text,
     /relies on the transfer terms in each provider’s published data protection agreement/,
