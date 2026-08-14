@@ -1065,9 +1065,20 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
     "href",
     `https://github.com/example/challenge/tree/${"1".repeat(40)}/shared`,
   );
-  await iframe.hover();
-  await page.mouse.wheel(0, 2000);
-  await expect.poll(() => rendered.locator("html").evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  // A wheel is hit-tested against the compositor's last committed frame, so
+  // one sent immediately after hover() has scrolled the frame into view can
+  // still be aimed at where the page used to be and scroll the page instead:
+  // the frame stays at 0 and never moves again, because nothing sends a
+  // second wheel. Re-aim and send until the frame's own document moves. What
+  // is being asserted is that a wheel over the frame scrolls the frame rather
+  // than the page around it, not how many events that takes. Chromium latches
+  // a wheel gesture to one scroller, so the frame absorbs the whole of the
+  // wheel that reaches it and stops at its own end.
+  await expect.poll(async () => {
+    await iframe.hover();
+    await page.mouse.wheel(0, 2000);
+    return rendered.locator("html").evaluate((node) => node.scrollTop);
+  }).toBeGreaterThan(0);
   await expect(rendered.locator("#theorem-end")).toBeInViewport();
 });
 
