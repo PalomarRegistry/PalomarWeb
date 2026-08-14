@@ -28,21 +28,40 @@ function createArchiveWalk({ years, loadYear, loadPage }) {
   let days = null;
   let dayIndex = 0;
 
-  async function nextDay() {
+  /**
+   * The day the walk is standing on, without stepping off it.
+   *
+   * Separate from stepping, so that a failed read leaves the position where it
+   * was. A walk that advanced first would skip the failed day for good on the
+   * retry, and the reader would be told the archive was read when a day of it
+   * had silently gone missing.
+   */
+  async function currentDay() {
     while (yearIndex < remaining.length) {
       if (days === null) {
         days = [...(await loadYear(remaining[yearIndex])).days].reverse();
         dayIndex = 0;
       }
-      if (dayIndex < days.length) {
-        const day = days[dayIndex];
-        dayIndex += 1;
-        return day;
-      }
+      if (dayIndex < days.length) return days[dayIndex];
       days = null;
       yearIndex += 1;
     }
     return null;
+  }
+
+  /**
+   * That there is certainly nothing left, decided without a request.
+   *
+   * "Not certainly" is not "no". Standing at the end of a year whose successor
+   * has not been read is the one position this cannot answer, and it answers
+   * false there, so the reader keeps the control and one more click settles
+   * it. The alternative is a year document fetched to decide whether to draw a
+   * button, on a page that may never be clicked again.
+   */
+  function atEnd() {
+    if (days === null) return yearIndex >= remaining.length;
+    if (dayIndex < days.length) return false;
+    return yearIndex >= remaining.length - 1;
   }
 
   /**
@@ -53,21 +72,29 @@ function createArchiveWalk({ years, loadYear, loadPage }) {
    * page's own rows are in increasing identity order. Empty days are skipped
    * without a request: a seeded page that no current version lands on says so
    * in the day row's count.
+   *
+   * A day is held whole. Its rows are published as one ordered run, so half of
+   * one shown now and the rest after a retry would be a listing out of the
+   * order it claims to be in.
    */
   async function next(seen) {
     const rows = [];
     for (let read = 0; read < MAX_DAYS_PER_STEP && rows.length === 0; read += 1) {
-      const day = await nextDay();
-      if (day === null) return rows;
-      if (day.versions === 0) continue;
-      for (let page = day.last_page; page >= day.first_page; page -= 1) {
-        const loaded = await loadPage(day.day, page);
-        for (const row of [...loaded.entries].reverse()) {
-          if (!seen.has(rowKey(row))) rows.push(row);
+      const day = await currentDay();
+      if (day === null) return { rows, exhausted: true };
+      if (day.versions !== 0) {
+        const found = [];
+        for (let page = day.last_page; page >= day.first_page; page -= 1) {
+          const loaded = await loadPage(day.day, page);
+          for (const row of [...loaded.entries].reverse()) {
+            if (!seen.has(rowKey(row))) found.push(row);
+          }
         }
+        rows.push(...found);
       }
+      dayIndex += 1;
     }
-    return rows;
+    return { rows, exhausted: atEnd() };
   }
 
   return { next };
@@ -136,8 +163,13 @@ export async function renderSubjectPage({
     loadYear: (year) => loadSubjectYear(kind, code, year),
     loadPage: (day, page) => loadSubjectPage(kind, code, day, page),
   });
+  // Exhaustion is the archive's own answer, and the count is the head's. A
+  // reader is offered the button only while both still expect a row: a code
+  // whose pages hold fewer rows than its head claims would otherwise leave a
+  // control that could never do anything, and say so once per click forever.
+  let exhausted = head.years.length === 0;
   const updateMore = () => {
-    more.hidden = seen.size >= head.versions;
+    more.hidden = exhausted || seen.size >= head.versions;
   };
   updateMore();
   more.addEventListener("click", async () => {
@@ -145,16 +177,18 @@ export async function renderSubjectPage({
     moreStatus.textContent = "";
     moreStatus.classList.remove("error");
     try {
-      const rows = await walk.next(seen);
-      show(rows);
-      // The walk is bounded per click, so an empty step is "not yet", not
-      // "no more". The count above the archive is what decides which.
-      if (!rows.length && seen.size < head.versions) {
+      const step = await walk.next(seen);
+      exhausted = step.exhausted;
+      show(step.rows);
+      // The walk is bounded per click, so an empty step is "not yet" as long
+      // as there is archive left to read.
+      if (!step.rows.length && !exhausted && seen.size < head.versions) {
         moreStatus.textContent = "No earlier results in the days read. Ask again to keep going.";
       }
     } catch (error) {
-      // What is already on the page stays on it. An archive read that failed
-      // can be asked for again, and the rest of the listing is still true.
+      // What is already on the page stays on it, and the walk has not stepped
+      // past the day that failed. An archive read that failed can be asked for
+      // again, and the rest of the listing is still true.
       moreStatus.textContent = `Earlier results could not be loaded: ${error.message}`;
       moreStatus.classList.add("error");
     } finally {
