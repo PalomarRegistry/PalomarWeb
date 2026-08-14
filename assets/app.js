@@ -416,11 +416,6 @@ async function renderIndex() {
       console.warn(`Landing card source availability could not be applied: ${error.message}`);
     });
     let trust = "all";
-    // Cached HTML from the previous deployment still carries the filter box
-    // this JavaScript no longer wires. Leaving it on the page would offer a
-    // reader a control that silently does nothing.
-    const legacyFilter = document.querySelector(".toolbar .search");
-    if (legacyFilter) legacyFilter.hidden = true;
     // The fallback selectors keep new JavaScript compatible with cached HTML
     // from the previous GitHub Pages deployment.
     const arxiv = document.querySelector("#arxiv-query, #arxiv-filter");
