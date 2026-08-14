@@ -528,6 +528,31 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self.send_bytes(json.dumps(document).encode(), "application/json")
             return
+        # The render hashes of exactly the results on that page, which the
+        # landing page reads only when a reader asks to see one. Built from the
+        # same current selection, so the two cannot disagree here either.
+        if path == "/database/recent-renders.json":
+            current = {}
+            for item in ENTRIES.values():
+                previous = current.get(item["id"])
+                if previous is None or item["version"] > previous["version"]:
+                    current[item["id"]] = item
+            rows = [
+                {
+                    "id": item["id"],
+                    "version": item["version"],
+                    "artifact_tree_sha256": item["challenge_render"][
+                        "artifact_tree_sha256"
+                    ],
+                }
+                for item in current.values()
+            ]
+            rows.sort(key=lambda row: row["id"])
+            self.send_bytes(
+                json.dumps({"schema_version": 1, "renders": rows}).encode(),
+                "application/json",
+            )
+            return
         # The versions of one result, which is what an entry page reads instead
         # of the whole index.
         versions = re.fullmatch(

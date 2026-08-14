@@ -13,7 +13,9 @@ import {
   availabilityRow,
   entry,
   recent,
+  recentRenders,
   recentRow,
+  renderRow,
   secondVersion,
   summary,
 } from "./registry-fixture.mjs";
@@ -40,6 +42,8 @@ import {
   selectDatabaseUrl,
   selectAvailabilityUrl,
   selectRenderBase,
+  recentRenderRow,
+  recentRendersUrl,
   recentUrl,
   tombstoneUrl,
   validateEntry,
@@ -55,6 +59,7 @@ import {
   validateSubjectPage,
   validateSubjectYear,
   validateRecent,
+  validateRecentRenders,
   validateTombstone,
   validateVersions,
   versionsUrl,
@@ -178,6 +183,10 @@ test("what is new is read from the database prefix and nowhere else", () => {
     recentUrl(databaseBaseFor("https://example.test/database/")).href,
     "https://example.test/database/recent.json",
   );
+  assert.equal(
+    recentRendersUrl(databaseBaseFor("https://example.test/database/")).href,
+    "https://example.test/database/recent-renders.json",
+  );
 });
 
 test("recent validation rejects unsupported, rejected, and malformed rows", () => {
@@ -215,6 +224,48 @@ test("recent validation accepts the Database-owned landing-card fixture", async 
 
 test("an empty recent registry is valid", () => {
   assert.deepEqual(validateRecent(recent([])).entries, []);
+});
+
+test("the render companion is one exact closed shape", () => {
+  assert.deepEqual(validateRecentRenders(recentRenders([])).renders, []);
+
+  for (const mutate of [
+    (document) => { document.entries = []; },
+    (document) => { document.schema_version = 2; },
+    (document) => { delete document.renders[0].version; },
+    (document) => { document.renders[0].artifact_path = "renders/"; },
+    (document) => { document.renders[0].id = "PALOMAR-2026-07-29-00012"; },
+    (document) => { document.renders[0].version = 0; },
+    (document) => { document.renders[0].version = 1.5; },
+    (document) => { document.renders[0].artifact_tree_sha256 = "a".repeat(63); },
+    (document) => { document.renders[0].artifact_tree_sha256 = "A".repeat(64); },
+    (document) => { document.renders = Array(201).fill(renderRow()); },
+  ]) {
+    const document = recentRenders();
+    mutate(document);
+    assert.throws(() => validateRecentRenders(document), /invalid registry data/);
+  }
+});
+
+test("the render companion names each result once, in one order", () => {
+  const first = renderRow();
+  const second = renderRow({ id: "PALOMAR-2026-07-29-000124" });
+
+  assert.ok(validateRecentRenders(recentRenders([first, second])));
+  assert.throws(
+    () => validateRecentRenders(recentRenders([second, first])),
+    /increasing identifier order/,
+  );
+  assert.throws(
+    () => validateRecentRenders(recentRenders([first, renderRow({ version: 2 })])),
+    /increasing identifier order/,
+  );
+});
+
+test("a rejected render companion leaves no row usable", () => {
+  const document = recentRenders([renderRow(), renderRow({ id: "nope" })]);
+  assert.throws(() => validateRecentRenders(document), /invalid registry data/);
+  assert.throws(() => recentRenderRow(document, renderRow().id), /was not validated/);
 });
 
 test("recent is one exact complete projection, not a legacy summary shape", () => {
@@ -917,10 +968,23 @@ test("user documentation names current examples and iframe height units", async 
     new URL("../assets/challenge-presentation.mjs", import.meta.url),
     "utf8",
   );
-  const bounds = /Math\.max\((\d+), Math\.min\((\d+),/.exec(presentation);
+  const bounds = /minHeight = (\d+),\s*\n\s*maxHeight = (\d+),/.exec(presentation);
   assert.notEqual(bounds, null, "iframe height policy must remain explicit");
   assert.match(readme, new RegExp(`clamped\\s+between ${bounds[1]} and ${bounds[2]} pixels`));
   assert.doesNotMatch(readme, /between 10rem and 42rem/);
+
+  // The preview overrides those defaults, so its own bounds are a second
+  // policy and are documented as one rather than left to be inferred.
+  const preview = await readFile(
+    new URL("../assets/statement-preview.mjs", import.meta.url),
+    "utf8",
+  );
+  const previewBounds = /MIN_HEIGHT = (\d+);\nconst MAX_HEIGHT = (\d+);/.exec(preview);
+  assert.notEqual(previewBounds, null, "preview height policy must remain explicit");
+  assert.match(
+    readme,
+    new RegExp(`clamped between ${previewBounds[1]}\\s+and ${previewBounds[2]} pixels`),
+  );
   assert.doesNotMatch(readme, /PALOMAR-2026-07-29-000001/);
 });
 

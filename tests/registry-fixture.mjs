@@ -63,6 +63,20 @@ export function recent(entries = [recentRow()], overrides = {}) {
   return { schema_version: 1, entries, ...overrides };
 }
 
+export function renderRow(overrides = {}) {
+  const record = entry();
+  return {
+    id: record.id,
+    version: record.version,
+    artifact_tree_sha256: record.challenge_render.artifact_tree_sha256,
+    ...overrides,
+  };
+}
+
+export function recentRenders(renders = [renderRow()], overrides = {}) {
+  return { schema_version: 1, renders, ...overrides };
+}
+
 export function availabilityEndpoint(overrides = {}) {
   return {
     status: "available",
