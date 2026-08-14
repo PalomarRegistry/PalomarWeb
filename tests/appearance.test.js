@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
+import { htmlFiles } from "../scripts/build-site.mjs";
+
 function expandHex(hex) {
   const raw = hex.slice(1);
   if (raw.length === 3) return [...raw].map((channel) => channel.repeat(2)).join("");
@@ -82,10 +84,28 @@ test("all page colours are palette variables", () => {
   assert.deepEqual(literals, []);
 });
 
-for (const file of ["index.html", "entry.html", "about.html", "render.html", "404.html"]) {
+// Driven by the build manifest rather than a list written here: a page added
+// to the deployment and forgotten by this test is exactly the page that ships
+// without the chrome colours, and `subject.html` had already been missed once.
+for (const file of htmlFiles) {
   test(`${file} advertises browser-selected light and dark chrome colours`, async () => {
     const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
     assert.match(html, /name="theme-color" content="#ffffff" media="\(prefers-color-scheme: light\)"/);
     assert.match(html, /name="theme-color" content="#101216" media="\(prefers-color-scheme: dark\)"/);
   });
 }
+
+// The privacy policy is only useful if it can be found from wherever a reader
+// happens to be standing, which is the finding that produced it.
+test("every shipped page carries a footer link to the privacy policy", async () => {
+  for (const file of htmlFiles) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    const footer = html.slice(html.indexOf("<footer>"), html.indexOf("</footer>"));
+    assert.ok(footer, `${file} has no footer to carry the privacy link`);
+    assert.match(
+      footer,
+      /<a href="privacy\.html">Privacy<\/a>/,
+      `${file} does not link the privacy policy from its footer`,
+    );
+  }
+});

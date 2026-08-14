@@ -8,6 +8,7 @@ export const htmlFiles = [
   "about.html",
   "entry.html",
   "index.html",
+  "privacy.html",
   "render.html",
   "subject.html",
 ];
