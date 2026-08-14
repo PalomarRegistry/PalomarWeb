@@ -8,6 +8,27 @@ function parsedVersion(value) {
 }
 
 /**
+ * Open the disclosures that would otherwise hide a fragment target.
+ *
+ * A section's body is a `details.section-collapse`; its heading is the
+ * summary. Opening the target's own section disclosure, or any disclosure
+ * ancestor, guarantees the element a fragment link names is visible before the
+ * caller scrolls to it. Missing DOM hooks are tolerated so the route stays
+ * testable with a stub element.
+ */
+export function expandDetailsForTarget(target) {
+  if (!target) return;
+  if (target.tagName === "DETAILS" && !target.open) target.open = true;
+  const disclosure = typeof target.querySelector === "function"
+    ? target.querySelector("details.section-collapse")
+    : null;
+  if (disclosure && !disclosure.open) disclosure.open = true;
+  for (let node = target; node; node = node.parentElement) {
+    if (node.tagName === "DETAILS" && !node.open) node.open = true;
+  }
+}
+
+/**
  * Orchestrate the entry route around the data loader and page composer.
  *
  * The caller retains those two domain boundaries. This module owns URL input,
@@ -55,7 +76,10 @@ export async function renderEntryPage({
     const anchorTarget = requestedHash.startsWith("#")
       ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
       : null;
-    if (anchorTarget) anchorTarget.scrollIntoView();
+    if (anchorTarget) {
+      expandDetailsForTarget(anchorTarget);
+      anchorTarget.scrollIntoView();
+    }
   } catch (error) {
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");

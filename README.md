@@ -28,10 +28,13 @@ future, or one second older is treated as unknown without discarding fresh
 sibling rows; a stale or unavailable whole manifest is likewise never believed.
 `last_attempt_at` may be null when the bounded producer has never attempted that
 endpoint.
-Registry cards display arXiv and MSC2020 classifications. Every code is a link
-to `subject.html?kind=<arxiv|msc>&code=<code>`, and every code is glossed with
-its description on hover and in the accessibility tree: a code is not a subject,
-and neither `52C10` nor `math.MG` says what it is. The two taxonomy tables are
+Registry cards display the identifier, registration date, title, abstract,
+authors, theorems, arXiv and MSC2020 classifications, and source links, all
+without opening anything: a title here is a repository name, so the authors and
+the theorem are what identify a row while scanning. Every classification code is
+a link to `subject.html?kind=<arxiv|msc>&code=<code>`, glossed with its
+description on hover and in the accessibility tree: a code is not a subject, and
+neither `52C10` nor `math.MG` says what it is. The two taxonomy tables are
 vendored under `assets/data/` from the snapshot PalomarSubmission validates
 against, and a page whose fetch of one fails still renders. The codes are muted
 rather than link-coloured, and grow a dotted underline on hover and on keyboard
@@ -41,18 +44,24 @@ A subject page reads `subjects/<kind>/<code>.json` and the day-paged archive
 behind it, so it answers for the whole registry rather than for what one page
 happens to hold. The front page is the newest 50 current versions under the
 code; "Show earlier results" walks the archive newest first, one day at a time,
-skipping days it has already shown. A code the registry has ever used keeps
-answering after its last classifier is superseded, so an empty page is an answer
-and not a 404.
+skipping days it has already shown. A page range is inclusive of its ends and
+not of everything between them, since a code's pages are seeded by the results
+ever classified under it, so an absent page inside a range is read as empty and
+each day is reconciled against the counts it declares. A code the registry has
+ever used keeps answering after its last classifier is superseded, so an empty
+page is an answer and not a 404.
 
-The toolbar can also filter the rows the landing page holds by either taxonomy.
-The classification fields suggest codes represented by those rows but also
-accept any exact code, so a deep link such as `?arxiv=math.AG` produces a useful
-empty result even before that classification has an entry. That filter is over
-`recent.json`, which is the newest 200 current versions and not the registry, so
-it narrows what is on the page rather than searching everything; the search box
-does the latter, a word at a time, over titles, abstracts and author names, and
-the subject pages answer a code exactly.
+The toolbar also filters the rows the landing page holds by text or trust, with
+the arXiv and MSC2020 subject inputs tucked behind a "Subject filters"
+disclosure until a deep link such as `?arxiv=math.AG` opens it; the opened
+inputs take room in the toolbar rather than floating over the rows below. The
+classification fields suggest codes represented by those rows but also accept
+any exact code, so such a deep link produces a useful empty result even before
+that classification has an entry. That filter is over `recent.json`, which is
+the newest 200 current versions and not the registry, so it narrows what is on
+the page rather than searching everything; the search box does the latter, a
+word at a time, over titles, abstracts and author names, and the subject pages
+answer a code exactly.
 Search accepts at most 4,096 characters and 20 distinct normalized words. The
 word limit is checked before the stopword list is loaded, so common words that
 the index later drops still count. An over-limit linked or typed query is
@@ -230,6 +239,14 @@ Entry pages list all active versions. Older pages display a prominent link
 to the current version. Each page renders the selected version's own authorship,
 statement, proof, trust information, and review comments; information is never
 borrowed from a newer record. The site provides links, not computed diffs.
+The statement and the acceptance callout come first; the verification table,
+statement dependencies, proof, provenance, and review comments sit behind
+section disclosures that open when their heading is selected, and a fragment
+link into one (such as `#statement-dependencies`) opens it before scrolling,
+whether the fragment arrives from a link, from the address bar, or from the
+history buttons. Each collapsed section is named by its own heading, so it is
+reachable as a landmark on a browser that folds a summary's contents into the
+disclosure's name rather than exposing the heading inside it.
 The registry does not define change summaries or major/minor versions, so the
 website does not infer them. If a richer version
 scheme is adopted later, it will require a new URL contract; existing integer

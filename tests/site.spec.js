@@ -20,6 +20,32 @@ function fileAtPreviousDeployment(path) {
 }
 
 /**
+ * Ask the registry a deliberate question and do not wait out the typing pause.
+ *
+ * The value is set rather than typed on purpose. Typing schedules the debounced
+ * search, which would race the Enter below and make the request counts these
+ * tests assert on depend on how fast the machine is. Enter is still a real key
+ * press, because the form no longer has a button and that is the only way in.
+ * The tests that cover typing itself type.
+ */
+async function startSearch(page, query) {
+  await page.locator("#query").evaluate((input, value) => { input.value = value; }, query);
+  await page.locator("#query").press("Enter");
+}
+
+/**
+ * Ask, and wait until the registry rather than the page has answered.
+ *
+ * While a search runs the page stands in the entries it already holds, drawn
+ * exactly like the cards that will replace them. Counting cards therefore
+ * cannot tell the two apart, and the spinner is what can.
+ */
+async function runSearch(page, query) {
+  await startSearch(page, query);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+}
+
+/**
  * Which entry schema the previous deployment's validator would accept.
  *
  * Cached JavaScript can only be compatible with records it can read. When the
@@ -171,6 +197,21 @@ test("landing cards show the registration date and dated identifier", async ({ p
   expect(dynamicRequests).toHaveLength(2);
 });
 
+test("card metadata is on the card, not behind a toggle", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").first();
+
+  // Titles in this registry are repository names, so the authors and the
+  // theorem are what make a row identifiable while scanning the list. They
+  // are read without opening anything, and there is nothing to open.
+  await expect(card.locator(".card-meta")).toBeVisible();
+  await expect(card.locator(".card-meta")).toContainText("Example");
+  await expect(card.locator(".card-meta")).toContainText("Example.theorem");
+  await expect(card.locator(".card-subjects")).toContainText("math.CO");
+  await expect(card.locator(".card-project")).toContainText("Project directory");
+  await expect(card.locator("details")).toHaveCount(0);
+});
+
 test("landing cards preserve the publisher's newest-first order", async ({ page }) => {
   const registeredAt = new Map([
     ["PALOMAR-2026-07-29-000124", "2026-07-29T23:00:00Z"],
@@ -250,6 +291,9 @@ test("an unavailable recent summary reports failure instead of emptiness", async
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
+  // The subject inputs sit behind the toolbar's disclosure until opened.
+  await page.locator(".advanced-filters summary").click();
+  await expect(page.locator('.advanced-filters')).toHaveAttribute("open", "");
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
   await expect(page.locator('#msc-options option[value="05C10"]')).toHaveCount(1);
 
@@ -269,6 +313,8 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
 
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
+  // A linked subject filter opens the disclosure that holds its inputs.
+  await expect(page.locator(".advanced-filters")).toHaveAttribute("open", "");
   await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
@@ -370,14 +416,74 @@ test("an entry answers its reader's first three questions first", async ({ page 
 
   // The dependencies are further down this page, so following the link scrolls
   // rather than loading anything. (The href is absolute either way, so what is
-  // worth asserting is where it lands.)
+  // worth asserting is where it lands.) The dense sections start collapsed, so
+  // the fragment link has to open the section before the browser scrolls to it.
+  await expect(page.locator("#statement-dependencies .section-collapse")).not.toHaveAttribute(
+    "open",
+    "",
+  );
   const before = page.url();
   await page
     .locator(".challenge-links")
     .getByRole("link", { name: "Inspect statement dependencies" })
     .click();
   await expect(page.locator("#statement-dependencies")).toBeInViewport();
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute(
+    "open",
+    "",
+  );
   expect(page.url().split("#")[0]).toBe(before.split("#")[0]);
+});
+
+test("a hash that arrives without a click still opens its section", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator("#statement-dependencies")).toBeVisible();
+  await expect(page.locator("#statement-dependencies .section-collapse")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+
+  // What the address bar and the history buttons do: the fragment changes on a
+  // page that is already loaded, with no link to intercept.
+  await page.evaluate(() => {
+    window.location.hash = "#statement-dependencies";
+  });
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute(
+    "open",
+    "",
+  );
+  await expect(page.locator("#statement-dependencies")).toBeInViewport();
+});
+
+test("the licence caveat travels with the licence evidence it qualifies", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const collapse = page.locator(".entry-evidence .section-collapse");
+
+  // A page that says this licence evidence covers the snapshot only, while the
+  // licence row is folded away, is a caveat about nothing on the page.
+  await expect(collapse).toBeVisible();
+  await expect(collapse.locator(".licence-boundary")).toHaveCount(1);
+  await expect(page.locator(".licence-boundary")).toBeHidden();
+
+  await collapse.locator("summary").click();
+  await expect(collapse).toHaveAttribute("open", "");
+  await expect(page.locator(".licence-boundary")).toBeVisible();
+  await expect(collapse.locator("dl.details")).toContainText("Repository licence");
+});
+
+test("the subject filters make room in the toolbar instead of covering the list", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").first();
+  const top = await card.boundingBox();
+
+  await page.locator(".advanced-filters summary").click();
+  const inputs = await page.locator(".advanced-filters .category-filters").boundingBox();
+  const moved = await card.boundingBox();
+
+  // The opened panel pushes the list down; nothing it would otherwise float
+  // over, such as the first card's trust label, is hidden by it.
+  expect(inputs.y + inputs.height).toBeLessThanOrEqual(moved.y);
+  expect(moved.y).toBeGreaterThan(top.y);
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
@@ -404,7 +510,7 @@ test("a thin wrapper says where the mathematics is before anything else", async 
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   const rows = page.locator(".entry-provenance .provenance-details .detail-row dt");
   await expect(rows.first()).toHaveText("Substantive formalization");
-  await expect(page.getByRole("link", { name: `${repository}@${commit.slice(0, 12)}` }))
+  await expect(page.getByRole("link", { name: `${repository}@${commit.slice(0, 12)}`, includeHidden: true }))
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
@@ -523,6 +629,7 @@ test("a missing original automatically switches source links to the Palomar copy
     "href",
     /github\.com\/PalomarArchive\/example--challenge\/blob\/1{40}\/project\/Comparator\/Task\.lean$/,
   );
+  await page.locator(".entry-solution .section-collapse > summary").click();
   await page.locator("details.solution-dependencies > summary").click();
   await expect(page.getByRole("link", { name: "example/dependency (Palomar copy)" })).toHaveAttribute(
     "href",
@@ -636,9 +743,10 @@ test("a card says the original is unavailable exactly when the manifest says so"
   const card = page.locator(".entry-card").first();
   await expect(card).toHaveCount(1);
   await availabilityRequested;
-  await page.locator("#search").fill("000123");
+  await page.locator(".advanced-filters summary").click();
+  await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-  await page.locator("#search").evaluate((input) => input.focus());
+  await page.locator("#arxiv-query").evaluate((input) => input.focus());
   await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
   // Cards and filters are usable while availability is still pending.
   await expect(card.locator(".repo-link")).toHaveText("example/challenge");
@@ -646,8 +754,8 @@ test("a card says the original is unavailable exactly when the manifest says so"
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
-  await expect(page.locator("#search")).toBeFocused();
-  await expect(page.locator("#search")).toHaveValue("000123");
+  await expect(page.locator("#arxiv-query")).toBeFocused();
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 
   await page.goto(`/?database=${database}`);
@@ -719,7 +827,7 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
   const fullRecord = page.locator(".entry-evidence .detail-row", {
     has: page.getByText("Full registry record", { exact: true }),
   });
-  await expect(fullRecord.getByRole("link")).toHaveText(
+  await expect(fullRecord.getByRole("link", { includeHidden: true })).toHaveText(
     "PALOMAR-2026-07-29-000123-v1.json",
   );
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
@@ -749,7 +857,7 @@ test("entries display repository licence evidence and its boundary", async ({ pa
   // One row, not four: the licence, the file, and the digest. Declared and
   // detected are the same fact when they agree, which is the ordinary case.
   await expect(evidence).toContainText("Repository licence");
-  await expect(evidence.getByRole("link", { name: "LICENSE.md" })).toHaveAttribute(
+  await expect(evidence.getByRole("link", { name: "LICENSE.md", includeHidden: true })).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/LICENSE.md`,
   );
@@ -908,9 +1016,9 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   });
   await expect(editorialAssurance.locator("code")).toHaveText("Challenge.lean");
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
-  await expect(page.getByText("Verification workflow commit")).toBeVisible();
+  await expect(page.locator(".entry-evidence")).toContainText("Verification workflow commit");
   await expect(page.getByRole("link", { name: "Archived editorial review" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean" }).first()).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean", includeHidden: true }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Answer.lean`,
   );
@@ -931,6 +1039,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".entry-evidence")).toContainText("Project directory");
   await expect(page.locator(".entry-evidence")).toContainText("project");
   await expect(page.locator(".entry-solution .token-list code")).toHaveText("ExampleDependency");
+  await page.locator(".entry-solution .section-collapse > summary").click();
   await page.locator(".solution-dependencies summary").click();
   await expect(page.locator(".dependency-list")).toContainText("example/dependency");
   await expect(page.getByRole("link", { name: "shared" })).toHaveAttribute(
@@ -996,9 +1105,6 @@ test("qualified statement and proof dependencies retain their distinct presentat
   const statement = page.locator("#statement-dependencies");
   await expect(statement.getByRole("heading", { name: "Depends on additional libraries" }))
     .toBeVisible();
-  await expect(statement.locator(".trust-badge")).toHaveText(
-    "Statement dependencies: additional libraries",
-  );
   await expect(statement.locator(".plain-list li")).toHaveText([
     "leanprover-community/mathlib4",
     "TauCetiProject/TauCeti",
@@ -1010,6 +1116,7 @@ test("qualified statement and proof dependencies retain their distinct presentat
   await expect(proof.locator(".solution-dependencies summary")).toHaveText(
     "1 project dependencies used by the proof",
   );
+  await proof.locator(".section-collapse > summary").click();
   await proof.locator(".solution-dependencies summary").click();
   await expect(proof.getByRole("link", { name: "example/dependency" })).toHaveAttribute(
     "href",
@@ -1286,8 +1393,7 @@ test("a search reads one postings sequence per word and confirms every hit", asy
   await expect(page.locator(".entry-card")).toHaveCount(2);
 
   asked.length = 0;
-  await page.locator("#query").fill("quasicoherent 000124");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "quasicoherent 000124");
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-card")).toContainText("000124");
@@ -1326,15 +1432,14 @@ test("runtime data reads reuse a fresh HTTP response", async ({ page }) => {
 
   await page.goto(`/?database=${database}`);
   await page.evaluate(() => performance.clearResourceTimings());
-  await page.locator("#query").fill("cacheprobe");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "cacheprobe");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect.poll(async () => (await timings()).length).toBe(1);
 
   // The fixture gives this otherwise ordinary postings document max-age=60.
   // Submitting the same search still calls fetch, but the browser should
   // satisfy it from its HTTP cache rather than transferring it again.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(async () => (await timings()).length).toBe(2);
   const [network, cached] = await timings();
   expect(network.transferSize).toBeGreaterThan(0);
@@ -1372,8 +1477,7 @@ test("an over-limit term count is an accessible warning and can be corrected", a
   await page.goto(`/?database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   asked.length = 0;
-  await page.locator("#query").fill(query);
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, query);
   await expect(page.locator("#query")).toHaveValue(query);
   await expect(page.locator("#search-status")).toHaveText(
     `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
@@ -1382,14 +1486,12 @@ test("an over-limit term count is an accessible warning and can be corrected", a
   await page.waitForTimeout(100);
   expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
 
-  await page.locator("#query").fill("synthetically");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "synthetically");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#query")).not.toHaveAttribute("aria-invalid");
   await expect(page.locator("#query")).not.toHaveAttribute("aria-describedby");
 
-  await page.locator("#query").fill("");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "");
   await expect(page.locator("#entry-grid")).toBeVisible();
   await expect(page.locator("#search-status")).toBeHidden();
 });
@@ -1557,12 +1659,12 @@ test("transient and invalid availability responses are both retried", async ({ p
   const invalidLogged = page.waitForEvent("console", {
     predicate: (message) => message.text().includes("Source availability is unavailable"),
   });
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(() => availabilityRequests).toBe(2);
   await invalidLogged;
   await expect(card.locator(".repo-link")).toHaveText("example/challenge");
 
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(() => availabilityRequests).toBe(3);
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
@@ -1584,7 +1686,7 @@ test("a missing availability manifest is cached for the page", async ({ page }) 
   );
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect.poll(() => availabilityRequests).toBe(1);
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await page.waitForTimeout(50);
   expect(availabilityRequests).toBe(1);
@@ -1599,11 +1701,9 @@ test("a superseded slow search cannot repaint a newer query", async ({ page }) =
   });
   await page.goto(`/?database=${database}`);
 
-  await page.locator("#query").fill("quasicoherent");
-  await page.getByRole("button", { name: "Search" }).click();
+  await startSearch(page, "quasicoherent");
   await expect.poll(() => slowHeadRequests).toBe(1);
-  await page.locator("#query").fill("synthetically");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "synthetically");
 
   await expect(page.locator("#search-results .entry-id")).toHaveText(
     "PALOMAR-2026-07-29-000124 v1",
@@ -1641,8 +1741,7 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   }))).toEqual({ grid: true, status: true, toolbar: true });
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
 
-  await page.locator("#query").fill("");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "");
   await firstRecent;
   expect(await page.evaluate(() => ({
     grid: document.querySelector("#entry-grid").hidden,
@@ -1651,14 +1750,14 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   }))).toEqual({ grid: false, status: false, toolbar: false });
 
   // Clearing again while the first landing request is pending shares it.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await page.waitForTimeout(50);
   expect(recentRequests).toBe(1);
   releaseFirstRecent();
   await expect(page.locator("#status")).toContainText("could not be loaded");
 
   // Once that attempt has settled as failed, clearing retries it.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   expect(recentRequests).toBe(2);
 });
@@ -1667,8 +1766,7 @@ test("a search runs from a link, and says so when nothing carries the words", as
   await page.goto(`/?database=${database}&q=quasicoherent`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
 
-  await page.locator("#query").fill("quasicoherent unobtainium");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "quasicoherent unobtainium");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
   // The words with no postings are named rather than guessed about. They are
   // words nothing carries and not words the indexer drops, because the dropped
@@ -1683,8 +1781,7 @@ test("a hostile query cannot construct a path outside the postings grammar", asy
   await page.goto(`/?database=${database}`);
 
   asked.length = 0;
-  await page.locator("#query").fill("../../etc/passwd?x=1 <script>");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "../../etc/passwd?x=1 <script>");
   await expect(page.locator("#search-status")).toContainText("No result carries all of");
 
   // The stopword list is at a fixed path and is the only request under
@@ -1702,8 +1799,7 @@ test("a hostile query cannot construct a path outside the postings grammar", asy
 
 test("a query with no word in it leaves the listing alone", async ({ page }) => {
   await page.goto(`/?database=${database}`);
-  await page.locator("#query").fill("a !");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "a !");
   await expect(page.locator("#entry-grid")).toBeVisible();
   await expect(page.locator("#search-status")).toBeHidden();
 });
@@ -1719,8 +1815,7 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
   await page.goto(`/?database=${database}`);
 
   asked.length = 0;
-  await page.locator("#query").fill("the quasicoherent sheaves");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "the quasicoherent sheaves");
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-card")).toContainText("000124");
@@ -1731,10 +1826,177 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
 test("a search made only of words the indexer drops says which they were", async ({ page }) => {
   // Otherwise this is a registry that appears to hold nothing.
   await page.goto(`/?database=${database}`);
-  await page.locator("#query").fill("the of and");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "the of and");
 
   await expect(page.locator("#search-status")).toContainText("too common to be indexed");
   await expect(page.locator("#search-status")).toContainText("the");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+/** Hold one head request open, and hand back the way to let it go. */
+async function holdSearchHead(page, term) {
+  let release;
+  let noteRequest;
+  const requested = new Promise((resolve) => { noteRequest = resolve; });
+  await page.route(`**/database/search/t/${term}/head.json`, async (route) => {
+    noteRequest();
+    await new Promise((resolve) => { release = resolve; });
+    await route.continue().catch(() => {});
+  });
+  return { requested, release: () => release() };
+}
+
+test("typing runs one search at the pause, not one per keystroke", async ({ page }) => {
+  const heads = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/head.json")) heads.push(path);
+  });
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  // There is no button to press, so the pause is the whole of the instruction.
+  await page.locator("#query").pressSequentially("quasicoherent", { delay: 10 });
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+
+  expect(heads).toEqual(["/database/search/t/quasicoherent/head.json"]);
+  await expect(page).toHaveURL(/q=quasicoherent/);
+});
+
+test("a keystroke abandons the answer to the query it just replaced", async ({ page }) => {
+  // The gap the generation counter alone does not close: it turns over when a
+  // search starts, and the next one does not start until the pause. Between
+  // the two, an answer to what the reader has already typed past would arrive
+  // verified and undimmed under a box that says something else.
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+
+  // One real keystroke, and then the old answer is let go immediately -- well
+  // inside the pause that would otherwise still be running.
+  await page.locator("#query").press("End");
+  await page.locator("#query").press("x");
+  await expect(page.locator("#query")).toHaveValue("quasicoherentx");
+  held.release();
+  await page.waitForTimeout(150);
+
+  // Nothing the abandoned query found may be standing here, verified or not.
+  // Nothing in hand carries "quasicoherentx" either, so the page is honestly
+  // empty rather than showing the two cards the old query had just confirmed.
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-status")).toContainText("Searching the registry");
+
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-status")).toContainText("No result carries all of");
+});
+
+test("confirming a result keeps the reader on the card they were standing on", async ({ page }) => {
+  // The provisional cards are replaced wholesale, so without this the reader's
+  // focus goes with the node that carried it and lands on the document.
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  const card = (id) => page.locator(`#search-results .entry-card[data-id="${id}"]`);
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000123");
+  await card("PALOMAR-2026-07-29-000123").locator("h3 a").focus();
+
+  held.release();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  // Verified results come back in posting order, so this result is no longer
+  // the first card. Focus follows the result, not the position.
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000124");
+  await expect(card("PALOMAR-2026-07-29-000123").locator("h3 a")).toBeFocused();
+});
+
+test("a pause shows the entries already loaded, marked as not yet the answer", async ({ page }) => {
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  await expect(page.locator("#search-results")).toHaveClass(/preview/);
+  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  // Set apart by ground, not by fading: these are cards a reader reads and may
+  // click, so the text stays at full contrast.
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveCSS("background-color", "rgb(242, 242, 242)");
+  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "1");
+  await expect(page.locator("#search-status")).toContainText("while the registry search runs");
+  await expect(page.locator("#search-status")).toContainText("newest 2 entries");
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  // A provisional card claims no more than the search card replacing it will.
+  await expect(page.locator("#search-results .entry-id").first()).not.toContainText("current");
+
+  held.release();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-results")).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+});
+
+test("nothing loaded to show leaves the wait to the spinner alone", async ({ page }) => {
+  const held = await holdSearchHead(page, "synthetically");
+  // A linked search never reads the landing selection, so there is nothing in
+  // hand to show, and the status must not claim otherwise.
+  await page.goto(`/?database=${database}&q=synthetically`);
+  await held.requested;
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-status")).toHaveText("Searching the registry…");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+
+  held.release();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+test("a provisional match the index does not confirm is taken away", async ({ page }) => {
+  // What the dimming is for. "quasi" sits inside a word the newest entries
+  // carry, so it is in hand at once, but the index knows whole words and holds
+  // nothing under it. The cards go and the reader is told why.
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await runSearch(page, "quasi");
+  await expect(page.locator("#search-status")).toContainText("No result carries all of: quasi");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+test("emptying the box gives the listing and its filters back", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  // Set before searching, because a search takes the toolbar off the page.
+  await page.locator(".advanced-filters summary").click();
+  await page.locator("#arxiv-query").fill("math.CO");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+
+  await runSearch(page, "quasicoherent");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("body")).toHaveClass(/registry-searching/);
+
+  await runSearch(page, "");
+  await expect(page.locator("body")).not.toHaveClass(/registry-searching/);
+  await expect(page.locator(".toolbar")).toBeVisible();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 });
