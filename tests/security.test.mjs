@@ -911,13 +911,17 @@ test("user documentation names current examples and iframe height units", async 
   assert.doesNotMatch(readme, /PALOMAR-2026-07-29-000001/);
 });
 
-test("About delegates the mutable axiom allowlist to the promoted Policy", async () => {
+test("the extra-axioms FAQ names the standard three Lean axioms", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
-  assert.match(
+  const section = /<h3 id="extra-axioms">[\s\S]*?<h3 id="formalization-yaml">/.exec(
     about,
-    /PalomarPolicy\/blob\/main\/CONTRIBUTING\.md#23-comparator-configuration/,
   );
-  assert.doesNotMatch(about, /propext|Quot\.sound|Classical\.choice/);
+  assert.notEqual(section, null);
+  assert.match(section[0], /standard three Lean axioms/);
+  assert.match(section[0], /propext/);
+  assert.match(section[0], /Classical\.choice/);
+  assert.match(section[0], /Quot\.sound/);
+  assert.doesNotMatch(section[0], /comparator-configuration|current/i);
 });
 
 test("About says what registration publishes, and what it does not", async () => {
