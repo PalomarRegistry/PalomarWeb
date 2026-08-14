@@ -13,6 +13,7 @@ const page = (version) =>
 
 const registryValidators = {
   validateRecent: (value) => value,
+  validateRecentRenders: (value) => value,
   validateBrowseHead: (value) => value,
   validateBrowseYear: (value) => value,
   validateBrowsePage: (value) => value,
@@ -63,17 +64,26 @@ function oneEntryRegistry() {
   };
   const browsePage = { entries: [row] };
   const history = { id, entries: [row] };
-  const entry = { id, registered_at: registeredAt, classification: CLASSIFICATION };
+  const digest = "a".repeat(64);
+  const entry = {
+    id,
+    registered_at: registeredAt,
+    classification: CLASSIFICATION,
+    challenge_render: { artifact_tree_sha256: digest },
+  };
+  const renders = { renders: [{ id, version: 1, artifact_tree_sha256: digest }] };
   return {
     entry,
     head,
     history,
     page: browsePage,
     recent,
+    renders,
     row,
     year,
     responses: new Map([
       ["https://data.example/recent.json", { entries: [recent] }],
+      ["https://data.example/recent-renders.json", renders],
       ["https://data.example/browse/index.json", head],
       ["https://data.example/browse/2026.json", year],
       ["https://data.example/browse/2026-08-08/1.json", browsePage],
@@ -176,11 +186,16 @@ test("live-data health traverses browse and history to validate every public per
       id: "one-v1",
       registered_at: "2026-08-08T11:00:00Z",
       classification: CLASSIFICATION,
+      challenge_render: { artifact_tree_sha256: "b".repeat(64) },
     }],
     ["https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json", {
       id: "one-v2",
       registered_at: registeredAt,
       classification: CLASSIFICATION,
+      challenge_render: { artifact_tree_sha256: "a".repeat(64) },
+    }],
+    ["https://data.example/recent-renders.json", {
+      renders: [{ id: first.id, version: 2, artifact_tree_sha256: "a".repeat(64) }],
     }],
     ["https://data.example/subjects/arxiv/math.CO.json", subjectHead("arxiv", "math.CO", [second])],
     ["https://data.example/subjects/msc/05C10.json", subjectHead("msc", "05C10", [second])],
@@ -196,6 +211,10 @@ test("live-data health traverses browse and history to validate every public per
   const state = await publicDataState("https://data.example", fetcher, {
     validateRecent(page) {
       validated.push("recent");
+      return page;
+    },
+    validateRecentRenders(page) {
+      validated.push("recent-renders");
       return page;
     },
     validateBrowseHead(page) {
@@ -226,6 +245,7 @@ test("live-data health traverses browse and history to validate every public per
   assert.equal(state.healthy, true);
   assert.deepEqual(calls, [
     "https://data.example/recent.json",
+    "https://data.example/recent-renders.json",
     "https://data.example/browse/index.json",
     "https://data.example/browse/2026.json",
     "https://data.example/browse/2026-08-08/1.json",
@@ -237,6 +257,7 @@ test("live-data health traverses browse and history to validate every public per
   ]);
   assert.deepEqual(validated, [
     "recent",
+    "recent-renders",
     "browse-head",
     "year:2026",
     "page:2026-08-08:1",
@@ -308,6 +329,7 @@ test("live-data health fails closed when a version index omits or rewrites brows
   };
   const responses = new Map([
     ["https://data.example/recent.json", { entries: [] }],
+    ["https://data.example/recent-renders.json", { renders: [] }],
     ["https://data.example/browse/index.json", {
       results: 1,
       versions: 1,
@@ -331,6 +353,7 @@ test("live-data health fails closed when a version index omits or rewrites brows
   ]);
   const identityValidators = {
     validateRecent: (value) => value,
+    validateRecentRenders: (value) => value,
     validateBrowseHead: (value) => value,
     validateBrowseYear: (value) => value,
     validateBrowsePage: (value) => value,
@@ -468,6 +491,50 @@ test("live-data health rejects a recent row absent from advertised history", asy
 
   assert.equal(state.healthy, false);
   assert.match(state.reason, /recent row .* does not equal its current version history/);
+});
+
+test("live-data health rejects a render companion that has drifted from the page", async (t) => {
+  for (const [name, mutate, reason] of [
+    [
+      "naming no hash for a listed result",
+      (fixture) => { fixture.renders.renders = []; },
+      /has no render hash of its version/,
+    ],
+    [
+      "naming another version",
+      (fixture) => { fixture.renders.renders[0].version = 2; },
+      /has no render hash of its version/,
+    ],
+    [
+      "naming a render the record does not claim",
+      (fixture) => { fixture.renders.renders[0].artifact_tree_sha256 = "c".repeat(64); },
+      /is not its entry's/,
+    ],
+    [
+      "naming a result the page does not",
+      (fixture) => {
+        fixture.renders.renders.push({
+          id: "PALOMAR-2026-08-08-000002",
+          version: 1,
+          artifact_tree_sha256: "d".repeat(64),
+        });
+      },
+      /names results the landing page does not/,
+    ],
+  ]) {
+    await t.test(name, async () => {
+      const fixture = oneEntryRegistry();
+      mutate(fixture);
+      const state = await publicDataState(
+        "https://data.example",
+        responseFrom(fixture.responses),
+        registryValidators,
+      );
+
+      assert.equal(state.healthy, false);
+      assert.match(state.reason, reason);
+    });
+  }
 });
 
 test("live-data health checks recent publication time against the already fetched entry", async () => {

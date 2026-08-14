@@ -116,6 +116,17 @@
   validation or route ownership. Entry and render content must consume that
   availability result progressively through `source-preservation.mjs`; an
   ancillary health request must never delay a verified record or render;
+  `assets/statement-preview.mjs` owns the listing grids' hover preview: pointer
+  intent and its delays, panel placement and lifetime, and resolving a card to
+  its rendering from either a whole record or the bounded companion document.
+  It consumes the confined artifact URL and the disposable sandboxed frame from
+  their owners and must not acquire its own; `challenge-presentation.mjs` still
+  owns the frame, and a surface that mounts and discards frames must dispose
+  them, because the height listener is on `window` rather than on the frame.
+  The preview is deliberately pointer-only and deliberately does not repeat the
+  entry page's render-metadata correspondence check; it is a preview of an
+  immutable artifact at a content address, and the entry page remains where a
+  rendering is tied to its accepted record.
   `assets/app.js` owns remaining page composition and controller wiring. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed

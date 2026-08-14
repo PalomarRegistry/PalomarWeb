@@ -24,6 +24,7 @@ import { createChallengePresentation } from "./challenge-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
+import { createStatementPreview } from "./statement-preview.mjs";
 import { renderSubjectPage } from "./subject-pages.mjs";
 import {
   bindSourceControl,
@@ -79,6 +80,7 @@ const {
   fetchJson,
   loadAvailabilityBounded,
   loadRecent,
+  loadRecentRenders,
   loadEntry,
   loadSubjectHead,
   loadSubjectYear,
@@ -90,6 +92,14 @@ const {
 });
 
 const searchRegistry = createRegistrySearch(fetchJson);
+
+const statementPreview = createStatementPreview({
+  document,
+  window,
+  dataSource,
+  loadRecentRenders,
+  warn: (message) => console.warn(message),
+});
 
 function authorNames(entry) {
   return entry.authors.map((author) => author.name).join(", ");
@@ -300,7 +310,12 @@ function entryCard(
   );
   top.append(identity, trustBadge(entry));
   const title = el("h3");
-  title.append(internalLink(entry.title, localPageUrl("entry.html", entry)));
+  const titleLink = internalLink(entry.title, localPageUrl("entry.html", entry));
+  // The card is built from a landing row on one grid and from a whole
+  // validated record on the other. The preview is told which it has rather
+  // than left to work it out from what is missing.
+  statementPreview.register(titleLink, entry);
+  title.append(titleLink);
   const abstract = el("p", "card-abstract", entry.abstract);
   const meta = el("div", "card-meta");
   const authors = el("div");
@@ -361,6 +376,10 @@ function setLandingStatusHidden(hidden) {
 
 function setLandingSuppressed(suppressed) {
   landingSuppressed = suppressed;
+  // A panel outlives the card it was raised from unless something says so:
+  // it is over the page, not in the grid, and hiding the grid does not reach
+  // it. The same goes for the redraws below.
+  statementPreview.close();
   document.body.classList.toggle("registry-searching", suppressed);
   const toolbar = document.querySelector(".toolbar");
   const status = document.querySelector("#status");
@@ -558,6 +577,7 @@ let searchGeneration = 0;
 let activeSearchController = null;
 
 function renderSearchCards(results, entries) {
+  statementPreview.close();
   const cards = entries.map((entry) => entryCard(entry));
   results.replaceChildren(...cards);
   return cards;
@@ -1492,6 +1512,10 @@ function renderExactTombstone(tombstone, content) {
 }
 
 if (document.body.dataset.page === "index") {
+  // Bound to the containers, not to the cards, because both grids replace
+  // their children whenever a query or a filter changes.
+  statementPreview.watch(document.querySelector("#entry-grid"));
+  statementPreview.watch(document.querySelector("#search-results"));
   // A linked search is its own view. Avoid fetching and exposing a hidden
   // recent listing until the query is cleared; then load it exactly once.
   const hasInitialSearch = wireSearch();

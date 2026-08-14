@@ -2,6 +2,7 @@ import { loadSettledBounded } from "./loading.mjs";
 import {
   databaseBaseFor,
   entryRecordUrl,
+  recentRendersUrl,
   recentUrl,
   selectAvailabilityUrl,
   selectDatabaseUrl,
@@ -13,6 +14,7 @@ import {
   validateAvailability,
   validateEntry,
   validateRecent,
+  validateRecentRenders,
   validateSubjectHead,
   validateSubjectPage,
   validateSubjectYear,
@@ -136,6 +138,30 @@ export function createRegistryLoader({
     );
   }
 
+  // One read per page however many previews are asked for, and none at all if
+  // none is. The same bargain as the availability manifest: share a successful
+  // read, but never let one temporary failure become this page's answer for the
+  // rest of its lifetime. An absent document is a stable absence — a release
+  // that has not published one yet — and previews stay off until a reload.
+  const renderLoads = new Map();
+  function loadRecentRenders(databaseBase) {
+    const url = recentRendersUrl(databaseBase);
+    const key = url.href;
+    if (!renderLoads.has(key)) {
+      const loading = fetchJson(url)
+        .then((document) => validateRecentRenders(document))
+        .catch((error) => {
+          if (error?.status !== 404) {
+            renderLoads.delete(key);
+            warn(`Render previews are unavailable: ${error?.message || String(error)}`);
+          }
+          return null;
+        });
+      renderLoads.set(key, loading);
+    }
+    return renderLoads.get(key);
+  }
+
   async function loadEntry(id, requestedVersion) {
     const { databaseBase, renderBase, availabilityUrl } = dataSource();
     // The versions of this one result, not the whole registry. Reading a
@@ -192,6 +218,7 @@ export function createRegistryLoader({
     fetchJson,
     loadAvailabilityBounded,
     loadRecent,
+    loadRecentRenders,
     loadEntry,
     loadSubjectHead,
     loadSubjectYear,

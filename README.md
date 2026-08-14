@@ -182,6 +182,15 @@ by PalomarSubmission's `render_challenge.py`. Renders published before that
 palette existed are immutable and stay light, because a bundle's bytes are what
 its recorded hash is of.
 
+Resting the pointer on a result's title in the registry listing or in search
+results raises the same rendering in the same kind of frame, clamped between 120
+and 420 pixels, so the formal statement can be read without leaving the list.
+The preview is pointer-only: it is not raised by a keyboard or on a touch
+screen, where the card's own links remain the way to the statement. It frames
+the immutable artifact at its published content address and does not repeat the
+entry page's check that the render's declarations match the accepted record, so
+the entry page remains the place a rendering is tied to its entry.
+
 A record that arrives carrying review scores is refused rather than rendered.
 The scores are not published and are not in the record; a served record that had
 them would mean something upstream had gone wrong, and displaying it would be

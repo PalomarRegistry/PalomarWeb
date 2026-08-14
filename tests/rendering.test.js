@@ -6,6 +6,7 @@ import {
   challengeMetadataUrl,
   challengeSourceUrl,
   isInlineChallenge,
+  renderArtifactUrl,
 } from "../assets/rendering.js";
 
 function entry(overrides = {}) {
@@ -62,6 +63,38 @@ test("artifact URL is derived only from the content-addressed registry fields", 
   const traversal = entry();
   traversal.challenge_render.artifact_path = "renders/../../attacker/";
   assert.throws(() => challengeArtifactUrl(traversal, "https://example.test/"), /invalid/);
+});
+
+test("a content address alone resolves to the same rendering a record does", () => {
+  const record = entry();
+  assert.equal(
+    renderArtifactUrl(
+      record.id,
+      record.version,
+      record.challenge_render.artifact_tree_sha256,
+      "https://data.palomar-registry.org/",
+    ).href,
+    challengeArtifactUrl(record, "https://data.palomar-registry.org/").href,
+  );
+});
+
+test("a content address is refused rather than encoded when it is not one", () => {
+  const base = "https://data.palomar-registry.org/";
+  const hash = "a".repeat(64);
+  for (const [id, version, treeHash, reason] of [
+    ["../../attacker", 1, hash, /identifier or version/],
+    ["PALOMAR-2026-07-29-000123", 0, hash, /identifier or version/],
+    ["PALOMAR-2026-07-29-000123", 1.5, hash, /identifier or version/],
+    ["PALOMAR-2026-07-29-000123", 1, "../attacker", /artifact tree hash/],
+    ["PALOMAR-2026-07-29-000123", 1, `${hash}/..`, /artifact tree hash/],
+    ["PALOMAR-2026-07-29-000123", 1, "A".repeat(64), /artifact tree hash/],
+  ]) {
+    assert.throws(() => renderArtifactUrl(id, version, treeHash, base), reason);
+  }
+  assert.throws(
+    () => renderArtifactUrl("PALOMAR-2026-07-29-000123", 1, hash, "javascript:alert(1)"),
+    /HTTP or HTTPS/,
+  );
 });
 
 test("artifact metadata URL stays inside the content-addressed bundle", () => {

@@ -904,6 +904,36 @@ footer {
   background: var(--paper);
 }
 
+/* Raised by resting on a card title, over the grid rather than in it, so the
+   listing does not reflow under the pointer that asked for this. */
+.statement-preview {
+  position: fixed;
+  z-index: 20;
+  /* Wide, because a Lean statement is rendered with `white-space: pre` and does
+     not wrap. The frame still scrolls sideways for the ones that need it. */
+  width: min(48rem, calc(100vw - 1rem));
+  padding: .3rem;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+}
+
+.statement-preview .challenge-frame {
+  height: 12rem;
+  min-height: 7.5rem;
+  max-height: 26rem;
+  border: 0;
+}
+
+@media (hover: none) {
+  /* Never raised without a pointer that can rest. Belt to the media query the
+     controller itself asks, so a panel cannot be left over a touch reader by a
+     browser that answers the two differently. */
+  .statement-preview {
+    display: none;
+  }
+}
+
 .acceptance-callout {
   display: flex;
   gap: .8rem;
