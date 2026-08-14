@@ -36,6 +36,12 @@ function palette(css, index) {
   return values;
 }
 
+// This reads the palette, so it answers for the colours as declared. What
+// compositing then does to them -- an `opacity` below one fading text and its
+// ground together, a colour carrying its own alpha -- leaves every pair here
+// intact and can still put the result under the ratio a reader is owed. The
+// browser suite measures the rendered tree for that; see "text stays readable
+// once opacity and grounds are composited" in `site.spec.js`.
 const css = await readFile(new URL("../assets/style.css", import.meta.url), "utf8");
 const light = palette(css, 0);
 const dark = { ...light, ...palette(css, 1) };

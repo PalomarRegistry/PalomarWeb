@@ -2030,3 +2030,141 @@ test("emptying the box gives the listing and its filters back", async ({ page })
   await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 });
+
+/**
+ * Every run of text on the page, measured as a reader's eye receives it.
+ *
+ * `appearance.test.js` reads the palette and checks the pairs named in it,
+ * which cannot see what compositing does: an `opacity` below one fades text
+ * and its ground together toward whatever is behind them, and a colour carrying
+ * its own alpha does the same, so both leave the declared pair intact and the
+ * seen pair failing. This runs in a browser and asks the rendered tree, so it
+ * answers for whatever the page actually puts on the screen.
+ *
+ * Not a replacement for the palette test. That one is fast, runs without a
+ * browser, and names the pairs it protects; this one covers what is drawn.
+ */
+const CONTRAST_AUDIT = `(() => {
+  const parse = (value) => {
+    const parts = value.match(/[\\d.]+/g);
+    if (!parts || value === "transparent") return [0, 0, 0, 0];
+    const [r, g, b, a = 1] = parts.map(Number);
+    return [r, g, b, a];
+  };
+  const over = (top, bottom, alpha) =>
+    bottom.map((channel, index) => channel + (top[index] - channel) * alpha);
+  const channelLuminance = (value) => {
+    const scaled = value / 255;
+    return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([r, g, b]) =>
+    0.2126 * channelLuminance(r) + 0.7152 * channelLuminance(g) + 0.0722 * channelLuminance(b);
+  const contrast = (a, b) => {
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (high + 0.05) / (low + 0.05);
+  };
+  // Opacity applies to an element and its whole subtree as one group, so it
+  // multiplies down the ancestor chain and reaches the text through it.
+  const opacityAt = (node) => {
+    let product = 1;
+    for (let at = node; at && at.nodeType === 1; at = at.parentElement) {
+      product *= Number(getComputedStyle(at).opacity);
+    }
+    return product;
+  };
+  // What is behind this text, built from the canvas up: each ancestor's ground
+  // laid down in turn, faded by whatever opacity applies to it.
+  const groundUnder = (node) => {
+    const chain = [];
+    for (let at = node; at; at = at.parentElement) chain.unshift(at);
+    let ground = [255, 255, 255];
+    for (const at of chain) {
+      const [r, g, b, alpha] = parse(getComputedStyle(at).backgroundColor);
+      const effective = alpha * opacityAt(at);
+      if (effective > 0) ground = over([r, g, b], ground, effective);
+    }
+    return ground;
+  };
+  const describe = (node) => {
+    const id = node.id ? "#" + node.id : "";
+    const classes = typeof node.className === "string" && node.className
+      ? "." + node.className.trim().split(/\\s+/).join(".")
+      : "";
+    return node.tagName.toLowerCase() + id + classes;
+  };
+
+  const failures = [];
+  let read = 0;
+  for (const node of document.querySelectorAll("body *")) {
+    const owns = [...node.childNodes]
+      .some((child) => child.nodeType === 3 && child.textContent.trim());
+    if (!owns) continue;
+    const style = getComputedStyle(node);
+    if (style.visibility === "hidden" || style.display === "none") continue;
+    const box = node.getBoundingClientRect();
+    // Anything this small is clipped away from sight rather than read: the
+    // visually-hidden runs the page gives to assistive technology are 1px.
+    if (box.width < 2 || box.height < 2) continue;
+    const seen = opacityAt(node);
+    if (seen === 0) continue;
+
+    read += 1;
+    const ground = groundUnder(node);
+    const [r, g, b, alpha] = parse(style.color);
+    const ink = over([r, g, b], ground, alpha * seen);
+    const size = Number.parseFloat(style.fontSize);
+    const weight = Number(style.fontWeight) || 400;
+    const large = size >= 24 || (size >= 18.66 && weight >= 700);
+    const needed = large ? 3 : 4.5;
+    const ratio = contrast(ink, ground);
+    if (ratio + 0.005 < needed) {
+      failures.push(
+        describe(node) + " reads " + ratio.toFixed(2) + ":1, needs " + needed +
+        " (text " + ink.map(Math.round).join(",") + " on " + ground.map(Math.round).join(",") + ")",
+      );
+    }
+  }
+  return { failures, read };
+})()`;
+
+async function readableTextOnly(page, where, least) {
+  const { failures, read } = await page.evaluate(CONTRAST_AUDIT);
+  expect(failures, `${where}: text below WCAG AA once composited`).toEqual([]);
+  // A check that has stopped finding text passes for the wrong reason. The
+  // floors are well under what each state carries, so they answer "is this
+  // still looking at the page" without breaking every time the copy changes.
+  expect(read, `${where}: only ${read} runs of text were read`)
+    .toBeGreaterThanOrEqual(least);
+}
+
+for (const scheme of ["light", "dark"]) {
+  test(`${scheme} text stays readable once opacity and grounds are composited`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+
+    await page.goto(`/?database=${database}`);
+    await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+    await readableTextOnly(page, `${scheme} listing`, 40);
+
+    await page.locator(".advanced-filters summary").click();
+    await expect(page.locator("#arxiv-query")).toBeVisible();
+    await readableTextOnly(page, `${scheme} listing with the subject filters open`, 40);
+
+    // The state this check exists for. The provisional cards are drawn on their
+    // own ground, and the first attempt at setting them apart faded them.
+    const held = await holdSearchHead(page, "quasicoherent");
+    await startSearch(page, "quasicoherent");
+    await held.requested;
+    await expect(page.locator("#search-results")).toHaveClass(/preview/);
+    await readableTextOnly(page, `${scheme} provisional matches`, 25);
+
+    held.release();
+    await expect(page.locator("#search-spinner")).toBeHidden();
+    await readableTextOnly(page, `${scheme} verified results`, 25);
+
+    await page.goto(
+      `/entry.html?id=PALOMAR-2026-07-29-000123&version=2&database=${database}`,
+    );
+    await expect(page.locator("h1")).toBeVisible();
+    await readableTextOnly(page, `${scheme} entry`, 25);
+  });
+}
