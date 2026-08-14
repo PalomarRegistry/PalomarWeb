@@ -16,9 +16,24 @@ const registryValidators = {
   validateBrowseHead: (value) => value,
   validateBrowseYear: (value) => value,
   validateBrowsePage: (value) => value,
+  validateSubjectHead: (value) => value,
   validateVersions: (value) => value,
   validateEntry() {},
 };
+
+const CLASSIFICATION = { arxiv: ["math.CO"], msc2020: ["05C10"] };
+
+function subjectHead(kind, code, rows, registeredAt = "2026-08-08T12:00:00Z") {
+  return {
+    kind,
+    code,
+    entries: rows.map((row) => ({
+      ...row,
+      published_at: registeredAt,
+      classification: CLASSIFICATION,
+    })),
+  };
+}
 
 function oneEntryRegistry() {
   const id = "PALOMAR-2026-08-08-000001";
@@ -30,7 +45,7 @@ function oneEntryRegistry() {
     path: `entries/${id}-v1.json`,
   };
   const registeredAt = "2026-08-08T12:00:00Z";
-  const recent = { ...row, versions: 1, published_at: registeredAt };
+  const recent = { ...row, versions: 1, published_at: registeredAt, classification: CLASSIFICATION };
   const head = {
     results: 1,
     versions: 1,
@@ -48,7 +63,7 @@ function oneEntryRegistry() {
   };
   const browsePage = { entries: [row] };
   const history = { id, entries: [row] };
-  const entry = { id, registered_at: registeredAt };
+  const entry = { id, registered_at: registeredAt, classification: CLASSIFICATION };
   return {
     entry,
     head,
@@ -64,6 +79,8 @@ function oneEntryRegistry() {
       ["https://data.example/browse/2026-08-08/1.json", browsePage],
       [`https://data.example/versions/${id}.json`, history],
       [`https://data.example/entries/${id}-v1.json`, entry],
+      ["https://data.example/subjects/arxiv/math.CO.json", subjectHead("arxiv", "math.CO", [row])],
+      ["https://data.example/subjects/msc/05C10.json", subjectHead("msc", "05C10", [row])],
     ]),
   };
 }
@@ -128,7 +145,12 @@ test("live-data health traverses browse and history to validate every public per
   };
   const responses = new Map([
     ["https://data.example/recent.json", {
-      entries: [{ ...second, versions: 2, published_at: registeredAt }],
+      entries: [{
+        ...second,
+        versions: 2,
+        published_at: registeredAt,
+        classification: CLASSIFICATION,
+      }],
     }],
     ["https://data.example/browse/index.json", {
       results: 1,
@@ -153,11 +175,15 @@ test("live-data health traverses browse and history to validate every public per
     ["https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json", {
       id: "one-v1",
       registered_at: "2026-08-08T11:00:00Z",
+      classification: CLASSIFICATION,
     }],
     ["https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json", {
       id: "one-v2",
       registered_at: registeredAt,
+      classification: CLASSIFICATION,
     }],
+    ["https://data.example/subjects/arxiv/math.CO.json", subjectHead("arxiv", "math.CO", [second])],
+    ["https://data.example/subjects/msc/05C10.json", subjectHead("msc", "05C10", [second])],
   ]);
   const fetcher = async (url) => {
     calls.push(String(url));
@@ -191,6 +217,10 @@ test("live-data health traverses browse and history to validate every public per
     validateEntry(value, summary) {
       validated.push(`${value.id}:${summary.path}`);
     },
+    validateSubjectHead(page, kind, code) {
+      validated.push(`subject:${kind}/${code}`);
+      return page;
+    },
   });
 
   assert.equal(state.healthy, true);
@@ -202,6 +232,8 @@ test("live-data health traverses browse and history to validate every public per
     "https://data.example/versions/PALOMAR-2026-08-08-000001.json",
     "https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json",
     "https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json",
+    "https://data.example/subjects/arxiv/math.CO.json",
+    "https://data.example/subjects/msc/05C10.json",
   ]);
   assert.deepEqual(validated, [
     "recent",
@@ -211,8 +243,58 @@ test("live-data health traverses browse and history to validate every public per
     `versions:${first.id}`,
     `one-v1:${first.path}`,
     `one-v2:${second.path}`,
+    "subject:arxiv/math.CO",
+    "subject:msc/05C10",
   ]);
-  assert.match(state.reason, /all 2 active entry versions across 1 results/);
+  assert.match(
+    state.reason,
+    /all 2 active entry versions across 1 results and 2 classification codes/,
+  );
+});
+
+test("live-data health refuses a subject page naming what is not a current version", async () => {
+  const fixture = oneEntryRegistry();
+  const superseded = { ...fixture.row, version: 2, path: `entries/${fixture.row.id}-v2.json` };
+  const responses = new Map(fixture.responses);
+  responses.set(
+    "https://data.example/subjects/arxiv/math.CO.json",
+    subjectHead("arxiv", "math.CO", [superseded]),
+  );
+  const state = await publicDataState(
+    "https://data.example",
+    responseFrom(responses),
+    registryValidators,
+  );
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /which is not a current version/);
+});
+
+test("live-data health refuses a subject row that is not the record it names", async () => {
+  // Every field the subject page draws is compared with the record behind it.
+  // A row that reads perfectly well and says something its record does not is
+  // the failure this surface can still have.
+  for (const [field, wrong] of [
+    ["published_at", "2026-08-08T23:59:59Z"],
+    ["abstract", "An abstract the record does not carry."],
+    ["classification", { arxiv: ["math.CO", "math.MG"], msc2020: ["05C10"] }],
+  ]) {
+    const fixture = oneEntryRegistry();
+    const responses = new Map(fixture.responses);
+    const head = subjectHead("arxiv", "math.CO", [fixture.row]);
+    responses.set("https://data.example/subjects/arxiv/math.CO.json", {
+      ...head,
+      entries: [{ ...head.entries[0], [field]: wrong }],
+    });
+    const state = await publicDataState(
+      "https://data.example",
+      responseFrom(responses),
+      registryValidators,
+    );
+
+    assert.equal(state.healthy, false, field);
+    assert.match(state.reason, /as something its record is not/);
+  }
 });
 
 test("live-data health fails closed when a version index omits or rewrites browse history", async () => {

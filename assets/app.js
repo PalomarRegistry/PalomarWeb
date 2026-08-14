@@ -6,6 +6,7 @@ import {
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
+  subjectHeadUrl,
   workflowRunId,
 } from "./security.mjs";
 import {
@@ -23,6 +24,7 @@ import { createChallengePresentation } from "./challenge-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
+import { renderSubjectPage } from "./subject-pages.mjs";
 import {
   bindSourceControl,
   createSourceAvailabilityBinding,
@@ -78,6 +80,9 @@ const {
   loadAvailabilityBounded,
   loadRecent,
   loadEntry,
+  loadSubjectHead,
+  loadSubjectYear,
+  loadSubjectPage,
 } = createRegistryLoader({
   fetch: (...args) => fetch(...args),
   location: window.location,
@@ -101,11 +106,99 @@ function classification(entry) {
   };
 }
 
+// Written out rather than composed from the scheme name. The build asserts that
+// everything the site fetches from its own origin is in the artifact, and it can
+// only read the URLs that are spelled out where it looks.
+const TAXONOMY_SOURCES = Object.freeze({
+  arxiv: () => new URL("assets/data/arxiv-categories.json", document.baseURI),
+  msc: () => new URL("assets/data/msc2020-codes.json", document.baseURI),
+});
+
+const taxonomyLoads = new Map();
+
+/**
+ * A taxonomy's descriptions, fetched once and only where they are shown.
+ *
+ * A code is not a subject: nobody reads 52C10 and thinks "Erdős problems in
+ * discrete geometry", and math.MG does not announce itself as metric geometry.
+ * The MSC table is large enough that it is not worth loading for a page with no
+ * classification on it, and both are unimportant enough that a page whose fetch
+ * fails should still render.
+ */
+function taxonomy(kind) {
+  if (!taxonomyLoads.has(kind)) {
+    taxonomyLoads.set(kind, (async () => {
+      try {
+        const response = await fetch(TAXONOMY_SOURCES[kind]());
+        return response.ok ? await response.json() : {};
+      } catch {
+        return {};
+      }
+    })());
+  }
+  return taxonomyLoads.get(kind);
+}
+
+/**
+ * The descriptions, applied to every code on the page in one pass.
+ *
+ * Both taxonomies, because a Subjects row mixes them and glossing one a moment
+ * before the other would move the text under a reader twice instead of once.
+ * One pass, because cards are built in bulk and a callback per card would be a
+ * hundred of them rewriting a hundred rows. Deliberately not awaited: a
+ * description is a courtesy, and the row is correct without one.
+ */
+let pendingGlosses = null;
+
+function glossLater(pending) {
+  if (pendingGlosses !== null) {
+    pendingGlosses.push(pending);
+    return;
+  }
+  pendingGlosses = [pending];
+  Promise.all([taxonomy("arxiv"), taxonomy("msc")])
+    .then(([arxiv, msc]) => {
+      const queued = pendingGlosses;
+      pendingGlosses = null;
+      for (const { kind, code, link, spoken, suffix } of queued) {
+        const description = (kind === "arxiv" ? arxiv : msc)[code];
+        if (typeof description !== "string" || !description) continue;
+        // A hover, not a second column: the codes are a compact row, and the
+        // descriptions are long enough to swamp them. Given to assistive
+        // technology as text, since a title attribute alone reaches nobody
+        // who is not holding a mouse.
+        link.title = `${code} — ${description}`;
+        spoken.textContent = ` — ${description}. ${suffix}`;
+      }
+    });
+}
+
+/**
+ * One classification code, as the link to everything else carrying it.
+ *
+ * The subject page reads `subjects/<kind>/<code>.json` and the archive behind
+ * it, so it answers for the whole registry. The landing page's arXiv and MSC
+ * fields narrow the rows already on it, which is a different question and stays
+ * where it is.
+ */
+function classificationToken(kind, code, label, className = "category-token") {
+  const link = internalLink(label, subjectPageUrl(kind, code), className);
+  const suffix = `Other entries classified ${code}`;
+  const spoken = el("span", "visually-hidden", ` — ${suffix.toLowerCase()}`);
+  link.append(spoken);
+  glossLater({ kind, code, link, spoken, suffix });
+  return link;
+}
+
 function categoryTokens(entry) {
   const categories = classification(entry);
   const tokens = el("span", "category-tokens");
-  for (const code of categories.arxiv) tokens.append(el("code", "arxiv-category", code));
-  for (const code of categories.msc2020) tokens.append(el("code", "msc-category", `MSC ${code}`));
+  for (const code of categories.arxiv) {
+    tokens.append(classificationToken("arxiv", code, code));
+  }
+  for (const code of categories.msc2020) {
+    tokens.append(classificationToken("msc", code, `MSC ${code}`));
+  }
   if (!tokens.children.length) tokens.append(el("span", "unclassified", "Not recorded"));
   return tokens;
 }
@@ -816,17 +909,37 @@ function evidenceDataUrl(entry, databaseBase, filename) {
   return new URL(`${entry.verification.evidence_path}${filename}`, databaseBase);
 }
 
-function localPageUrl(page, entry) {
-  const target = new URL(page, window.location.href);
-  target.search = "";
-  target.searchParams.set("id", entry.id);
-  target.searchParams.set("version", String(entry.version));
+/**
+ * The local data overrides, carried across to the page being linked to.
+ *
+ * Honoured on loopback only, and only there because a test fixture is served
+ * from somewhere other than the registry. A link that dropped them would leave
+ * the next page reading the production database in the middle of a test run.
+ * Appended last, so an ordinary link's own parameters stay at the front of it.
+ */
+function carryLocalOverrides(target) {
   if (isLoopbackHostname(window.location.hostname)) {
     for (const name of ["database", "render-base"]) {
       if (params.has(name)) target.searchParams.set(name, params.get(name));
     }
   }
   return safeInternalUrl(target, window.location.href);
+}
+
+function localPageUrl(page, entry) {
+  const target = new URL(page, window.location.href);
+  target.search = "";
+  target.searchParams.set("id", entry.id);
+  target.searchParams.set("version", String(entry.version));
+  return carryLocalOverrides(target);
+}
+
+function subjectPageUrl(kind, code) {
+  const target = new URL("subject.html", window.location.href);
+  target.search = "";
+  target.searchParams.set("kind", kind);
+  target.searchParams.set("code", code);
+  return carryLocalOverrides(target);
 }
 
 const challengePresentation = createChallengePresentation({
@@ -928,34 +1041,6 @@ function acceptanceCallout(entry, databaseBase) {
   return callout;
 }
 
-/**
- * The MSC2020 descriptions, fetched once and only where they are shown.
- *
- * A code is not a subject: nobody reads 52C10 and thinks "Erdős problems in
- * discrete geometry". The table is large enough that it is not worth loading
- * for a page with no classification on it, and unimportant enough that a page
- * whose fetch fails should still render.
- */
-let mscDescriptions = null;
-
-async function mscGlossary() {
-  if (mscDescriptions) return mscDescriptions;
-  try {
-    const response = await fetch(new URL("assets/data/msc2020-codes.json", document.baseURI));
-    mscDescriptions = response.ok ? await response.json() : {};
-  } catch {
-    mscDescriptions = {};
-  }
-  return mscDescriptions;
-}
-
-/** Every other entry sharing a classification, which is what a code is for. */
-function classificationSearchUrl(scheme, code) {
-  const url = new URL("index.html", document.baseURI);
-  url.searchParams.set(scheme, code);
-  return url;
-}
-
 function classificationSection(entry) {
   const categories = classification(entry);
   const section = el("section", "entry-classification");
@@ -965,20 +1050,15 @@ function classificationSection(entry) {
   heading.append(title);
   section.append(heading);
   const details = el("dl", "details classification-details");
-  const glossed = [];
 
-  const categoryRow = (label, values, scheme) => {
+  const categoryRow = (label, values, kind) => {
     const row = el("div", "detail-row");
     row.append(el("dt", "", label));
     const value = el("dd", "category-list");
     for (const code of values) {
       // The code itself is the link: a reader who wants the other entries in
       // a subject clicks the subject, rather than a separate word beside it.
-      const link = internalLink(code, classificationSearchUrl(scheme, code), "category-link");
-      const spoken = el("span", "visually-hidden", ` — other entries classified ${code}`);
-      link.append(spoken);
-      if (scheme === "msc") glossed.push({ code, link, spoken });
-      value.append(link);
+      value.append(classificationToken(kind, code, code, "category-link"));
     }
     if (!values.length) value.append(el("span", "unclassified", "Not recorded for this older entry"));
     row.append(value);
@@ -990,23 +1070,6 @@ function classificationSection(entry) {
     categoryRow("MSC2020", categories.msc2020, "msc"),
   );
   section.append(details);
-
-  // Asynchronous, and deliberately not awaited: a description is a courtesy,
-  // and the section is correct without one.
-  if (glossed.length) {
-    mscGlossary().then((table) => {
-      for (const { code, link, spoken } of glossed) {
-        const description = table[code];
-        if (!description) continue;
-        // A hover, not a second column: the codes are a compact row, and the
-        // descriptions are long enough to swamp them. Given to assistive
-        // technology as text, since a title attribute alone reaches nobody
-        // who is not holding a mouse.
-        link.title = `${code} — ${description}`;
-        spoken.textContent = ` — ${description}. Other entries classified ${code}`;
-      }
-    });
-  }
   return section;
 }
 
@@ -1353,6 +1416,71 @@ async function renderEntry(
   });
 }
 
+const SUBJECT_SCHEME_LABELS = Object.freeze({ arxiv: "arXiv subject", msc: "MSC2020" });
+
+/**
+ * What one classification code is, above the results carrying it.
+ *
+ * The code is the heading because the code is what the URL is, and the
+ * description is beneath it in full: a page about one subject has room for the
+ * words, where the compact rows that link here do not.
+ */
+function renderSubjectHeading(kind, code, head, content) {
+  document.title = `${code} — Palomar`;
+  const heading = el("header", "subject-heading");
+  const eyebrow = el("div", "eyebrow", SUBJECT_SCHEME_LABELS[kind]);
+  const title = el("h1", "", code);
+  const gloss = el("p", "subject-gloss");
+  taxonomy(kind).then((table) => {
+    const description = table[code];
+    if (typeof description === "string" && description) gloss.textContent = description;
+  });
+  const counts = el("div", "subject-counts");
+  counts.append(
+    el(
+      "span",
+      "",
+      `${head.results} ${head.results === 1 ? "result" : "results"}, ` +
+        `${head.versions} current ${head.versions === 1 ? "version" : "versions"}`,
+    ),
+    dataLink(
+      "Machine-readable index",
+      subjectHeadUrl(kind, code, dataSource().databaseBase),
+      "data-link",
+    ),
+  );
+  heading.append(eyebrow, title, gloss, counts);
+  content.append(heading, el("div", "subject-list"));
+}
+
+/**
+ * The rows of a subject page, which are not registry cards.
+ *
+ * A subject document carries an index row plus the classification and the
+ * registration instant, and nothing else: no authors, no dependencies, no
+ * source. Rendering an entry card from it would mean reading fifty records to
+ * fill one listing, which is the cost this whole surface exists to avoid.
+ */
+function renderSubjectRows(rows, content) {
+  const list = content.querySelector(".subject-list");
+  for (const row of rows) {
+    const article = el("article", "subject-row");
+    const identity = el("div", "card-identity");
+    identity.append(
+      el("span", "entry-id", `${row.id} v${row.version}`),
+      el("span", "entry-date", `Registered ${displayDate(registrationDate(row.published_at))}`),
+    );
+    const title = el("h2");
+    title.append(internalLink(row.title, localPageUrl("entry.html", row)));
+    article.append(identity, title);
+    if (row.abstract) article.append(el("p", "card-abstract", row.abstract));
+    const subjects = el("div", "card-subjects");
+    subjects.append(el("small", "", "Subjects"), categoryTokens(row));
+    article.append(subjects);
+    list.append(article);
+  }
+}
+
 function renderExactTombstone(tombstone, content) {
   document.title = `${tombstone.id} v${tombstone.version} — Palomar`;
   document.body.classList.add("exact-tombstone");
@@ -1432,5 +1560,16 @@ if (document.body.dataset.page === "render") {
     renderExactTombstone,
     el,
     challengePresentation,
+  });
+}
+if (document.body.dataset.page === "subject") {
+  renderSubjectPage({
+    params,
+    document,
+    loadSubjectHead,
+    loadSubjectYear,
+    loadSubjectPage,
+    renderHeading: renderSubjectHeading,
+    renderRows: renderSubjectRows,
   });
 }

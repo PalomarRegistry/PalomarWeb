@@ -365,16 +365,21 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   await expect(page.locator(".entry-classification")).toContainText("math.CO");
   await expect(page.locator(".entry-classification")).toContainText("05C10");
   // A classification is a way to find the neighbours, so the code itself is
-  // the link, and it goes to the entries that share it. The feeds it used to
-  // link to were never published, so every one of them was a 404.
+  // the link, and it goes to the subject page for it: every current version
+  // carrying the code, not the handful the landing page happens to hold. The
+  // feeds it used to link to were never published, so every one was a 404.
   await expect(page.locator(".entry-classification").getByRole("link", { name: "RSS" })).toHaveCount(0);
   const mscLink = page.locator(".entry-classification .category-link", { hasText: "05C10" });
-  await expect(mscLink).toHaveAttribute("href", /index\.html\?msc=05C10/);
+  await expect(mscLink).toHaveAttribute("href", /subject\.html\?kind=msc&code=05C10/);
   await expect(
     page.locator(".entry-classification .category-link", { hasText: "math.CO" }),
-  ).toHaveAttribute("href", /index\.html\?arxiv=math\.CO/);
-  // And a code nobody can read is glossed with what it means.
+  ).toHaveAttribute("href", /subject\.html\?kind=arxiv&code=math\.CO/);
+  // And a code nobody can read is glossed with what it means, in both
+  // taxonomies: math.MG does not announce itself as metric geometry either.
   await expect(mscLink).toHaveAttribute("title", /05C10 — .+/);
+  await expect(
+    page.locator(".entry-classification .category-link", { hasText: "math.CO" }),
+  ).toHaveAttribute("title", "math.CO — Combinatorics");
   await expect(page).toHaveURL(/entry\.html\?id=PALOMAR-2026-07-29-000123&version=2&database=/);
   await expect(page).toHaveURL(/#version-history$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -1210,6 +1215,110 @@ test("classification codes are spaced, and their descriptions are hovers", async
       .join(" ");
   });
   expect(visible).not.toContain("Planar graphs");
+});
+
+test("a card's classifications are muted links, glossed on hover", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000123" });
+  const arxiv = card.locator(".category-token", { hasText: "math.CO" });
+  const msc = card.locator(".category-token", { hasText: "MSC 05C10" });
+
+  // The whole registry under that code, not the two hundred rows this page
+  // happens to hold. Both taxonomies are glossed, so a row is not half live.
+  await expect(arxiv).toHaveAttribute("href", /subject\.html\?kind=arxiv&code=math\.CO/);
+  await expect(msc).toHaveAttribute("href", /subject\.html\?kind=msc&code=05C10/);
+  await expect(arxiv).toHaveAttribute("title", "math.CO — Combinatorics");
+  await expect(msc).toHaveAttribute("title", /^05C10 — Planar graphs/);
+  // The description is a hover, not a second line: a card has no room for it
+  // beside the code. It is still in the accessibility tree as text, because a
+  // title attribute alone reaches nobody who is not holding a mouse.
+  const visible = await card.evaluate((node) =>
+    [...node.querySelectorAll("*")]
+      .filter((child) => !child.classList.contains("visually-hidden"))
+      .filter((child) => child.children.length === 0)
+      .map((child) => child.textContent)
+      .join(" "));
+  expect(visible).not.toContain("Combinatorics");
+  await expect(card.locator(".visually-hidden", { hasText: "Combinatorics" })).toHaveCount(1);
+
+  // Muted, and it says it is a link only when you are on it. The link colour
+  // would make the smallest thing on a card the loudest thing on it, so a code
+  // is the colour of the metadata around it and not the colour of a link.
+  const meta = await card.locator(".card-meta").evaluate((node) =>
+    getComputedStyle(node).color);
+  const link = await card.locator(".repo-link").evaluate((node) =>
+    getComputedStyle(node).color);
+  await expect(arxiv).toHaveCSS("color", meta);
+  expect(meta).not.toBe(link);
+  await expect(arxiv).toHaveCSS("text-decoration-line", "none");
+  await arxiv.hover();
+  await expect(arxiv).toHaveCSS("text-decoration-line", "underline");
+  await expect(arxiv).toHaveCSS("text-decoration-style", "dotted");
+  // And by keyboard too, which a hover-only affordance would never reach.
+  await arxiv.focus();
+  await expect(arxiv).toHaveCSS("text-decoration-line", "underline");
+});
+
+test("a subject page lists every current version under one code, newest first", async ({ page }) => {
+  await page.goto(`/subject.html?kind=arxiv&code=math.AG&database=${database}`);
+
+  await expect(page.locator(".subject-heading h1")).toHaveText("math.AG");
+  await expect(page.locator(".subject-gloss")).toHaveText("Algebraic Geometry");
+  await expect(page.locator(".subject-counts")).toContainText("60 results, 60 current versions");
+  await expect(page).toHaveTitle("math.AG — Palomar");
+
+  // The front page is the newest fifty and says so by carrying exactly that
+  // many; the rest is the archive behind it.
+  const rows = page.locator(".subject-row");
+  await expect(rows).toHaveCount(50);
+  await expect(rows.first()).toContainText("PALOMAR-2026-06-03-000020");
+  await expect(rows.first().locator("h2 a")).toHaveAttribute(
+    "href",
+    /entry\.html\?id=PALOMAR-2026-06-03-000020&version=1/,
+  );
+  await expect(rows.last()).toContainText("PALOMAR-2026-06-01-000011");
+
+  // One click walks back through the days it has already shown without
+  // repeating a row, and the button goes when the count is met.
+  const more = page.locator("#subject-more");
+  await expect(more).toBeVisible();
+  await more.click();
+  await expect(rows).toHaveCount(60);
+  await expect(rows.last()).toContainText("PALOMAR-2026-06-01-000001");
+  await expect(more).toBeHidden();
+  await expect(page.locator("#subject-more-status")).toBeHidden();
+});
+
+test("a code with nothing current under it answers, and one never used does not", async ({ page }) => {
+  // Seeded and empty. PalomarDatabase keeps a page for every code the registry
+  // has ever used, so a code whose last classifier was superseded is an empty
+  // answer rather than a URL that started to 404 under a reader.
+  await page.route(/\/database\/subjects\/msc\/05C10\.json$/, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      schema_version: 1,
+      kind: "msc",
+      code: "05C10",
+      entries: [],
+      results: 0,
+      versions: 0,
+      years: [],
+    }),
+  }));
+  await page.goto(`/subject.html?kind=msc&code=05C10&database=${database}`);
+  await expect(page.locator(".subject-heading h1")).toHaveText("05C10");
+  await expect(page.locator(".subject-row")).toHaveCount(0);
+  await expect(page.locator("#subject-content")).toContainText("No current version is classified");
+  await expect(page.locator("#subject-more")).toBeHidden();
+
+  await page.goto(`/subject.html?kind=msc&code=99Z99&database=${database}`);
+  await expect(page.locator("#status")).toHaveText(
+    "No result has ever been classified 99Z99.",
+  );
+  await expect(page.locator("#subject-content")).toBeHidden();
+
+  await page.goto(`/subject.html?kind=feeds&code=math.CO&database=${database}`);
+  await expect(page.locator("#status")).toContainText("missing or invalid classification scheme");
 });
 
 test("an entry shows the decision and the comments, never the scores", async ({ page }) => {

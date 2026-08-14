@@ -16,11 +16,13 @@ import { readFile } from "node:fs/promises";
 import { shippedFiles } from "./build-site.mjs";
 import {
   entryRecordUrl,
+  subjectHeadUrl,
   validateBrowseHead,
   validateBrowsePage,
   validateBrowseYear,
   validateEntry,
   validateRecent,
+  validateSubjectHead,
   validateVersions,
   versionsUrl,
 } from "../assets/security.mjs";
@@ -134,6 +136,7 @@ const PUBLIC_VALIDATORS = {
   validateBrowseYear,
   validateEntry,
   validateRecent,
+  validateSubjectHead,
   validateVersions,
 };
 
@@ -236,10 +239,61 @@ export async function publicDataState(
         throw new Error(`recent row for ${summary.id} does not match its entry registered_at`);
       }
     }
+    // The subject pages the website now links every classification code to.
+    // Bounded by the classification vocabulary of the newest rows rather than
+    // by the registry, and checked against the records the traversal above
+    // already proved: a subject front page naming something that is not a
+    // current version, or carrying a code the record does not, would show a
+    // result under a heading it has nothing to do with.
+    const currentByPath = new Map();
+    for (const entries of historiesById.values()) {
+      const current = entries.at(-1);
+      currentByPath.set(current.path, current);
+    }
+    // Every code any current version carries, not only the codes of the newest
+    // two hundred. A result outside `recent.json` links to its subject page
+    // from its own entry page, and a health check that never asked for that
+    // document would not notice it had stopped being served.
+    const codes = new Map();
+    for (const path of currentByPath.keys()) {
+      const { arxiv, msc2020 } = entriesByPath.get(path).classification;
+      for (const code of arxiv) codes.set(`arxiv/${code}`, ["arxiv", code]);
+      for (const code of msc2020) codes.set(`msc/${code}`, ["msc", code]);
+    }
+    await mapBounded([...codes.values()], async ([kind, code]) => {
+      const head = validators.validateSubjectHead(
+        await fetchJson(subjectHeadUrl(kind, code, base), fetcher, policy),
+        kind,
+        code,
+      );
+      for (const row of head.entries) {
+        const current = currentByPath.get(row.path);
+        if (!current || current.version !== row.version || current.title !== row.title) {
+          throw new Error(`subject ${kind}/${code} names ${row.path}, which is not a current version`);
+        }
+        // Every field the subject page shows, against the record it claims to
+        // be showing. A row that reads correctly and says something its record
+        // does not is the failure this surface can still have: the abstract and
+        // the sibling codes are rendered, and the instant is what orders them.
+        const entry = entriesByPath.get(row.path);
+        const declared = entry.classification;
+        const carried = kind === "arxiv" ? declared.arxiv : declared.msc2020;
+        if (!carried.includes(code)) {
+          throw new Error(`subject ${kind}/${code} carries ${row.path}, whose record does not`);
+        }
+        if (row.published_at !== entry.registered_at || row.abstract !== entry.abstract ||
+            row.classification.arxiv.join(" ") !== declared.arxiv.join(" ") ||
+            row.classification.msc2020.join(" ") !== declared.msc2020.join(" ")) {
+          throw new Error(`subject ${kind}/${code} projects ${row.path} as something its record is not`);
+        }
+      }
+      return head;
+    });
+
     return {
       healthy: true,
       reason: `the website contract accepts all ${browse.versions} active entry versions ` +
-        `across ${browse.results} results`,
+        `across ${browse.results} results and ${codes.size} classification codes`,
     };
   } catch (error) {
     return { healthy: false, reason: `public registry data is incompatible: ${error.message}` };

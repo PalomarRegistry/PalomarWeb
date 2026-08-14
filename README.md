@@ -31,17 +31,37 @@ endpoint.
 Registry cards display the identifier, registration date, title, abstract,
 authors, theorems, arXiv and MSC2020 classifications, and source links, all
 without opening anything: a title here is a repository name, so the authors and
-the theorem are what identify a row while scanning. The toolbar filters the
-rows the landing page holds by text or trust, with the arXiv and MSC2020
-subject inputs tucked behind a "Subject filters" disclosure until a deep link
-such as `?arxiv=math.AG` opens it; the opened inputs take room in the toolbar
-rather than floating over the rows below. The classification fields suggest codes
-represented by those rows but also accept any exact code, so a deep link such
-as `?arxiv=math.AG` produces a useful empty result even
-before that classification has an entry. The filter is over `recent.json`, which
-is the newest 200 current versions and not the registry, so it narrows what is
-on the page rather than searching everything; the search box does the latter,
-a word at a time, over titles, abstracts and author names.
+the theorem are what identify a row while scanning. Every classification code is
+a link to `subject.html?kind=<arxiv|msc>&code=<code>`, glossed with its
+description on hover and in the accessibility tree: a code is not a subject, and
+neither `52C10` nor `math.MG` says what it is. The two taxonomy tables are
+vendored under `assets/data/` from the snapshot PalomarSubmission validates
+against, and a page whose fetch of one fails still renders. The codes are muted
+rather than link-coloured, and grow a dotted underline on hover and on keyboard
+focus.
+
+A subject page reads `subjects/<kind>/<code>.json` and the day-paged archive
+behind it, so it answers for the whole registry rather than for what one page
+happens to hold. The front page is the newest 50 current versions under the
+code; "Show earlier results" walks the archive newest first, one day at a time,
+skipping days it has already shown. A page range is inclusive of its ends and
+not of everything between them, since a code's pages are seeded by the results
+ever classified under it, so an absent page inside a range is read as empty and
+each day is reconciled against the counts it declares. A code the registry has
+ever used keeps answering after its last classifier is superseded, so an empty
+page is an answer and not a 404.
+
+The toolbar also filters the rows the landing page holds by text or trust, with
+the arXiv and MSC2020 subject inputs tucked behind a "Subject filters"
+disclosure until a deep link such as `?arxiv=math.AG` opens it; the opened
+inputs take room in the toolbar rather than floating over the rows below. The
+classification fields suggest codes represented by those rows but also accept
+any exact code, so such a deep link produces a useful empty result even before
+that classification has an entry. That filter is over `recent.json`, which is
+the newest 200 current versions and not the registry, so it narrows what is on
+the page rather than searching everything; the search box does the latter, a
+word at a time, over titles, abstracts and author names, and the subject pages
+answer a code exactly.
 Search accepts at most 4,096 characters and 20 distinct normalized words. The
 word limit is checked before the stopword list is loaded, so common words that
 the index later drops still count. An over-limit linked or typed query is
@@ -190,11 +210,12 @@ stable citations must include the version.
 
 The filtered public-data deployment generates a main RSS feed and separate feeds
 for every arXiv and MSC2020 classification represented by a current entry. The
-landing page and entry pages advertise the main feed with RSS autodiscovery. An
-entry page links its classifications to the filtered listing rather than to the
-category feed; the feed links were removed when they were all 404, and they have
-not been put back. Static hosting is sufficient because feed XML is regenerated
-whenever the append-only database changes.
+landing page and entry pages advertise the main feed with RSS autodiscovery. A
+classification links to its subject page rather than to its category feed; the
+feed links were removed when they were all 404, and they have not been put back
+because nothing here has confirmed that they resolve. Static hosting is
+sufficient because feed XML is regenerated whenever the append-only database
+changes.
 
 ## Version presentation
 

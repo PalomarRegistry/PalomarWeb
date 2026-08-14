@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://data.palomar-registry.org; frame-src 'self' https://data.palomar-registry.org; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+    <title>Subject classification — Palomar</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="assets/style.css">
+    <link rel="alternate" type="application/rss+xml" title="Palomar accepted results" href="https://data.palomar-registry.org/feed.xml">
+  </head>
+  <body data-page="subject">
+    <a class="skip-link" href="#subject">Skip to results</a>
+    <header class="site-header">
+      <a class="brand" href="./">Palomar</a>
+      <nav aria-label="Main navigation"><a href="./">Registry</a><a href="about.html">About</a><a href="https://submit.palomar-registry.org/">Submit</a></nav>
+    </header>
+    <main id="subject" class="subject-page">
+      <div id="status" class="status">
+        Reading the results under this classification…
+        <noscript>
+          <br>
+          Subject pages require JavaScript because they read the machine-readable
+          registry at runtime. You can instead
+          <a href="https://data.palomar-registry.org/browse/index.json">browse the registry as JSON</a>.
+        </noscript>
+      </div>
+      <section id="subject-content" hidden></section>
+      <div class="subject-archive">
+        <button id="subject-more" type="button" hidden>Show earlier results</button>
+        <p id="subject-more-status" class="status" role="status"></p>
+      </div>
+    </main>
+    <footer>
+      <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
+      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="https://data.palomar-registry.org/browse/index.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
+    </footer>
+    <script type="module" src="assets/app.js"></script>
+  </body>
+</html>

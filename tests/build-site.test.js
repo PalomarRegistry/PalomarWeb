@@ -189,6 +189,19 @@ test("the MSC descriptions shown to readers are readable", async () => {
   assert.equal(codes["52C10"], "Erdős problems and related topics of discrete geometry");
 });
 
+test("the arXiv category names shown to readers are readable", async () => {
+  // The other half of a Subjects row. Vendored from the same snapshot in
+  // PalomarSubmission, and held to the same standard: a code the reader cannot
+  // expand is a code, and math.MG does not announce itself as metric geometry.
+  const categories = JSON.parse(
+    await readFile(new URL("../assets/data/arxiv-categories.json", import.meta.url), "utf8"),
+  );
+  const broken = Object.entries(categories).filter(([, text]) => text.includes("?"));
+  assert.deepEqual(broken, []);
+  assert.equal(categories["math.MG"], "Metric Geometry");
+  assert.equal(categories["math.CO"], "Combinatorics");
+});
+
 test("the app graph writes down no data origin the database override cannot redirect", async () => {
   // `?database=` names the endpoint every read surface is resolved against, so
   // a fixture directory can stand in for the live service. A data URL spelled

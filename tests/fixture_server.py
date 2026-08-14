@@ -240,6 +240,151 @@ ENTRIES = {
         "PALOMAR-2026-07-29-000124", 101, 1
     ),
 }
+SUBJECT_PAGE_ITEMS = 50
+PAGE_SERIALS = 200
+# A code with more current versions than one subject front page can carry, so
+# that the archive walk has something to walk. These rows are deliberately not
+# in ENTRIES: the landing, search and browse fixtures are sized for the
+# assertions built on them, and this code exists only to make paging real.
+ARCHIVE_CLASSIFICATION = {"arxiv": ["math.AG"], "msc2020": ["14A10"]}
+ARCHIVE_DAYS = ("2026-06-01", "2026-06-02", "2026-06-03")
+ARCHIVE_PER_DAY = 20
+
+
+def subject_row(record: dict) -> dict:
+    """One version as the subject surfaces carry it.
+
+    The index row, plus the registration instant a page is ordered by and the
+    classification that says the row belongs on it. Both are what a reader
+    would otherwise have to open the record to check.
+    """
+    return {
+        "id": record["id"],
+        "version": record["version"],
+        "title": record["title"],
+        "status": "accepted",
+        "path": f"entries/{record['id']}-v{record['version']}.json",
+        "published_at": record["registered_at"],
+        "classification": record["classification"],
+        "abstract": record["abstract"],
+    }
+
+
+def archive_rows() -> list[dict]:
+    rows = []
+    for day in ARCHIVE_DAYS:
+        for serial in range(1, ARCHIVE_PER_DAY + 1):
+            identifier = f"PALOMAR-{day}-{serial:06d}"
+            rows.append({
+                "id": identifier,
+                "version": 1,
+                "title": f"Archive fixture {identifier}",
+                "registered_at": f"{day}T09:00:{serial:02d}Z",
+                "classification": ARCHIVE_CLASSIFICATION,
+                "abstract": "A paging fixture for one classification code.",
+            })
+    return rows
+
+
+def codes_of(row: dict) -> list[tuple[str, str]]:
+    return [("arxiv", code) for code in row["classification"]["arxiv"]] + [
+        ("msc", code) for code in row["classification"]["msc2020"]
+    ]
+
+
+def coordinate(identifier: str) -> tuple[str, str, int]:
+    day = identifier[len("PALOMAR-") : len("PALOMAR-") + 10]
+    serial = int(identifier.rsplit("-", 1)[-1])
+    return day[:4], day, (serial - 1) // PAGE_SERIALS + 1
+
+
+def subject_documents() -> dict[str, dict]:
+    """Every `subjects/` document, by the same rules as `build_subjects.py`.
+
+    Seeded from every version and filled from the current ones, paged by the
+    day and serial in the identifier, and nothing consulted to decide which
+    page a row is on. A fixture that worked any of that out differently would
+    test the browser against a surface the publisher does not write.
+    """
+    every = [subject_row(record) for record in ENTRIES.values()] + [
+        subject_row(record) for record in archive_rows()
+    ]
+    latest: dict[str, dict] = {}
+    for row in every:
+        previous = latest.get(row["id"])
+        if previous is None or row["version"] > previous["version"]:
+            latest[row["id"]] = row
+    current = sorted(
+        latest.values(), key=lambda row: (row["published_at"], row["id"]), reverse=True
+    )
+
+    seeds: dict[tuple[str, str], set[str]] = {}
+    for row in every:
+        for code in codes_of(row):
+            seeds.setdefault(code, set()).add(row["id"])
+    selected: dict[tuple[str, str], list[dict]] = {code: [] for code in seeds}
+    for row in current:
+        for code in codes_of(row):
+            selected[code].append(row)
+
+    documents: dict[str, dict] = {}
+    for (kind, code), rows in selected.items():
+        directory = f"subjects/{kind}/{code}"
+        pages: dict[tuple[str, str, int], list[dict]] = {
+            coordinate(identifier): [] for identifier in seeds[(kind, code)]
+        }
+        for row in rows:
+            archived = {key: value for key, value in row.items() if key != "abstract"}
+            pages.setdefault(coordinate(row["id"]), []).append(archived)
+        by_year: dict[str, dict[str, dict[int, list[dict]]]] = {}
+        for (year, day, page), page_rows in sorted(pages.items()):
+            ordered = sorted(page_rows, key=lambda row: (row["id"], row["version"]))
+            documents[f"{directory}/{day}/{page}.json"] = {
+                "schema_version": 1,
+                "day": day,
+                "page": page,
+                "entries": ordered,
+            }
+            by_year.setdefault(year, {}).setdefault(day, {})[page] = ordered
+        years = []
+        for year, days in sorted(by_year.items()):
+            day_rows = []
+            for day, day_pages in sorted(days.items()):
+                numbers = sorted(day_pages)
+                flat = [row for number in numbers for row in day_pages[number]]
+                day_rows.append({
+                    "day": day,
+                    "first_page": numbers[0],
+                    "last_page": numbers[-1],
+                    "results": len({row["id"] for row in flat}),
+                    "versions": len(flat),
+                })
+            documents[f"{directory}/{year}.json"] = {
+                "schema_version": 1,
+                "year": year,
+                "days": day_rows,
+            }
+            years.append({
+                "year": year,
+                "days": len(day_rows),
+                "results": sum(row["results"] for row in day_rows),
+                "versions": sum(row["versions"] for row in day_rows),
+            })
+        documents[f"{directory}.json"] = {
+            "schema_version": 1,
+            "kind": kind,
+            "code": code,
+            "entries": rows[:SUBJECT_PAGE_ITEMS],
+            "results": sum(row["results"] for row in years),
+            "versions": sum(row["versions"] for row in years),
+            "years": years,
+        }
+    return documents
+
+
+SUBJECTS = subject_documents()
+
+
 def search_terms(text: str) -> list[str]:
     decomposed = unicodedata.normalize("NFKD", text)
     folded = "".join(
@@ -370,6 +515,16 @@ class Handler(SimpleHTTPRequestHandler):
                 json.dumps({"schema_version": 1, "entries": rows}).encode(),
                 "application/json",
             )
+            return
+        # One classification code: its front page, its year documents, and the
+        # pages of its archive. Looked up rather than parsed, so a path this
+        # fixture was never asked to write is a 404 and not a guess.
+        if path.startswith("/database/subjects/"):
+            document = SUBJECTS.get(path[len("/database/") :])
+            if document is None:
+                self.send_error(404)
+                return
+            self.send_bytes(json.dumps(document).encode(), "application/json")
             return
         # The versions of one result, which is what an entry page reads instead
         # of the whole index.

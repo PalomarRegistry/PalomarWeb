@@ -125,6 +125,26 @@ function exactObject(value, keys, field) {
   return item;
 }
 
+/**
+ * One RFC3339 instant in Z, refused rather than rounded into a neighbouring one.
+ *
+ * The shape is not the value. `2026-02-30T00:00:00Z` and `2026-99-99T99:99:99Z`
+ * both match the grammar, and the first is a day that does not exist while the
+ * second is not a time at all. A row carrying either reaches a date formatter,
+ * which throws on what it cannot format, so the document has to be refused
+ * where documents are refused rather than where dates are drawn.
+ */
+function instant(value, field) {
+  const text = string(value, field);
+  if (!TIMESTAMP_RE.test(text)) fail(`${field} is malformed`);
+  const moment = Date.parse(text);
+  if (Number.isNaN(moment) ||
+      new Date(moment).toISOString().replace(".000Z", "Z") !== text) {
+    fail(`${field} is malformed`);
+  }
+  return text;
+}
+
 function stringArray(value, field) {
   for (const [position, item] of array(value, field).entries()) {
     string(item, `${field}[${position}]`);
@@ -616,29 +636,30 @@ export function validateVersions(value, id) {
   return document;
 }
 
-/** The bounded-by-years root of the complete public browse traversal. */
-export function validateBrowseHead(value) {
-  const document = exactObject(
-    value,
-    ["schema_version", "results", "versions", "years"],
-    "browse index",
-  );
-  if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
-    fail(`unsupported browse index schema_version ${String(document.schema_version)}`);
-  }
-  const results = nonnegativeInteger(document.results, "browse index results");
-  const versions = nonnegativeInteger(document.versions, "browse index versions");
-  if (results > versions) fail("browse index has more results than versions");
+/**
+ * The year rows every day-paged collection's head is bounded by.
+ *
+ * Browsing the registry and browsing one classification code are the same
+ * traversal over different rows: PalomarDatabase writes both heads from
+ * `day_pages.write_collection`, and the year rows are the part that does not
+ * know which. Reading them with one function is what keeps a subject's
+ * traversal from drifting away from the registry's, which is a disagreement
+ * neither side could report.
+ */
+function validateCollectionYears(document, label) {
+  const results = nonnegativeInteger(document.results, `${label} results`);
+  const versions = nonnegativeInteger(document.versions, `${label} versions`);
+  if (results > versions) fail(`${label} has more results than versions`);
   let previous = "";
   let countedResults = 0;
   let countedVersions = 0;
-  const years = array(document.years, "browse index years");
+  const years = array(document.years, `${label} years`);
   for (const [position, value] of years.entries()) {
-    const field = `browse index years[${position}]`;
+    const field = `${label} years[${position}]`;
     const row = exactObject(value, ["days", "results", "versions", "year"], field);
     const year = string(row.year, `${field}.year`);
     if (!/^[0-9]{4}$/.test(year) || year <= previous) {
-      fail("browse index years are malformed or not in increasing order");
+      fail(`${label} years are malformed or not in increasing order`);
     }
     previous = year;
     const days = integer(row.days, `${field}.days`);
@@ -650,25 +671,25 @@ export function validateBrowseHead(value) {
     countedVersions += yearVersions;
   }
   if (countedResults !== results || countedVersions !== versions) {
-    fail("browse index counts do not equal its year rows");
+    fail(`${label} counts do not equal its year rows`);
   }
   return document;
 }
 
-/** Every day and page range belonging to one browse-index year row. */
-export function validateBrowseYear(value, expected) {
-  const document = exactObject(value, ["schema_version", "year", "days"], "browse year");
+/** Every day and page range belonging to one collection head's year row. */
+function validateCollectionYear(value, expected, label) {
+  const document = exactObject(value, ["schema_version", "year", "days"], label);
   if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
-    fail(`unsupported browse year schema_version ${String(document.schema_version)}`);
+    fail(`unsupported ${label} schema_version ${String(document.schema_version)}`);
   }
-  if (document.year !== expected.year) fail("browse year is for a different year");
-  const days = array(document.days, "browse year days");
-  if (days.length !== expected.days) fail("browse year does not carry its declared number of days");
+  if (document.year !== expected.year) fail(`${label} is for a different year`);
+  const days = array(document.days, `${label} days`);
+  if (days.length !== expected.days) fail(`${label} does not carry its declared number of days`);
   let previous = "";
   let countedResults = 0;
   let countedVersions = 0;
   for (const [position, value] of days.entries()) {
-    const field = `browse year days[${position}]`;
+    const field = `${label} days[${position}]`;
     const row = exactObject(
       value,
       ["day", "first_page", "last_page", "results", "versions"],
@@ -679,7 +700,7 @@ export function validateBrowseYear(value, expected) {
     if (!DATE_RE.test(day) || day.slice(0, 4) !== expected.year ||
         Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day ||
         day <= previous) {
-      fail("browse year days are malformed or not in increasing order");
+      fail(`${label} days are malformed or not in increasing order`);
     }
     previous = day;
     const first = integer(row.first_page, `${field}.first_page`);
@@ -693,9 +714,41 @@ export function validateBrowseYear(value, expected) {
     countedVersions += dayVersions;
   }
   if (countedResults !== expected.results || countedVersions !== expected.versions) {
-    fail("browse year counts do not equal its index row");
+    fail(`${label} counts do not equal its index row`);
   }
   return document;
+}
+
+/**
+ * That an identifier belongs on the day and page a URL asked for.
+ *
+ * The page a row is on is read from its identifier and from nothing else, so
+ * this is the whole of the claim a paged URL makes. It is the same claim for
+ * browsing and for one classification code, because both are paged by the same
+ * function of the same identifier.
+ */
+function pagedHere(id, day, page, field) {
+  const match = ID_RE.exec(id);
+  const expectedPage = Math.floor((Number(match[2]) - 1) / BROWSE_PAGE_SERIALS) + 1;
+  if (match[1] !== day || expectedPage !== page) fail(`${field} does not belong on this page`);
+}
+
+/** The bounded-by-years root of the complete public browse traversal. */
+export function validateBrowseHead(value) {
+  const document = exactObject(
+    value,
+    ["schema_version", "results", "versions", "years"],
+    "browse index",
+  );
+  if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
+    fail(`unsupported browse index schema_version ${String(document.schema_version)}`);
+  }
+  return validateCollectionYears(document, "browse index");
+}
+
+/** Every day and page range belonging to one browse-index year row. */
+export function validateBrowseYear(value, expected) {
+  return validateCollectionYear(value, expected, "browse year");
 }
 
 /** Every active version whose identifier places it on one public browse page. */
@@ -716,11 +769,7 @@ export function validateBrowsePage(value, day, page) {
   for (const [position, value] of array(document.entries, "browse page entries").entries()) {
     const field = `browse page entries[${position}]`;
     const summary = validateEntrySummary(value, field);
-    const match = ID_RE.exec(summary.id);
-    const expectedPage = Math.floor((Number(match[2]) - 1) / BROWSE_PAGE_SERIALS) + 1;
-    if (match[1] !== day || expectedPage !== page) {
-      fail(`${field} does not belong on this browse page`);
-    }
+    pagedHere(summary.id, day, page, field);
     if (summary.id < previousId ||
         (summary.id === previousId && summary.version <= previousVersion)) {
       fail("browse page entries are not in increasing identity and version order");
@@ -729,6 +778,201 @@ export function validateBrowsePage(value, day, page) {
     previousVersion = summary.version;
   }
   return document;
+}
+
+// The same document family as browsing. PalomarDatabase writes both from
+// `day_pages.write_collection`, and `build_subjects.SCHEMA_VERSION` is
+// `day_pages.SCHEMA_VERSION`; one constant here says so rather than leaving two
+// numbers to agree by coincidence.
+export const SUBJECT_SCHEMA_VERSION = BROWSE_SCHEMA_VERSION;
+// The publisher's front-page cap, `SUBJECT_PAGE_ITEMS` in PalomarDatabase's
+// `tools/build_subjects.py`. The head is a page of what is new under a code and
+// not the code's archive, so a head carrying more than this is not the document
+// this reader was told to expect.
+const SUBJECT_HEAD_ITEMS = 50;
+const SUBJECT_CODE_PATTERNS = Object.freeze({ arxiv: ARXIV_RE, msc: MSC2020_RE });
+// Which array of a classification a `subjects/<kind>/` directory is drawn from.
+// The directory is named for the scheme and the record's field is named for the
+// taxonomy revision, so the two spellings have to be mapped somewhere.
+const SUBJECT_CLASSIFICATION_FIELDS = Object.freeze({ arxiv: "arxiv", msc: "msc2020" });
+
+/**
+ * The taxonomy and code a subject URL may name.
+ *
+ * A code becomes a path segment, so a code that is not a code is a way out of
+ * the directory it names -- which is why PalomarDatabase checks the same two
+ * patterns in `selection.codes_of` before it will write one. Checked here for
+ * the same reason, at the one place every subject URL is built from.
+ */
+function subjectCoordinate(kind, code) {
+  const pattern = Object.hasOwn(SUBJECT_CODE_PATTERNS, kind)
+    ? SUBJECT_CODE_PATTERNS[kind]
+    : null;
+  if (pattern === null) fail(`unknown classification scheme ${String(kind)}`);
+  if (typeof code !== "string" || !pattern.test(code)) {
+    fail(`malformed ${kind} classification code`);
+  }
+  return { kind, code };
+}
+
+function subjectUrl(path, databaseBase) {
+  const base = new URL(databaseBase);
+  const resolved = new URL(path, base);
+  if (resolved.origin !== base.origin || !resolved.pathname.endsWith(`/${path}`)) {
+    fail("subject path escaped the canonical database prefix");
+  }
+  return resolved;
+}
+
+export function subjectHeadUrl(kind, code, databaseBase) {
+  const at = subjectCoordinate(kind, code);
+  return subjectUrl(`subjects/${at.kind}/${at.code}.json`, databaseBase);
+}
+
+export function subjectYearUrl(kind, code, year, databaseBase) {
+  const at = subjectCoordinate(kind, code);
+  if (typeof year !== "string" || !/^[0-9]{4}$/.test(year)) fail("subject year is malformed");
+  return subjectUrl(`subjects/${at.kind}/${at.code}/${year}.json`, databaseBase);
+}
+
+export function subjectPageUrl(kind, code, day, page, databaseBase) {
+  const at = subjectCoordinate(kind, code);
+  if (typeof day !== "string" || !DATE_RE.test(day)) fail("subject day is malformed");
+  if (!Number.isSafeInteger(page) || page < 1 || page > BROWSE_MAX_PAGE) {
+    fail("subject page number is outside the identifier page range");
+  }
+  return subjectUrl(`subjects/${at.kind}/${at.code}/${day}/${page}.json`, databaseBase);
+}
+
+/**
+ * One row of a subject page.
+ *
+ * The registry's entry-summary grammar, plus the two facts a reader cannot
+ * check without them. A page claims to carry results under one code in a
+ * stated order; without the timestamp nothing here can tell whether the order
+ * is the one claimed, and without the classification nothing can tell whether
+ * the row belongs on the page at all. Both would be well-formed rows either
+ * way, which is exactly the failure worth catching: a result shown under a
+ * heading it has nothing to do with.
+ */
+function validateSubjectRow(value, field, { kind, code, abstract }) {
+  const keys = ["classification", "id", "path", "published_at", "status", "title", "version"];
+  const row = exactObject(value, abstract ? [...keys, "abstract"] : keys, field);
+  const summary = validateEntrySummary(
+    { id: row.id, path: row.path, status: row.status, title: row.title, version: row.version },
+    field,
+  );
+  instant(row.published_at, `${field}.published_at`);
+  if (abstract) boundedString(row.abstract, `${field}.abstract`, 10_000);
+  const classification = exactObject(
+    row.classification,
+    ["arxiv", "msc2020"],
+    `${field}.classification`,
+  );
+  const arxiv = distinctStringArray(classification.arxiv, `${field}.classification.arxiv`, ARXIV_RE);
+  if (arxiv.length > 2) fail(`${field}.classification.arxiv has more than 2 codes`);
+  const msc2020 = distinctStringArray(
+    classification.msc2020,
+    `${field}.classification.msc2020`,
+    MSC2020_RE,
+  );
+  if (msc2020.length > 8) fail(`${field}.classification.msc2020 has more than 8 codes`);
+  if (!classification[SUBJECT_CLASSIFICATION_FIELDS[kind]].includes(code)) {
+    fail(`${field} is not classified ${code}`);
+  }
+  return { ...summary, published_at: row.published_at, classification, abstract: row.abstract };
+}
+
+/**
+ * The front page of one classification code, from `subjects/<kind>/<code>.json`.
+ *
+ * The newest current versions carrying the code, newest first, and the years
+ * its archive is paged by. An empty `entries` is an answer and not an absence:
+ * PalomarDatabase seeds a page for every code the registry has ever used, so a
+ * code whose last classifier was superseded keeps answering rather than
+ * starting to 404 at a URL somebody has linked.
+ */
+export function validateSubjectHead(value, kind, code) {
+  const at = subjectCoordinate(kind, code);
+  const document = exactObject(
+    value,
+    ["schema_version", "kind", "code", "entries", "results", "versions", "years"],
+    "subject index",
+  );
+  if (document.schema_version !== SUBJECT_SCHEMA_VERSION) {
+    fail(`unsupported subject index schema_version ${String(document.schema_version)}`);
+  }
+  if (document.kind !== at.kind || document.code !== at.code) {
+    fail("subject index is for a different classification code");
+  }
+  const entries = array(document.entries, "subject index entries");
+  // Every row under a code is a *current* version, one per result, so the two
+  // counts are the same number and the front page is the whole of the code or
+  // the publisher's cap on it. A head that says otherwise is describing some
+  // other selection, and this page would present it as the current one.
+  if (document.results !== document.versions) {
+    fail("subject index counts a result that is not one current version");
+  }
+  if (entries.length !== Math.min(SUBJECT_HEAD_ITEMS, document.versions)) {
+    fail("subject index does not carry the rows it says it has");
+  }
+  const rows = [];
+  const seen = new Set();
+  for (const [position, value] of entries.entries()) {
+    const field = `subject index entries[${position}]`;
+    const row = validateSubjectRow(value, field, { ...at, abstract: true });
+    if (seen.has(row.id)) fail(`${field} repeats a result already on this page`);
+    seen.add(row.id);
+    // Newest first, by the registration instant and then the identifier, which
+    // is the order `selection.latest_entries` puts them in. The timestamps are
+    // fixed-width UTC, so comparing them as text is comparing the moments.
+    const previous = rows.at(-1);
+    if (previous !== undefined &&
+        (row.published_at > previous.published_at ||
+          (row.published_at === previous.published_at && row.id >= previous.id))) {
+      fail("subject index entries are not newest first");
+    }
+    rows.push(row);
+  }
+  validateCollectionYears(document, "subject index");
+  return { ...document, entries: rows };
+}
+
+/** Every day and page range belonging to one subject head's year row. */
+export function validateSubjectYear(value, expected) {
+  return validateCollectionYear(value, expected, "subject year");
+}
+
+/** Every current version under one code whose identifier places it on one page. */
+export function validateSubjectPage(value, kind, code, day, page) {
+  const at = subjectCoordinate(kind, code);
+  const document = exactObject(
+    value,
+    ["schema_version", "day", "page", "entries"],
+    "subject page",
+  );
+  if (document.schema_version !== SUBJECT_SCHEMA_VERSION) {
+    fail(`unsupported subject page schema_version ${String(document.schema_version)}`);
+  }
+  if (document.day !== day || document.page !== page) {
+    fail("subject page identity does not match its URL");
+  }
+  let previousId = "";
+  const rows = [];
+  for (const [position, value] of array(document.entries, "subject page entries").entries()) {
+    const field = `subject page entries[${position}]`;
+    const row = validateSubjectRow(value, field, { ...at, abstract: false });
+    pagedHere(row.id, day, page, field);
+    // Increasing, and strictly: one current version per result means a code's
+    // page never carries a result twice, so an identifier repeated here is two
+    // versions of one result presented as two results.
+    if (row.id <= previousId) {
+      fail("subject page entries are not in increasing identity order");
+    }
+    previousId = row.id;
+    rows.push(row);
+  }
+  return { ...document, entries: rows };
 }
 
 export const SEARCH_SCHEMA_VERSION = 1;
