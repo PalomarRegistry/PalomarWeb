@@ -3,7 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
+export const htmlFiles = [
+  "404.html",
+  "about.html",
+  "entry.html",
+  "index.html",
+  "render.html",
+  "subject.html",
+];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
 const browserModuleFiles = [
   "about.js",
@@ -18,6 +25,7 @@ const browserModuleFiles = [
   "searching.mjs",
   "security.mjs",
   "source-preservation.mjs",
+  "subject-pages.mjs",
 ];
 const browserModulePaths = new Set(browserModuleFiles.map((file) => `/assets/${file}`));
 const assetFiles = [
@@ -26,7 +34,7 @@ const assetFiles = [
 ];
 // Copied verbatim into assets/, keeping their subdirectory. Listed separately
 // because they are data rather than code: no version query, no rewriting.
-const assetDataFiles = ["data/msc2020-codes.json"];
+const assetDataFiles = ["data/arxiv-categories.json", "data/msc2020-codes.json"];
 /**
  * Every file the deployment carries, as paths from the repository root.
  *

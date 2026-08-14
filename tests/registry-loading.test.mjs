@@ -360,3 +360,76 @@ test("an absent version index and tombstone produce the one public not-found err
   await assert.rejects(loader.loadEntry(ID, null), /entry not found/);
   assert.equal(calls.some(({ url }) => url.pathname === "/source-availability.json"), false);
 });
+
+function subjectHead(overrides = {}) {
+  return {
+    schema_version: 1,
+    kind: "arxiv",
+    code: "math.CO",
+    entries: [{
+      ...summary(),
+      published_at: "2026-07-29T09:14:07Z",
+      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+      abstract: "An abstract.",
+    }],
+    results: 1,
+    versions: 1,
+    years: [{ year: "2026", days: 1, results: 1, versions: 1 }],
+    ...overrides,
+  };
+}
+
+test("the subject reads resolve and validate all three levels of one code", async () => {
+  const calls = [];
+  const dayRow = { day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 };
+  const { abstract: _dropped, ...archived } = subjectHead().entries[0];
+  const loader = createRegistryLoader({
+    fetch: routedFetch(new Map([
+      ["/subjects/arxiv/math.CO.json", jsonResponse(subjectHead())],
+      ["/subjects/arxiv/math.CO/2026.json", jsonResponse({
+        schema_version: 1,
+        year: "2026",
+        days: [dayRow],
+      })],
+      ["/subjects/arxiv/math.CO/2026-07-29/1.json", jsonResponse({
+        schema_version: 1,
+        day: "2026-07-29",
+        page: 1,
+        entries: [archived],
+      })],
+    ]), calls),
+    location: productionLocation("subject.html"),
+  });
+
+  const head = await loader.loadSubjectHead("arxiv", "math.CO");
+  assert.equal(head.code, "math.CO");
+  assert.equal(head.entries.length, 1);
+  const year = await loader.loadSubjectYear("arxiv", "math.CO", head.years[0]);
+  assert.deepEqual(year.days, [dayRow]);
+  const page = await loader.loadSubjectPage("arxiv", "math.CO", dayRow.day, dayRow.first_page);
+  assert.deepEqual(page.entries.map((row) => row.id), [archived.id]);
+  assert.deepEqual(calls.map(({ url }) => url.pathname), [
+    "/subjects/arxiv/math.CO.json",
+    "/subjects/arxiv/math.CO/2026.json",
+    "/subjects/arxiv/math.CO/2026-07-29/1.json",
+  ]);
+});
+
+test("a subject read refuses a document about another code before the page sees it", async () => {
+  const loader = createRegistryLoader({
+    fetch: routedFetch(new Map([
+      ["/subjects/arxiv/math.CO.json", jsonResponse(subjectHead({ code: "math.MG" }))],
+      ["/subjects/arxiv/math.MG.json", jsonResponse({}, 404)],
+    ])),
+    location: productionLocation("subject.html"),
+  });
+
+  await assert.rejects(
+    loader.loadSubjectHead("arxiv", "math.CO"),
+    /different classification code/,
+  );
+  await assert.rejects(
+    loader.loadSubjectHead("arxiv", "math.MG"),
+    (error) => error.status === 404,
+  );
+});

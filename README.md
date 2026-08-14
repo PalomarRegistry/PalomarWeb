@@ -28,14 +28,31 @@ future, or one second older is treated as unknown without discarding fresh
 sibling rows; a stale or unavailable whole manifest is likewise never believed.
 `last_attempt_at` may be null when the bounded producer has never attempted that
 endpoint.
-Registry cards display arXiv and MSC2020 classifications, and the toolbar can
-filter the rows the landing page holds by either taxonomy. The classification
-fields suggest codes represented by those rows but also accept any exact code,
-so a deep link such as `?arxiv=math.AG` produces a useful empty result even
-before that classification has an entry. The filter is over `recent.json`, which
-is the newest 200 current versions and not the registry, so it narrows what is
-on the page rather than searching everything; the search box does the latter,
-a word at a time, over titles, abstracts and author names.
+Registry cards display arXiv and MSC2020 classifications. Every code is a link
+to `subject.html?kind=<arxiv|msc>&code=<code>`, and every code is glossed with
+its description on hover and in the accessibility tree: a code is not a subject,
+and neither `52C10` nor `math.MG` says what it is. The two taxonomy tables are
+vendored under `assets/data/` from the snapshot PalomarSubmission validates
+against, and a page whose fetch of one fails still renders. The codes are muted
+rather than link-coloured, and grow a dotted underline on hover and on keyboard
+focus.
+
+A subject page reads `subjects/<kind>/<code>.json` and the day-paged archive
+behind it, so it answers for the whole registry rather than for what one page
+happens to hold. The front page is the newest 50 current versions under the
+code; "Show earlier results" walks the archive newest first, one day at a time,
+skipping days it has already shown. A code the registry has ever used keeps
+answering after its last classifier is superseded, so an empty page is an answer
+and not a 404.
+
+The toolbar can also filter the rows the landing page holds by either taxonomy.
+The classification fields suggest codes represented by those rows but also
+accept any exact code, so a deep link such as `?arxiv=math.AG` produces a useful
+empty result even before that classification has an entry. That filter is over
+`recent.json`, which is the newest 200 current versions and not the registry, so
+it narrows what is on the page rather than searching everything; the search box
+does the latter, a word at a time, over titles, abstracts and author names, and
+the subject pages answer a code exactly.
 Search accepts at most 4,096 characters and 20 distinct normalized words. The
 word limit is checked before the stopword list is loaded, so common words that
 the index later drops still count. An over-limit linked or typed query is
@@ -184,11 +201,12 @@ stable citations must include the version.
 
 The filtered public-data deployment generates a main RSS feed and separate feeds
 for every arXiv and MSC2020 classification represented by a current entry. The
-landing page and entry pages advertise the main feed with RSS autodiscovery. An
-entry page links its classifications to the filtered listing rather than to the
-category feed; the feed links were removed when they were all 404, and they have
-not been put back. Static hosting is sufficient because feed XML is regenerated
-whenever the append-only database changes.
+landing page and entry pages advertise the main feed with RSS autodiscovery. A
+classification links to its subject page rather than to its category feed; the
+feed links were removed when they were all 404, and they have not been put back
+because nothing here has confirmed that they resolve. Static hosting is
+sufficient because feed XML is regenerated whenever the append-only database
+changes.
 
 ## Version presentation
 

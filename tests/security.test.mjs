@@ -47,6 +47,13 @@ import {
   validateBrowseHead,
   validateBrowsePage,
   validateBrowseYear,
+  SUBJECT_SCHEMA_VERSION,
+  subjectHeadUrl,
+  subjectPageUrl,
+  subjectYearUrl,
+  validateSubjectHead,
+  validateSubjectPage,
+  validateSubjectYear,
   validateRecent,
   validateTombstone,
   validateVersions,
@@ -1135,6 +1142,149 @@ test("the producer-supplied browse head, year, and page keep Web's exact contrac
   assert.equal(validateBrowseHead(head), head);
   assert.equal(validateBrowseYear(year, expectedYear), year);
   assert.equal(validateBrowsePage(page, expectedDay.day, expectedDay.first_page), page);
+});
+
+function subjectRow(overrides = {}) {
+  return {
+    id: "PALOMAR-2026-07-29-000123",
+    version: 1,
+    title: "A result",
+    status: "accepted",
+    path: "entries/PALOMAR-2026-07-29-000123-v1.json",
+    published_at: "2026-07-29T09:14:07Z",
+    classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+    abstract: "An abstract.",
+    ...overrides,
+  };
+}
+
+function subjectFixture() {
+  const front = subjectRow();
+  const older = subjectRow({
+    id: "PALOMAR-2026-07-28-000001",
+    path: "entries/PALOMAR-2026-07-28-000001-v1.json",
+    published_at: "2026-07-28T09:14:07Z",
+  });
+  const { abstract: _dropped, ...archived } = front;
+  const yearRow = { year: "2026", days: 2, results: 2, versions: 2 };
+  return {
+    front,
+    older,
+    archived,
+    yearRow,
+    head: {
+      schema_version: 1,
+      kind: "arxiv",
+      code: "math.CO",
+      entries: [front, older],
+      results: 2,
+      versions: 2,
+      years: [yearRow],
+    },
+    year: {
+      schema_version: 1,
+      year: "2026",
+      days: [
+        { day: "2026-07-28", first_page: 1, last_page: 1, results: 1, versions: 1 },
+        { day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 },
+      ],
+    },
+    page: { schema_version: 1, day: "2026-07-29", page: 1, entries: [archived] },
+  };
+}
+
+test("a subject URL cannot leave its own directory or name a code that is not one", () => {
+  const base = "https://data.example.org/";
+  assert.equal(
+    subjectHeadUrl("arxiv", "math.CO", base).href,
+    "https://data.example.org/subjects/arxiv/math.CO.json",
+  );
+  assert.equal(
+    subjectYearUrl("msc", "05C10", "2026", base).href,
+    "https://data.example.org/subjects/msc/05C10/2026.json",
+  );
+  assert.equal(
+    subjectPageUrl("msc", "11-02", "2026-07-29", 3, base).href,
+    "https://data.example.org/subjects/msc/11-02/2026-07-29/3.json",
+  );
+  assert.throws(() => subjectHeadUrl("feeds", "math.CO", base), /unknown classification scheme/);
+  assert.throws(() => subjectHeadUrl("arxiv", "../../etc/passwd", base), /malformed/);
+  assert.throws(() => subjectHeadUrl("msc", "math.CO", base), /malformed/);
+  assert.throws(() => subjectYearUrl("arxiv", "math.CO", "20xx", base), /year is malformed/);
+  assert.throws(
+    () => subjectPageUrl("arxiv", "math.CO", "2026-07-29", 0, base),
+    /outside the identifier page range/,
+  );
+});
+
+test("a subject document is refused unless it is about the code that was asked for", () => {
+  assert.equal(SUBJECT_SCHEMA_VERSION, 1);
+  const { head, year, yearRow, page, front, archived } = subjectFixture();
+
+  assert.deepEqual(validateSubjectHead(head, "arxiv", "math.CO").entries.map((row) => row.id), [
+    front.id,
+    "PALOMAR-2026-07-28-000001",
+  ]);
+  assert.equal(validateSubjectYear(year, yearRow), year);
+  assert.deepEqual(
+    validateSubjectPage(page, "arxiv", "math.CO", "2026-07-29", 1).entries.map((row) => row.id),
+    [archived.id],
+  );
+
+  assert.throws(
+    () => validateSubjectHead(head, "arxiv", "math.MG"),
+    /is for a different classification code/,
+  );
+  assert.throws(
+    () => validateSubjectHead({ ...head, schema_version: 2 }, "arxiv", "math.CO"),
+    /schema_version/,
+  );
+  // A row that is a perfectly good row, under a heading it has nothing to do
+  // with. Without the classification on the row there would be nothing here
+  // able to tell.
+  const foreign = subjectRow({ classification: { arxiv: ["math.MG"], msc2020: ["05C10"] } });
+  assert.throws(
+    () => validateSubjectHead({ ...head, entries: [foreign], results: 1, versions: 1,
+      years: [{ ...yearRow, days: 1, results: 1, versions: 1 }] }, "arxiv", "math.CO"),
+    /is not classified math\.CO/,
+  );
+  assert.throws(
+    () => validateSubjectHead({ ...head, entries: [head.entries[1], head.entries[0]] },
+      "arxiv", "math.CO"),
+    /are not newest first/,
+  );
+  assert.throws(
+    () => validateSubjectHead({ ...head, entries: Array.from({ length: 51 }, () => front) },
+      "arxiv", "math.CO"),
+    /carries more rows than it may/,
+  );
+  // The front page carries abstracts and the archive pages do not, and each is
+  // refused the other's shape rather than tolerating both.
+  assert.throws(
+    () => validateSubjectPage({ ...page, entries: [front] }, "arxiv", "math.CO", "2026-07-29", 1),
+    /invalid shape/,
+  );
+  assert.throws(
+    () => validateSubjectHead({ ...head, entries: [archived, head.entries[1]] },
+      "arxiv", "math.CO"),
+    /invalid shape/,
+  );
+  assert.throws(
+    () => validateSubjectPage(page, "arxiv", "math.CO", "2026-07-28", 1),
+    /identity does not match/,
+  );
+  // The day in the identifier is the day of the page, so a row that belongs on
+  // another day cannot be served on this one whatever the document says.
+  assert.throws(
+    () => validateSubjectPage(
+      { ...page, day: "2026-07-28", entries: [archived] },
+      "arxiv",
+      "math.CO",
+      "2026-07-28",
+      1,
+    ),
+    /does not belong on this page/,
+  );
 });
 
 const SEARCH_BASE = "https://data.example.test/";

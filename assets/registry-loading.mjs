@@ -6,10 +6,16 @@ import {
   selectAvailabilityUrl,
   selectDatabaseUrl,
   selectRenderBase,
+  subjectHeadUrl,
+  subjectPageUrl,
+  subjectYearUrl,
   tombstoneUrl,
   validateAvailability,
   validateEntry,
   validateRecent,
+  validateSubjectHead,
+  validateSubjectPage,
+  validateSubjectYear,
   validateTombstone,
   validateVersions,
   versionsUrl,
@@ -91,6 +97,43 @@ export function createRegistryLoader({
     return validateRecent(await fetchJson(recentUrl(databaseBase)));
   }
 
+  /**
+   * One classification code's front page, and the archive behind it.
+   *
+   * Three reads rather than one, because no document here lists every page of
+   * a code: the head names years, a year names days and their page ranges, and
+   * the page a row is on is a pure function of its identifier. A directory of
+   * pages would be rewritten whenever the code changed, and a code can hold a
+   * sizeable fraction of the registry.
+   */
+  async function loadSubjectHead(kind, code, { signal } = {}) {
+    const { databaseBase } = dataSource();
+    return validateSubjectHead(
+      await fetchJson(subjectHeadUrl(kind, code, databaseBase), { signal }),
+      kind,
+      code,
+    );
+  }
+
+  async function loadSubjectYear(kind, code, expected, { signal } = {}) {
+    const { databaseBase } = dataSource();
+    return validateSubjectYear(
+      await fetchJson(subjectYearUrl(kind, code, expected.year, databaseBase), { signal }),
+      expected,
+    );
+  }
+
+  async function loadSubjectPage(kind, code, day, page, { signal } = {}) {
+    const { databaseBase } = dataSource();
+    return validateSubjectPage(
+      await fetchJson(subjectPageUrl(kind, code, day, page, databaseBase), { signal }),
+      kind,
+      code,
+      day,
+      page,
+    );
+  }
+
   async function loadEntry(id, requestedVersion) {
     const { databaseBase, renderBase, availabilityUrl } = dataSource();
     // The versions of this one result, not the whole registry. Reading a
@@ -142,5 +185,14 @@ export function createRegistryLoader({
     };
   }
 
-  return { dataSource, fetchJson, loadAvailabilityBounded, loadRecent, loadEntry };
+  return {
+    dataSource,
+    fetchJson,
+    loadAvailabilityBounded,
+    loadRecent,
+    loadEntry,
+    loadSubjectHead,
+    loadSubjectYear,
+    loadSubjectPage,
+  };
 }

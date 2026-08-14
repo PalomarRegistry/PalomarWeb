@@ -24,6 +24,18 @@
   the matching Web deployment. Do not add an old-shape or per-entry fallback;
   invalid projections are supposed to fail closed.
 
+- The subject surfaces—`subjects/<kind>/<code>.json`, its `<year>.json`, and its
+  `<day>/<page>.json`—are the same closed contract, and are the same document
+  family as browsing: PalomarDatabase writes both from
+  `day_pages.write_collection`, so `security.mjs` reads their year and page
+  levels with one shared validator and one shared schema constant. A subject row
+  carries the classification and the registration instant on top of the index
+  row, and both are checked: a row whose classification omits the code being
+  asked for is a result under a heading it has nothing to do with, which is the
+  one failure a well-formed row can still be. `check-published.mjs` validates
+  the front page of every code the newest rows carry, bounded by the
+  classification vocabulary rather than by the registry.
+
 - The three browse surfaces—`browse/index.json`, `browse/<year>.json`, and
   `browse/<day>/<page>.json`—are also exact closed producer/consumer contracts.
   PalomarDatabase owns their head, year, page, count, and summary-row shapes;
@@ -86,6 +98,12 @@
   `assets/entry-history-presentation.mjs` owns the entry page's canonical link,
   supersession notice, and immutable version-history section, while consuming
   validated records and the existing confined local-entry URL builder;
+  `assets/subject-pages.mjs` owns the subject route's parameter validation,
+  progressive visibility, route-level errors, and the archive walk's position,
+  while `app.js` composes the heading and the rows and `security.mjs` keeps
+  validation. The walk is bounded per click and holds no directory of pages:
+  nothing published names every page of a code, deliberately, because such a
+  document would be rewritten whenever the code changed;
   `assets/registry-loading.mjs` composes the selected endpoints, JSON
   transport, the one bounded page-scoped source-availability cache/retry
   policy, and exact recent/version/entry/tombstone reads without taking
