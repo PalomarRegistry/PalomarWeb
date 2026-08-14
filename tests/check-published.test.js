@@ -496,7 +496,11 @@ test("every monitored linked document is requested exactly once from its owner",
   } = await import("../scripts/check-published.mjs");
   const sources = await shippedSources();
   const documents = monitoredLinkedDocuments(sources);
-  for (const path of ["browse/index.json", "feed.xml", "recent.json", "source-availability.json"]) {
+  // The browse head is not here because no page links it: it names years and
+  // counts and no path, so a reader who followed it learned nothing and could
+  // not go on. `--data` fetches it as the root of the complete traversal, which
+  // is the only thing that ever read it.
+  for (const path of ["feed.xml", "recent.json", "source-availability.json"]) {
     assert.ok(
       documents.has(`https://data.palomar-registry.org/${path}`),
       `${path} is absent from the shipped document reconciliation`,

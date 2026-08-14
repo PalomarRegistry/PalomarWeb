@@ -982,6 +982,136 @@ test("both pages say the authorization evidence is public from verification", as
   assert.match(privacy, /deliberately kept out of the public verification\s+dispatch/);
 });
 
+test("publication rests on legitimate interests, and the objection right is stated", async () => {
+  // The first published version of this page based publishing a registry
+  // record on the submitter's consent while also saying the record keeps
+  // being served afterwards. Those cannot both hold: consent must be as easy
+  // to withdraw as to give, withdrawal has to stop the processing, and a
+  // controller cannot move that same processing onto another basis once the
+  // consent fails. Withdrawal exists only while a submission is open, so
+  // consent stops there and publication is a legitimate-interests case that has
+  // to name its interest and carry the Article 21 right that comes with it.
+  // A page can regress here silently, because nothing else in the site reads
+  // this section.
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  const section = /<section id="lawful-bases">[\s\S]*?<\/section>/.exec(privacy);
+  assert.notEqual(section, null, "the privacy policy must keep its basis mapping");
+  const bases = section[0];
+  assert.match(bases, /Serving a registered record, and keeping it for as long as\s+the registry exists,<\/strong>\s+rest on legitimate interests/);
+  assert.doesNotMatch(
+    bases,
+    /Publishing a registry record<\/strong> rests on your consent/,
+    "publication may not be based on the submitter's consent",
+  );
+  // The interest has to be named rather than asserted, and the Article 21
+  // right has to say that an objection is decided and where to send it.
+  assert.match(bases, /permanence of a\s+certification record/);
+  assert.match(bases, /cannot support that claim\s+about the entries it still has/);
+  assert.match(bases, /Article 21/);
+  assert.match(bases, /An objection is decided, not automatic/);
+  assert.match(bases, /compelling legitimate grounds/);
+  assert.match(bases, /mailto:privacy@palomar-registry\.org/);
+  assert.match(bases, /PalomarPolicy\/blob\/main\/docs\/lawful-requests\.md/);
+  // Consent keeps the part where withdrawal really does stop the workflow,
+  // and the page has to say plainly that registration ends that.
+  assert.match(bases, /Withdrawing stops that ongoing consent-based workflow/);
+  assert.match(bases, /After registration you cannot take it back yourself/);
+  assert.match(bases, /no button that unpublishes it/);
+  // No balancing assessment exists as a separate document, so the page must
+  // not send anyone looking for one.
+  assert.match(bases, /There is\s+no separate balancing document/);
+  assert.doesNotMatch(bases, /legitimate interests assessment is available/i);
+  // Rights and retention must not drift back into describing publication as
+  // consent-based once this section stops doing so.
+  assert.doesNotMatch(privacy, /withdraw consent at any\s+time, which stops future processing/);
+});
+
+test("consent is scoped to the submitter's own live submission", async () => {
+  // "Everything before registration rests on your consent" is the tidy
+  // sentence and the wrong one, in the direction that flatters the page. A
+  // submitter cannot consent for the co-authors and committers a record names,
+  // so their data is on legitimate interests from collection and never moves.
+  // Two more things outlive the consent: the dispatched verification run,
+  // which Palomar does not delete and withdrawal does not reach, and the
+  // retained audit history. Leaving those inside a consent that has been
+  // withdrawn would describe processing with no basis at all, which is the
+  // failure this whole section exists to avoid.
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  const bases = /<section id="lawful-bases">[\s\S]*?<\/section>/.exec(privacy)[0];
+  assert.doesNotMatch(
+    bases,
+    /Everything before registration rests on your\s+consent/,
+    "consent may not be claimed over everything before registration",
+  );
+  assert.match(bases, /because a\s+submitter cannot consent for them/);
+  assert.match(bases, /Personal data about anyone other than the submitter<\/strong>\s+rests on legitimate interests from the moment it is collected/);
+  assert.match(bases, /It is never on consent, at any\s+stage/);
+  assert.match(bases, /Keeping the public verification run public afterwards<\/strong>\s+rests on legitimate interests, and did from the moment it was\s+dispatched/);
+  assert.match(bases, /Palomar does not delete runs/);
+  assert.match(bases, /rests on\s+legitimate interests: a decision nobody can reconstruct/);
+  assert.match(bases, /not one Palomar reaches for when a consent ends/);
+});
+
+test("the page describes withdrawal from the states that actually allow it", async () => {
+  // PalomarServer refuses POST /withdraw for the four statuses in CLOSED, so
+  // "any state before registration" is wrong twice over: it promises the scrub
+  // to submissions that failed verification or were asked for changes, and it
+  // hides that Palomar's own faults deliberately keep withdrawal available.
+  // A submission can therefore close unregistered and unscrubbed, and the page
+  // has to say what is left for that person instead of implying a button.
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  const bases = /<section id="lawful-bases">[\s\S]*?<\/section>/.exec(privacy)[0];
+  assert.doesNotMatch(privacy, /withdraw from any state before\s+registration/);
+  assert.doesNotMatch(privacy, /Until you register, you can withdraw/);
+  assert.match(bases, /registered, already withdrawn, failed\s+mechanical verification, or a review that asked for changes/);
+  assert.match(bases, /a dispatch it lost, a review it could\s+not run, a registration that stalled/);
+  assert.match(bases, /a\s+submission can end without your ever having been offered the scrub/);
+});
+
+test("the objection right is scoped to personal data about the objector", async () => {
+  // Article 21 covers processing of personal data concerning the objector, on
+  // grounds relating to their situation. Described as a right over the record,
+  // it becomes a submitter takedown route the law does not provide, which is
+  // especially wrong here: the record names no submitter, so a submitter's own
+  // objection reaches comparatively little of it. Suppression is a thing an
+  // upheld objection can produce, not the extent of what may be objected to.
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  const bases = /<section id="lawful-bases">[\s\S]*?<\/section>/.exec(privacy)[0];
+  assert.match(bases, /object to the processing of personal\s+data concerning them/);
+  assert.match(bases, /It is a right over\s+your own personal data, not over a record/);
+  assert.match(bases, /objecting does not give you a veto over what a record says about\s+mathematics/);
+  assert.match(bases, /it is an outcome the\s+decision may reach, not the measure of the right/);
+  assert.match(bases, /Nor is the objection right a submitter’s takedown\s+route by another name/);
+  assert.match(privacy, /which part of the material\s+is about you/);
+  assert.doesNotMatch(
+    privacy,
+    /Article 21 objection to a record being served/,
+    "the objection right is not a right over a whole record",
+  );
+});
+
+test("the balancing account weighs each kind of published personal data", async () => {
+  // Calling the published data bibliography-like covers the declared authors
+  // and nothing else. The commit addresses in a preserved fork, the evidence a
+  // submitter typed about somebody who never saw the submission, and generated
+  // review comments that can repeat a private note are all published personal
+  // data of quite different weight, and a balance that averages them is not a
+  // balance anybody could check.
+  const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  const bases = /<section id="lawful-bases">[\s\S]*?<\/section>/.exec(privacy)[0];
+  assert.match(bases, /published personal data is of three\s+different kinds/);
+  assert.match(bases, /name and email address in every commit of the preserved fork/);
+  assert.match(bases, /nobody puts an email address in a commit in order to be\s+catalogued by a registry/);
+  assert.match(bases, /the authorization relationship\s+and the free-text evidence beside it/);
+  assert.match(bases, /A warning to one person is not consent from another/);
+  assert.match(bases, /can repeat back what a submitter put in the private notes\s+field/);
+  assert.doesNotMatch(
+    bases,
+    /What a record does carry about people is the kind of\s+thing a paper/,
+    "the whole record may not be described as bibliography-like",
+  );
+});
+
 test("About describes both ways push access is proved", async () => {
   // A sign-in and the agent's tag-and-gist do not establish the same thing,
   // and step 3 used to name only the first.
@@ -1127,7 +1257,13 @@ test("browse enumerates every schema-v1 history row without becoming an entry sc
     path: "entries/PALOMAR-2026-07-29-000123-v1.json",
   };
   const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
-  const head = { schema_version: 1, results: 1, versions: 1, years: [yearRow] };
+  const head = {
+    schema_version: 1,
+    results: 1,
+    versions: 1,
+    year_path: "browse/{year}.json",
+    years: [yearRow],
+  };
   const dayRow = {
     day: "2026-07-29",
     first_page: 1,
@@ -1135,7 +1271,12 @@ test("browse enumerates every schema-v1 history row without becoming an entry sc
     results: 1,
     versions: 1,
   };
-  const year = { schema_version: 1, year: "2026", days: [dayRow] };
+  const year = {
+    schema_version: 1,
+    year: "2026",
+    page_path: "browse/{day}/{page}.json",
+    days: [dayRow],
+  };
   const page = { schema_version: 1, day: dayRow.day, page: 1, entries: [row] };
   assert.equal(validateBrowseHead(head), head);
   assert.equal(validateBrowseYear(year, yearRow), year);
@@ -1176,6 +1317,68 @@ test("the producer-supplied browse head, year, and page keep Web's exact contrac
   assert.equal(validateBrowseHead(head), head);
   assert.equal(validateBrowseYear(year, expectedYear), year);
   assert.equal(validateBrowsePage(page, expectedDay.day, expectedDay.first_page), page);
+  // The producer's own templates, expanded against the producer's own rows,
+  // are the paths CI fetched these three snapshots from. Checking that here is
+  // what makes them a statement about where the documents are rather than two
+  // strings nothing compares to anything.
+  assert.equal(head.year_path.replace("{year}", expectedYear.year), "browse/2026.json");
+  assert.equal(
+    year.page_path.replace("{day}", expectedDay.day).replace("{page}", expectedDay.first_page),
+    `browse/${page.day}/${page.page}.json`,
+  );
+});
+
+test("the path a collection publishes for the level below is the one this reader knows", () => {
+  // These templates exist for a reader that has the document and not the
+  // grammar. This reader has the grammar, so the only question it can usefully
+  // ask is whether the producer is telling everybody else the same thing --
+  // and asking it by equality is also what stops a template being a path the
+  // data origin chooses and this consumer follows.
+  const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
+  const head = {
+    schema_version: 1,
+    results: 1,
+    versions: 1,
+    year_path: "browse/{year}.json",
+    years: [yearRow],
+  };
+  const year = {
+    schema_version: 1,
+    year: "2026",
+    page_path: "browse/{day}/{page}.json",
+    days: [{ day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 }],
+  };
+
+  assert.equal(validateBrowseHead(head), head);
+  assert.equal(validateBrowseYear(year, yearRow), year);
+
+  for (const wrong of [
+    "browse/{year}.JSON",
+    "browse/{yyyy}.json",
+    "https://elsewhere.example/browse/{year}.json",
+    "../{year}.json",
+    "subjects/arxiv/math.CO/{year}.json",
+    "",
+  ]) {
+    assert.throws(() => validateBrowseHead({ ...head, year_path: wrong }), /year_path must be/);
+  }
+  for (const wrong of [
+    "browse/{day}/{page}",
+    "browse/{page}/{day}.json",
+    "https://elsewhere.example/browse/{day}/{page}.json",
+    "subjects/arxiv/math.CO/{day}/{page}.json",
+    "",
+  ]) {
+    assert.throws(
+      () => validateBrowseYear({ ...year, page_path: wrong }, yearRow),
+      /page_path must be/,
+    );
+  }
+
+  const { year_path: _absent, ...headless } = head;
+  const { page_path: _missing, ...yearless } = year;
+  assert.throws(() => validateBrowseHead(headless), /invalid shape/);
+  assert.throws(() => validateBrowseYear(yearless, yearRow), /invalid shape/);
 });
 
 function subjectRow(overrides = {}) {
@@ -1213,11 +1416,13 @@ function subjectFixture() {
       entries: [front, older],
       results: 2,
       versions: 2,
+      year_path: "subjects/arxiv/math.CO/{year}.json",
       years: [yearRow],
     },
     year: {
       schema_version: 1,
       year: "2026",
+      page_path: "subjects/arxiv/math.CO/{day}/{page}.json",
       days: [
         { day: "2026-07-28", first_page: 1, last_page: 1, results: 1, versions: 1 },
         { day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 },
@@ -1226,6 +1431,41 @@ function subjectFixture() {
     page: { schema_version: 1, day: "2026-07-29", page: 1, entries: [archived] },
   };
 }
+
+test("a code's archive names its own pages and never the registry's", () => {
+  // The same layout under a different directory, so the templates have to be
+  // that code's own. A subject document carrying browsing's templates would
+  // send a reader who followed them to the whole registry under the code's
+  // heading, which is the one thing a well-formed subject document can still
+  // get wrong here.
+  const { head, year, yearRow } = subjectFixture();
+
+  assert.equal(head.year_path, "subjects/arxiv/math.CO/{year}.json");
+  assert.equal(year.page_path, "subjects/arxiv/math.CO/{day}/{page}.json");
+  assert.equal(validateSubjectYear(year, yearRow, "arxiv", "math.CO"), year);
+
+  assert.throws(
+    () => validateSubjectHead({ ...head, year_path: "browse/{year}.json" }, "arxiv", "math.CO"),
+    /year_path must be subjects\/arxiv\/math\.CO/,
+  );
+  assert.throws(
+    () => validateSubjectYear(
+      { ...year, page_path: "browse/{day}/{page}.json" }, yearRow, "arxiv", "math.CO",
+    ),
+    /page_path must be subjects\/arxiv\/math\.CO/,
+  );
+  // The templates a different code publishes are also the wrong ones, so the
+  // check is against the code that was asked for and not merely against the
+  // shape of a subject path.
+  assert.throws(
+    () => validateSubjectYear(year, yearRow, "msc", "05C10"),
+    /page_path must be subjects\/msc\/05C10/,
+  );
+  assert.throws(
+    () => validateSubjectYear(year, yearRow, "arxiv", "../../etc/passwd"),
+    /malformed/,
+  );
+});
 
 test("a subject URL cannot leave its own directory or name a code that is not one", () => {
   const base = "https://data.example.org/";
@@ -1259,7 +1499,7 @@ test("a subject document is refused unless it is about the code that was asked f
     front.id,
     "PALOMAR-2026-07-28-000001",
   ]);
-  assert.equal(validateSubjectYear(year, yearRow), year);
+  assert.equal(validateSubjectYear(year, yearRow, "arxiv", "math.CO"), year);
   assert.deepEqual(
     validateSubjectPage(page, "arxiv", "math.CO", "2026-07-29", 1).entries.map((row) => row.id),
     [archived.id],

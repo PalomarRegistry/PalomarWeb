@@ -1,12 +1,13 @@
 {
   "results": 1,
   "schema_version": 1,
-  "versions": 1,
+  "versions": 2,
+  "year_path": "browse/{year}.json",
   "years": [
     {
       "days": 1,
       "results": 1,
-      "versions": 1,
+      "versions": 2,
       "year": "2026"
     }
   ]
