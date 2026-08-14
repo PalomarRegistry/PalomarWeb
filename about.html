@@ -508,6 +508,27 @@
           kind relaxes the stricter transitive Challenge-import rule.
         </p>
 
+        <h3 id="extra-axioms">My formalization needs axioms beyond the standard set. Can it still be registered?</h3>
+        <p>
+          Not as axioms. A proved Solution declaration may depend only on the
+          standard three Lean axioms: <code>propext</code>,
+          <code>Classical.choice</code>, and <code>Quot.sound</code>. In
+          particular, <code>sorryAx</code> and <code>Lean.ofReduceBool</code>,
+          which <code>sorry</code> and <code>native_decide</code> introduce, are
+          not permitted. Ordinary <code>decide</code> is fine. The Challenge
+          module, by contrast, is expected to contain <code>sorry</code>.
+        </p>
+        <p>
+          If a result is conditional, state its hypotheses instead of assuming
+          them, for instance writing
+          <code>theorem euler_product (h : RiemannHypothesis) : …</code> instead
+          of <code>axiom RiemannHypothesis : …</code>. With multiple hypotheses,
+          a bundled typeclass can reduce boilerplate at use sites. It is better
+          to write <code>[LiteratureHypotheses]</code> in each theorem signature
+          that needs it than to declare it with <code>variable</code>, which can
+          obscure which theorems use it.
+        </p>
+
         <h3 id="formalization-yaml">What belongs in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>?</h3>
         <p>
           The structured metadata must include the project name, authors,
