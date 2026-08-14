@@ -41,17 +41,21 @@
       <section class="registry-section" id="registry" aria-label="Accepted results">
         <form id="registry-search" class="registry-search" role="search">
           <label for="query">Search the registry:</label>
-          <input id="query" name="q" type="search" placeholder="words from a title, abstract, or author" autocomplete="off" spellcheck="false" maxlength="4096">
-          <button type="submit">Search</button>
+          <input id="query" name="q" type="search" placeholder="title, author, abstract, theorem, or repository" autocomplete="off" spellcheck="false" maxlength="4096">
+          <span id="search-spinner" class="spinner" hidden aria-hidden="true"></span>
         </form>
         <div id="search-status" class="status" role="status" hidden></div>
         <div id="search-results" class="entry-grid" aria-live="polite"></div>
 
         <div class="toolbar">
-          <label class="search">
-            <span>Filter the list:</span>
-            <input id="search" type="search" placeholder="title, author, theorem, or repository" autocomplete="off">
-          </label>
+          <!--
+            GitHub Pages can pair this HTML with JavaScript from the previous
+            deployment, which wires a listener to this box and would otherwise
+            take the whole listing down when it is not here. It is empty, so
+            that JavaScript filters on nothing. It goes once no deployment that
+            looks for it can still be served.
+          -->
+          <input id="search" type="search" hidden aria-hidden="true" tabindex="-1">
           <div class="filters" role="group" aria-label="Statement dependency filters">
             <span>Show:</span>
             <button class="filter active" type="button" data-trust="all" aria-pressed="true">All</button>

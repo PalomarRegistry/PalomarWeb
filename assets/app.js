@@ -8,7 +8,12 @@ import {
   safeInternalUrl,
   workflowRunId,
 } from "./security.mjs";
-import { createRegistrySearch, validateSearchQuery } from "./searching.mjs";
+import {
+  SEARCH_RESULT_LIMIT,
+  SEARCH_TERM_LIMIT,
+  createRegistrySearch,
+  validateSearchQuery,
+} from "./searching.mjs";
 import {
   expandDetailsForTarget,
   renderChallengePage,
@@ -32,6 +37,10 @@ const params = new URLSearchParams(window.location.search);
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
+// Longer than the classification filter above, because each registry search
+// costs a stopword read, a head read per word, posting pages, and up to sixty
+// record reads. A pause is the signal; a keystroke is not.
+const SEARCH_UPDATE_DELAY_MS = 300;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -156,16 +165,16 @@ const {
   trustBadge,
 } = createFormalizationPresentation({ document });
 
-function entryCard(
-  entry,
-  { versionCount = null, current = false, registeredAt = entry.registered_at } = {},
-) {
+/**
+ * Everything on a card that a reader might type at it, as one lowercase run.
+ *
+ * The instant matches shown while the registry answers are chosen from this,
+ * and so is the card's own index. Deriving both from here is what keeps the
+ * provisional set from disagreeing with the cards it is drawn from.
+ */
+function searchBlob(entry) {
   const categories = classification(entry);
-  const card = el("article", "entry-card");
-  card.dataset.trust = entry.trust.level;
-  card.dataset.arxiv = categories.arxiv.join(" ");
-  card.dataset.msc = categories.msc2020.join(" ");
-  card.dataset.search = [
+  return [
     entry.title,
     entry.abstract,
     authorNames(entry),
@@ -176,6 +185,19 @@ function entryCard(
     ...categories.arxiv,
     ...categories.msc2020,
   ].join(" ").toLowerCase();
+}
+
+function entryCard(
+  entry,
+  { versionCount = null, current = false, registeredAt = entry.registered_at } = {},
+) {
+  const categories = classification(entry);
+  const card = el("article", "entry-card");
+  card.dataset.id = entry.id;
+  card.dataset.trust = entry.trust.level;
+  card.dataset.arxiv = categories.arxiv.join(" ");
+  card.dataset.msc = categories.msc2020.join(" ");
+  card.dataset.search = searchBlob(entry);
 
   const top = el("div", "card-top");
   const identity = el("div", "card-identity");
@@ -270,6 +292,7 @@ async function renderIndex() {
     // therefore costs one summary read, not one record read per card.
     const recent = await loadRecent(databaseBase);
     const entries = recent.entries;
+    landingMatches = entries.map((entry) => ({ entry, blob: searchBlob(entry) }));
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     setOptionalText("#metric-results", String(entries.length));
@@ -300,7 +323,11 @@ async function renderIndex() {
       console.warn(`Landing card source availability could not be applied: ${error.message}`);
     });
     let trust = "all";
-    const search = document.querySelector("#search");
+    // Cached HTML from the previous deployment still carries the filter box
+    // this JavaScript no longer wires. Leaving it on the page would offer a
+    // reader a control that silently does nothing.
+    const legacyFilter = document.querySelector(".toolbar .search");
+    if (legacyFilter) legacyFilter.hidden = true;
     // The fallback selectors keep new JavaScript compatible with cached HTML
     // from the previous GitHub Pages deployment.
     const arxiv = document.querySelector("#arxiv-query, #arxiv-filter");
@@ -346,8 +373,10 @@ async function renderIndex() {
     if (advancedFilters && (params.has("arxiv") || params.has("msc"))) {
       advancedFilters.open = true;
     }
+    // Words are the registry search's business now. What is left here narrows
+    // the landing selection by facts the cards already carry, which is why it
+    // can stay instant and local.
     const update = () => {
-      const query = search.value.trim().toLowerCase();
       const arxivValue = arxiv?.value.trim() || "";
       const mscValue = msc?.value.trim() || "";
       const arxivInvalid = Boolean(arxivValue && !ARXIV_FILTER_RE.test(arxivValue));
@@ -357,8 +386,7 @@ async function renderIndex() {
         const visible =
           (trust === "all" || card.dataset.trust === trust) &&
           (!arxivValue || (!arxivInvalid && card.dataset.arxiv.split(" ").includes(arxivValue))) &&
-          (!mscValue || (!mscInvalid && card.dataset.msc.split(" ").includes(mscValue))) &&
-          (!query || card.dataset.search.includes(query));
+          (!mscValue || (!mscInvalid && card.dataset.msc.split(" ").includes(mscValue)));
         card.hidden = !visible;
         if (visible) shown += 1;
       }
@@ -384,7 +412,6 @@ async function renderIndex() {
       window.clearTimeout(updateTimer);
       updateTimer = window.setTimeout(update, FILTER_UPDATE_DELAY_MS);
     };
-    search.addEventListener("input", scheduleUpdate);
     for (const control of [arxiv, msc]) {
       for (const eventName of ["input", "change", "search"]) {
         control?.addEventListener(eventName, scheduleUpdate);
@@ -410,6 +437,12 @@ async function renderIndex() {
     return false;
   }
 }
+
+// The landing selection with its text already flattened, kept so that a reader
+// who starts typing sees the entries the page holds without waiting for
+// anything. Matching happens on a keystroke pause, so the flattening is done
+// once here rather than two hundred times per pause.
+let landingMatches = [];
 
 let landingLoad = null;
 function ensureLanding() {
@@ -442,6 +475,77 @@ function renderSearchCards(results, entries) {
   return cards;
 }
 
+/**
+ * The loaded entries that carry what was typed, for the wait.
+ *
+ * This is not the question the registry index answers. It looks for the text
+ * anywhere inside the newest entries the page happens to hold; the index looks
+ * for whole words, requires all of them, and covers every published version.
+ * So this will show entries the search then removes, and miss ones it finds.
+ * That gap is why the result of this is drawn as provisional and thrown away
+ * the moment the registry answers.
+ */
+function previewEntries(query) {
+  // Every word must appear, as the index requires, but a word matches anywhere
+  // inside a longer one, because half a word is what a reader has typed so far.
+  // Bounded like the index bounds itself: the query is up to four thousand
+  // characters, and this runs between two keystrokes.
+  const wanted = [...new Set(query.trim().toLowerCase().split(/\s+/).filter(Boolean))]
+    .slice(0, SEARCH_TERM_LIMIT);
+  if (!wanted.length) return [];
+  const matches = [];
+  for (const { entry, blob } of landingMatches) {
+    if (!wanted.every((word) => blob.includes(word))) continue;
+    matches.push(entry);
+    if (matches.length === SEARCH_RESULT_LIMIT) break;
+  }
+  return matches;
+}
+
+function renderPreviewCards(results, entries) {
+  // Drawn like the search cards that will replace them, down to leaving out
+  // which version is current: the landing rows do carry that, but showing it
+  // here would mean every card quietly lost a claim when the results arrived.
+  const cards = entries.map((entry) =>
+    entryCard(entry, { registeredAt: entry.published_at }));
+  results.replaceChildren(...cards);
+  results.classList.add("preview");
+  return cards;
+}
+
+function setSearchBusy(results, busy) {
+  const spinner = document.querySelector("#search-spinner");
+  if (spinner) spinner.hidden = !busy;
+  // The results grid is a polite live region. Without this it reads out the
+  // provisional cards and then reads the whole verified set again, which is
+  // two announcements for one search and the first of them not yet true.
+  if (busy) results.setAttribute("aria-busy", "true");
+  else results.removeAttribute("aria-busy");
+}
+
+/** The result a reader is standing on, so that replacing the set can put them back. */
+function focusedEntryId(results) {
+  const active = document.activeElement;
+  if (!active || !results.contains(active)) return null;
+  return active.closest(".entry-card")?.dataset.id || null;
+}
+
+/**
+ * Put the reader back where they were once the provisional cards are replaced.
+ *
+ * Without this, confirming a result silently drops focus to the document body,
+ * because the node the reader was on is one of the ones thrown away.
+ */
+function restoreFocusAfterSwap(results, entryId) {
+  if (!entryId) return;
+  // Matched by walking the cards rather than by building a selector out of a
+  // value that came from data, which is the rule everywhere else here.
+  const card = [...results.children].find((node) => node.dataset.id === entryId);
+  const link = card?.querySelector("a");
+  if (link) link.focus();
+  else document.querySelector("#query")?.focus();
+}
+
 function clearSearchQueryWarning(input) {
   input?.removeAttribute("aria-invalid");
   input?.removeAttribute("aria-describedby");
@@ -455,7 +559,16 @@ function showSearchQueryWarning(input, status, error) {
   input?.setAttribute("aria-describedby", status.id);
 }
 
-async function renderSearch(query) {
+/**
+ * Show what this query looks like from here, and unless told otherwise, ask.
+ *
+ * `ask: false` is the keystroke half. A reader who has typed on has already
+ * left the answer on the page behind, so the request in flight for it is
+ * abandoned and the provisional set is repainted at once, without waiting out
+ * the pause first. Waiting would leave one query in the box and a different
+ * query's results, verified and undimmed, underneath it.
+ */
+async function renderSearch(query, { ask = true } = {}) {
   const generation = searchGeneration + 1;
   searchGeneration = generation;
   activeSearchController?.abort(new Error("superseded registry search"));
@@ -465,6 +578,8 @@ async function renderSearch(query) {
   const input = document.querySelector("#query");
   if (!status || !results) return;
   results.replaceChildren();
+  results.classList.remove("preview");
+  setSearchBusy(results, false);
   status.className = "status";
   let asked;
   try {
@@ -487,10 +602,23 @@ async function renderSearch(query) {
     ensureLanding();
     return;
   }
+  status.hidden = false;
+  // Something to read while the registry is asked. It is drawn from a smaller
+  // pool by a looser rule, so the status says so rather than letting it pass
+  // for an answer.
+  const preview = previewEntries(query);
+  if (preview.length) {
+    renderPreviewCards(results, preview);
+    status.textContent =
+      `Showing ${preview.length} match${preview.length === 1 ? "" : "es"} from the ` +
+      `newest ${landingMatches.length} entries while the registry search runs…`;
+  } else {
+    status.textContent = "Searching the registry…";
+  }
+  setSearchBusy(results, true);
+  if (!ask) return;
   const controller = new AbortController();
   activeSearchController = controller;
-  status.hidden = false;
-  status.textContent = "Searching the registry…";
   try {
     const { databaseBase, availabilityUrl } = dataSource();
     const found = await searchRegistry(query, databaseBase, { signal: controller.signal });
@@ -503,7 +631,11 @@ async function renderSearch(query) {
     }
     // Availability changes only where a source link points. It must never hold
     // verified registry results behind its own long timeout.
+    // Read immediately before the swap, not when the search began: the reader
+    // had the whole wait in which to go and stand on one of these cards.
+    const wasOn = focusedEntryId(results);
     const cards = renderSearchCards(results, found.entries);
+    restoreFocusAfterSwap(results, wasOn);
     if (found.entries.length) {
       void loadAvailabilityBounded(availabilityUrl).then((availability) => {
         if (availability !== null && generation === searchGeneration) {
@@ -551,13 +683,22 @@ async function renderSearch(query) {
     status.classList.toggle("warning", Boolean(degraded));
   } catch (error) {
     if (generation !== searchGeneration) return;
+    // A failed search shows nothing rather than leaving the provisional set
+    // standing under an error that does not describe it.
+    results.replaceChildren();
     if (error instanceof RangeError) showSearchQueryWarning(input, status, error);
     else {
       status.textContent = `The search could not be run: ${error.message}`;
       status.classList.add("error");
     }
   } finally {
-    if (generation === searchGeneration) activeSearchController = null;
+    // A superseded search owns none of this any more: the query that replaced
+    // it has already put up its own provisional set and its own spinner.
+    if (generation === searchGeneration) {
+      activeSearchController = null;
+      results.classList.remove("preview");
+      setSearchBusy(results, false);
+    }
   }
 }
 
@@ -567,10 +708,9 @@ function wireSearch() {
   if (!form || !input) return false;
   const initial = params.get("q") || "";
   input.value = initial;
-  form.addEventListener("submit", (event) => {
-    // The page's own content security policy forbids form submission, which is
-    // right: nothing here posts anywhere. The query is a link to this page.
-    event.preventDefault();
+  let queryTimer;
+  const runQuery = () => {
+    window.clearTimeout(queryTimer);
     const rawQuery = input.value;
     try {
       // Validate before trimming or constructing the shareable URL. This also
@@ -581,8 +721,27 @@ function wireSearch() {
       return;
     }
     const query = rawQuery.trim();
+    // replaceState, not pushState: typing a query is not a series of pages to
+    // walk back through, but the address stays worth copying at every pause.
     window.history.replaceState(null, "", searchPageUrlFor(query));
     renderSearch(query);
+  };
+  const scheduleQuery = () => {
+    window.clearTimeout(queryTimer);
+    // Repaint from what is already loaded now, and ask the registry once the
+    // typing stops. Only the request is worth waiting for: filtering entries
+    // the page is already holding costs nothing, and doing it on the same
+    // delay would leave the last query's answer sitting under the new one.
+    renderSearch(input.value, { ask: false });
+    queryTimer = window.setTimeout(runQuery, SEARCH_UPDATE_DELAY_MS);
+  };
+  input.addEventListener("input", scheduleQuery);
+  form.addEventListener("submit", (event) => {
+    // The page's own content security policy forbids form submission, which is
+    // right: nothing here posts anywhere. The query is a link to this page.
+    event.preventDefault();
+    // Enter means stop waiting for the pause, not run a second search.
+    runQuery();
   });
   if (initial) renderSearch(initial);
   return Boolean(initial);
