@@ -685,14 +685,22 @@
           <li>
             <strong>GitHub</strong> hosts this site, the private submission
             state, the registry repositories and the public archive forks, and
-            runs the workflows that perform verification and review. For that
-            work it acts for Palomar, under the
-            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-data-protection-agreement">GitHub
-            Data Protection Agreement</a>. When you visit a page or a repository
-            yourself, GitHub is handling your request on its own account, for
-            its own security and logging purposes, under the
+            runs the workflows that perform verification and review. It does
+            that work for Palomar, and no processor contract covers it. Palomar
+            runs on a GitHub Free organization account, and GitHub does not
+            offer its
+            <a href="https://github.com/customer-terms/github-data-protection-agreement">Data
+            Protection Agreement</a> on that plan: GitHub’s customer terms say
+            that agreement covers GitHub Enterprise Cloud, GitHub Enterprise
+            (Unified), GitHub Teams and GitHub Copilot, and Free is not among
+            them. Palomar holds none of those and has negotiated nothing
+            separately, so there is no data protection agreement governing how
+            GitHub handles the private material Palomar keeps there. When you
+            visit a page or a repository yourself, GitHub is handling your
+            request on its own account, for its own security and logging
+            purposes, under the
             <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
-            Privacy Statement</a>.
+            Privacy Statement</a>, and that is unchanged by any of this.
           </li>
           <li>
             <strong>Cloudflare</strong> runs the submission server and the data
@@ -730,6 +738,31 @@
             Data Processing Addendum</a>.
           </li>
         </ol>
+        <p>
+          The missing agreement is worth being concrete about. Cloudflare and
+          OpenAI each process for Palomar under one; GitHub does not, and this
+          is what sits there without it. The access-controlled submission state
+          holds every submission record: the submitter’s GitHub login and
+          numeric account id, the free text they wrote, and the review text
+          written about it. The private ledger holds the canonical bytes of
+          everything the registry has published, including versions later
+          suppressed from the public service. The packet each automated review
+          runs on is kept as a workflow artifact for 90 days, and it is the
+          review’s whole working directory: the private state record, the fully
+          rendered prompts with the submitted material inlined in them, the raw
+          model event streams and final messages, the normalized per-pass
+          results, the spend record, the review as delivered, and, on a pass
+          that goes on to register, a sparse clone of the private database.
+          That packet also contains a checkout of the submitted repository,
+          which is not part of the exposure: a repository has to be public
+          before it can be submitted at all.
+        </p>
+        <p>
+          A failure or a misconfiguration on GitHub’s part could expose the
+          private parts of that, and if it did there would be no processor
+          agreement standing behind it, only the ordinary terms any free
+          account has.
+        </p>
       </section>
 
       <section id="transfers">
@@ -742,9 +775,14 @@
           of its own.
         </p>
         <p>
-          Palomar relies on the transfer terms in each provider’s published data
-          protection agreement and has not negotiated separate terms with any of
-          them. What each provider says it relies on, in its own words:
+          Palomar has negotiated separate terms with none of them and relies on
+          what each publishes. For Cloudflare and OpenAI that is a data
+          processing agreement covering the work they do for Palomar. For
+          GitHub there is no such agreement, as the section above says. What
+          appears below for GitHub is still contractual, because GitHub’s terms
+          of service take the Privacy Statement in as part of the agreement;
+          what it is not is a processor agreement. What each provider says it
+          relies on, in its own words:
         </p>
         <ol class="not-list">
           <li>
@@ -755,7 +793,17 @@
             has certified to the EU-U.S. Data Privacy Framework, with the UK
             Extension and the Swiss-U.S. Framework.
             <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
-            Privacy Statement</a>.
+            Privacy Statement</a>. Two things about that. Those commitments are
+            not per plan and are not merely published: GitHub’s terms of
+            service take the Privacy Statement in as part of the agreement, so
+            the absence of the Data Protection Agreement does not withdraw
+            them. But the statement scopes itself to the personal data GitHub
+            handles as its own controller, and the material Palomar uploads
+            about other people is not that. Whether the clauses reach it is a
+            question the statement does not answer, and with no processor
+            agreement there is no document in which Palomar could get an
+            answer. So it is written here as unresolved rather than as a
+            safeguard Palomar is claiming.
           </li>
           <li>
             <strong>Cloudflare</strong> applies the EU standard contractual
