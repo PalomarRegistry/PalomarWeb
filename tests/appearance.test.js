@@ -110,6 +110,44 @@ test("every shipped page carries a footer link to the privacy policy", async () 
   }
 });
 
+// This page claimed for a while that GitHub processed for Palomar under the
+// GitHub Data Protection Agreement, which GitHub does not offer on the Free
+// plan Palomar is on. The correction is a disclosure of a real exposure, and a
+// disclosure an unrelated edit can quietly drop is not one, so the claim is
+// pinned here rather than left to the prose.
+test("privacy.html discloses that GitHub Free carries no data protection agreement", async () => {
+  const html = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
+  const text = html.replace(/\s+/g, " ");
+
+  const opening = text.indexOf("<strong>GitHub</strong> hosts this site");
+  assert.ok(opening >= 0, "privacy.html no longer describes GitHub's role");
+  const entry = text.slice(opening, text.indexOf("</li>", opening));
+  assert.match(entry, /no processor contract covers it/);
+  assert.match(entry, /Palomar runs on a GitHub Free organization account/);
+  assert.match(entry, /GitHub does not offer its/);
+  assert.match(entry, /no data protection agreement governing how GitHub handles/);
+  assert.doesNotMatch(entry, /it acts for Palomar/);
+
+  // The consequence, and the data it applies to, not only the missing paper.
+  assert.match(text, /access-controlled submission state/);
+  assert.match(text, /private ledger/);
+  assert.match(text, /workflow artifacts each automated review runs on/);
+  assert.match(text, /no processor agreement standing behind it/);
+
+  // The transfers section must not re-import the agreement it just disclaimed.
+  assert.match(
+    text,
+    /different instrument from the Data Protection Agreement Palomar does not have/,
+  );
+  assert.doesNotMatch(
+    text,
+    /relies on the transfer terms in each provider’s published data protection agreement/,
+  );
+
+  // GitHub retired this address; it now redirects to the policy index.
+  assert.doesNotMatch(text, /site-policy\/privacy-policies\/github-data-protection-agreement/);
+});
+
 // GitHub Pages answers every address it cannot resolve with this one file, so
 // it is read at `/entry/missing/thing` as readily as at `/404.html`. A relative
 // href there resolves against the directory the reader was aiming at: the
