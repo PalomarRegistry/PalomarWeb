@@ -10,6 +10,22 @@ const MAX_VERSIONS_PER_ID = 500;
 const RECENT_ITEMS = 200;
 const BROWSE_PAGE_SERIALS = 200;
 const BROWSE_MAX_PAGE = Math.ceil(999_999 / BROWSE_PAGE_SERIALS);
+// The path a day-paged collection publishes for the level below it. A head
+// named years and counts and no path, and a year named days and no path, so
+// the URL grammar that gets a reader from one to the next was stated in the
+// publisher's source and in nothing it served; a reader holding one of those
+// documents and nothing else could go no further.
+//
+// This reader has that grammar and never needed the templates, so it requires
+// them to equal what it already knows, exactly as an entry summary's `path`
+// has always had to equal the path derived here. That is the only useful
+// question a consumer can ask of a template -- whether the producer is telling
+// everybody else the truth -- and requiring the equality is also what keeps a
+// template from becoming a path the data origin chooses and this consumer
+// follows. Nothing here expands one to build a request.
+const yearTemplate = (directory) => `${directory}/{year}.json`;
+const pageTemplate = (directory) => `${directory}/{day}/{page}.json`;
+const BROWSE_DIRECTORY = "browse";
 export const ENTRY_SCHEMA_VERSION = 2;
 // The endpoint, not a document. There is no whole-registry document to name
 // any more: every surface is derived from this prefix by the function that
@@ -646,7 +662,10 @@ export function validateVersions(value, id) {
  * traversal from drifting away from the registry's, which is a disagreement
  * neither side could report.
  */
-function validateCollectionYears(document, label) {
+function validateCollectionYears(document, label, directory) {
+  if (document.year_path !== yearTemplate(directory)) {
+    fail(`${label} year_path must be ${yearTemplate(directory)}`);
+  }
   const results = nonnegativeInteger(document.results, `${label} results`);
   const versions = nonnegativeInteger(document.versions, `${label} versions`);
   if (results > versions) fail(`${label} has more results than versions`);
@@ -677,10 +696,13 @@ function validateCollectionYears(document, label) {
 }
 
 /** Every day and page range belonging to one collection head's year row. */
-function validateCollectionYear(value, expected, label) {
-  const document = exactObject(value, ["schema_version", "year", "days"], label);
+function validateCollectionYear(value, expected, label, directory) {
+  const document = exactObject(value, ["schema_version", "year", "page_path", "days"], label);
   if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
     fail(`unsupported ${label} schema_version ${String(document.schema_version)}`);
+  }
+  if (document.page_path !== pageTemplate(directory)) {
+    fail(`${label} page_path must be ${pageTemplate(directory)}`);
   }
   if (document.year !== expected.year) fail(`${label} is for a different year`);
   const days = array(document.days, `${label} days`);
@@ -737,18 +759,18 @@ function pagedHere(id, day, page, field) {
 export function validateBrowseHead(value) {
   const document = exactObject(
     value,
-    ["schema_version", "results", "versions", "years"],
+    ["schema_version", "results", "versions", "year_path", "years"],
     "browse index",
   );
   if (document.schema_version !== BROWSE_SCHEMA_VERSION) {
     fail(`unsupported browse index schema_version ${String(document.schema_version)}`);
   }
-  return validateCollectionYears(document, "browse index");
+  return validateCollectionYears(document, "browse index", BROWSE_DIRECTORY);
 }
 
 /** Every day and page range belonging to one browse-index year row. */
 export function validateBrowseYear(value, expected) {
-  return validateCollectionYear(value, expected, "browse year");
+  return validateCollectionYear(value, expected, "browse year", BROWSE_DIRECTORY);
 }
 
 /** Every active version whose identifier places it on one public browse page. */
@@ -814,6 +836,11 @@ function subjectCoordinate(kind, code) {
   }
   return { kind, code };
 }
+
+// Where a code's archive is written, which is what its templates are built
+// from. A subject's archive is the registry's layout under a different
+// directory, so its head and year name their own pages and not browsing's.
+const subjectDirectory = ({ kind, code }) => `subjects/${kind}/${code}`;
 
 function subjectUrl(path, databaseBase) {
   const base = new URL(databaseBase);
@@ -896,7 +923,7 @@ export function validateSubjectHead(value, kind, code) {
   const at = subjectCoordinate(kind, code);
   const document = exactObject(
     value,
-    ["schema_version", "kind", "code", "entries", "results", "versions", "years"],
+    ["schema_version", "kind", "code", "entries", "results", "versions", "year_path", "years"],
     "subject index",
   );
   if (document.schema_version !== SUBJECT_SCHEMA_VERSION) {
@@ -934,13 +961,14 @@ export function validateSubjectHead(value, kind, code) {
     }
     rows.push(row);
   }
-  validateCollectionYears(document, "subject index");
+  validateCollectionYears(document, "subject index", subjectDirectory(at));
   return { ...document, entries: rows };
 }
 
 /** Every day and page range belonging to one subject head's year row. */
-export function validateSubjectYear(value, expected) {
-  return validateCollectionYear(value, expected, "subject year");
+export function validateSubjectYear(value, expected, kind, code) {
+  const at = subjectCoordinate(kind, code);
+  return validateCollectionYear(value, expected, "subject year", subjectDirectory(at));
 }
 
 /** Every current version under one code whose identifier places it on one page. */

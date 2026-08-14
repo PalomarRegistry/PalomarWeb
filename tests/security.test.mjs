@@ -1127,7 +1127,13 @@ test("browse enumerates every schema-v1 history row without becoming an entry sc
     path: "entries/PALOMAR-2026-07-29-000123-v1.json",
   };
   const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
-  const head = { schema_version: 1, results: 1, versions: 1, years: [yearRow] };
+  const head = {
+    schema_version: 1,
+    results: 1,
+    versions: 1,
+    year_path: "browse/{year}.json",
+    years: [yearRow],
+  };
   const dayRow = {
     day: "2026-07-29",
     first_page: 1,
@@ -1135,7 +1141,12 @@ test("browse enumerates every schema-v1 history row without becoming an entry sc
     results: 1,
     versions: 1,
   };
-  const year = { schema_version: 1, year: "2026", days: [dayRow] };
+  const year = {
+    schema_version: 1,
+    year: "2026",
+    page_path: "browse/{day}/{page}.json",
+    days: [dayRow],
+  };
   const page = { schema_version: 1, day: dayRow.day, page: 1, entries: [row] };
   assert.equal(validateBrowseHead(head), head);
   assert.equal(validateBrowseYear(year, yearRow), year);
@@ -1176,6 +1187,68 @@ test("the producer-supplied browse head, year, and page keep Web's exact contrac
   assert.equal(validateBrowseHead(head), head);
   assert.equal(validateBrowseYear(year, expectedYear), year);
   assert.equal(validateBrowsePage(page, expectedDay.day, expectedDay.first_page), page);
+  // The producer's own templates, expanded against the producer's own rows,
+  // are the paths CI fetched these three snapshots from. Checking that here is
+  // what makes them a statement about where the documents are rather than two
+  // strings nothing compares to anything.
+  assert.equal(head.year_path.replace("{year}", expectedYear.year), "browse/2026.json");
+  assert.equal(
+    year.page_path.replace("{day}", expectedDay.day).replace("{page}", expectedDay.first_page),
+    `browse/${page.day}/${page.page}.json`,
+  );
+});
+
+test("the path a collection publishes for the level below is the one this reader knows", () => {
+  // These templates exist for a reader that has the document and not the
+  // grammar. This reader has the grammar, so the only question it can usefully
+  // ask is whether the producer is telling everybody else the same thing --
+  // and asking it by equality is also what stops a template being a path the
+  // data origin chooses and this consumer follows.
+  const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
+  const head = {
+    schema_version: 1,
+    results: 1,
+    versions: 1,
+    year_path: "browse/{year}.json",
+    years: [yearRow],
+  };
+  const year = {
+    schema_version: 1,
+    year: "2026",
+    page_path: "browse/{day}/{page}.json",
+    days: [{ day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 }],
+  };
+
+  assert.equal(validateBrowseHead(head), head);
+  assert.equal(validateBrowseYear(year, yearRow), year);
+
+  for (const wrong of [
+    "browse/{year}.JSON",
+    "browse/{yyyy}.json",
+    "https://elsewhere.example/browse/{year}.json",
+    "../{year}.json",
+    "subjects/arxiv/math.CO/{year}.json",
+    "",
+  ]) {
+    assert.throws(() => validateBrowseHead({ ...head, year_path: wrong }), /year_path must be/);
+  }
+  for (const wrong of [
+    "browse/{day}/{page}",
+    "browse/{page}/{day}.json",
+    "https://elsewhere.example/browse/{day}/{page}.json",
+    "subjects/arxiv/math.CO/{day}/{page}.json",
+    "",
+  ]) {
+    assert.throws(
+      () => validateBrowseYear({ ...year, page_path: wrong }, yearRow),
+      /page_path must be/,
+    );
+  }
+
+  const { year_path: _absent, ...headless } = head;
+  const { page_path: _missing, ...yearless } = year;
+  assert.throws(() => validateBrowseHead(headless), /invalid shape/);
+  assert.throws(() => validateBrowseYear(yearless, yearRow), /invalid shape/);
 });
 
 function subjectRow(overrides = {}) {
@@ -1213,11 +1286,13 @@ function subjectFixture() {
       entries: [front, older],
       results: 2,
       versions: 2,
+      year_path: "subjects/arxiv/math.CO/{year}.json",
       years: [yearRow],
     },
     year: {
       schema_version: 1,
       year: "2026",
+      page_path: "subjects/arxiv/math.CO/{day}/{page}.json",
       days: [
         { day: "2026-07-28", first_page: 1, last_page: 1, results: 1, versions: 1 },
         { day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 },
@@ -1226,6 +1301,41 @@ function subjectFixture() {
     page: { schema_version: 1, day: "2026-07-29", page: 1, entries: [archived] },
   };
 }
+
+test("a code's archive names its own pages and never the registry's", () => {
+  // The same layout under a different directory, so the templates have to be
+  // that code's own. A subject document carrying browsing's templates would
+  // send a reader who followed them to the whole registry under the code's
+  // heading, which is the one thing a well-formed subject document can still
+  // get wrong here.
+  const { head, year, yearRow } = subjectFixture();
+
+  assert.equal(head.year_path, "subjects/arxiv/math.CO/{year}.json");
+  assert.equal(year.page_path, "subjects/arxiv/math.CO/{day}/{page}.json");
+  assert.equal(validateSubjectYear(year, yearRow, "arxiv", "math.CO"), year);
+
+  assert.throws(
+    () => validateSubjectHead({ ...head, year_path: "browse/{year}.json" }, "arxiv", "math.CO"),
+    /year_path must be subjects\/arxiv\/math\.CO/,
+  );
+  assert.throws(
+    () => validateSubjectYear(
+      { ...year, page_path: "browse/{day}/{page}.json" }, yearRow, "arxiv", "math.CO",
+    ),
+    /page_path must be subjects\/arxiv\/math\.CO/,
+  );
+  // The templates a different code publishes are also the wrong ones, so the
+  // check is against the code that was asked for and not merely against the
+  // shape of a subject path.
+  assert.throws(
+    () => validateSubjectYear(year, yearRow, "msc", "05C10"),
+    /page_path must be subjects\/msc\/05C10/,
+  );
+  assert.throws(
+    () => validateSubjectYear(year, yearRow, "arxiv", "../../etc/passwd"),
+    /malformed/,
+  );
+});
 
 test("a subject URL cannot leave its own directory or name a code that is not one", () => {
   const base = "https://data.example.org/";
@@ -1259,7 +1369,7 @@ test("a subject document is refused unless it is about the code that was asked f
     front.id,
     "PALOMAR-2026-07-28-000001",
   ]);
-  assert.equal(validateSubjectYear(year, yearRow), year);
+  assert.equal(validateSubjectYear(year, yearRow, "arxiv", "math.CO"), year);
   assert.deepEqual(
     validateSubjectPage(page, "arxiv", "math.CO", "2026-07-29", 1).entries.map((row) => row.id),
     [archived.id],

@@ -362,6 +362,7 @@ def subject_documents() -> dict[str, dict]:
             documents[f"{directory}/{year}.json"] = {
                 "schema_version": 1,
                 "year": year,
+                "page_path": f"{directory}/{{day}}/{{page}}.json",
                 "days": day_rows,
             }
             years.append({
@@ -377,6 +378,7 @@ def subject_documents() -> dict[str, dict]:
             "entries": rows[:SUBJECT_PAGE_ITEMS],
             "results": sum(row["results"] for row in years),
             "versions": sum(row["versions"] for row in years),
+            "year_path": f"{directory}/{{year}}.json",
             "years": years,
         }
     return documents

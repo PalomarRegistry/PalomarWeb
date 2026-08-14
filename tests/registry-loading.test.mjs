@@ -374,6 +374,7 @@ function subjectHead(overrides = {}) {
     }],
     results: 1,
     versions: 1,
+    year_path: "subjects/arxiv/math.CO/{year}.json",
     years: [{ year: "2026", days: 1, results: 1, versions: 1 }],
     ...overrides,
   };
@@ -389,6 +390,7 @@ test("the subject reads resolve and validate all three levels of one code", asyn
       ["/subjects/arxiv/math.CO/2026.json", jsonResponse({
         schema_version: 1,
         year: "2026",
+        page_path: "subjects/arxiv/math.CO/{day}/{page}.json",
         days: [dayRow],
       })],
       ["/subjects/arxiv/math.CO/2026-07-29/1.json", jsonResponse({

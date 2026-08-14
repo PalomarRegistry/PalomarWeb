@@ -39,7 +39,13 @@
 - The three browse surfaces—`browse/index.json`, `browse/<year>.json`, and
   `browse/<day>/<page>.json`—are also exact closed producer/consumer contracts.
   PalomarDatabase owns their head, year, page, count, and summary-row shapes;
-  change those producer-first. CI downloads one live head/year/page chain into
+  change those producer-first. A head and a year each publish the path of the
+  level below as a template, `year_path` and `page_path`, for readers who have
+  the document and not the grammar; a subject's are its own code's, because
+  both collections derive them from the directory being written. This consumer
+  has the grammar and requires the templates to equal it exactly. It never
+  expands one to build a request: a template read as instructions is a path the
+  data origin chooses. CI downloads one live head/year/page chain into
   the named producer-contract fixture test, then the predeploy check traverses
   every row the producer advertises. The traversal reconciles those surfaces;
   it cannot independently prove that their common producer omitted nothing.
