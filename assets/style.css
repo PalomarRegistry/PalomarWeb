@@ -249,8 +249,47 @@ h3 {
   outline-offset: 2px;
 }
 
+/*
+ * The search runs on a typing pause rather than on a button press, so the only
+ * thing distinguishing "you have stopped typing" from "the registry has
+ * answered" is this mark. The status text beside it carries the same fact for
+ * anyone not watching the pixels.
+ */
+.spinner {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid var(--line);
+  border-top-color: var(--link);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/*
+ * A reader who asks for less motion still has to be told a request is running,
+ * so the ring stays and only the rotation goes.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
 #search-results:empty {
   display: none;
+}
+
+/*
+ * Provisional matches, drawn from the entries the page already holds. They are
+ * a different question than the one the registry index answers, so they are
+ * shown as unfinished business rather than as results.
+ */
+#search-results.preview .entry-card {
+  opacity: .55;
 }
 
 .toolbar {
@@ -270,26 +309,6 @@ body.registry-searching #entry-grid {
   display: none;
 }
 
-.search {
-  display: flex;
-  align-items: center;
-  gap: .45rem;
-  flex: 1;
-  max-width: 37rem;
-}
-
-.search input {
-  width: 100%;
-  min-height: 2rem;
-  padding: .25rem .4rem;
-  border: 1px solid var(--field);
-  border-radius: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font: .9rem var(--sans);
-}
-
-.search input:focus-visible,
 .category-filters input:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--link);
@@ -977,8 +996,7 @@ pre {
     flex-wrap: wrap;
   }
 
-  .toolbar,
-  .search {
+  .toolbar {
     width: 100%;
   }
 

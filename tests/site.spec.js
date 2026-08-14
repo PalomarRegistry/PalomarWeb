@@ -20,6 +20,32 @@ function fileAtPreviousDeployment(path) {
 }
 
 /**
+ * Ask the registry a deliberate question and do not wait out the typing pause.
+ *
+ * The value is set rather than typed on purpose. Typing schedules the debounced
+ * search, which would race the Enter below and make the request counts these
+ * tests assert on depend on how fast the machine is. Enter is still a real key
+ * press, because the form no longer has a button and that is the only way in.
+ * The tests that cover typing itself type.
+ */
+async function startSearch(page, query) {
+  await page.locator("#query").evaluate((input, value) => { input.value = value; }, query);
+  await page.locator("#query").press("Enter");
+}
+
+/**
+ * Ask, and wait until the registry rather than the page has answered.
+ *
+ * While a search runs the page stands in the entries it already holds, drawn
+ * exactly like the cards that will replace them. Counting cards therefore
+ * cannot tell the two apart, and the spinner is what can.
+ */
+async function runSearch(page, query) {
+  await startSearch(page, query);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+}
+
+/**
  * Which entry schema the previous deployment's validator would accept.
  *
  * Cached JavaScript can only be compatible with records it can read. When the
@@ -631,9 +657,9 @@ test("a card says the original is unavailable exactly when the manifest says so"
   const card = page.locator(".entry-card").first();
   await expect(card).toHaveCount(1);
   await availabilityRequested;
-  await page.locator("#search").fill("000123");
+  await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-  await page.locator("#search").evaluate((input) => input.focus());
+  await page.locator("#arxiv-query").evaluate((input) => input.focus());
   await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
   // Cards and filters are usable while availability is still pending.
   await expect(card.locator(".repo-link")).toHaveText("example/challenge");
@@ -641,8 +667,8 @@ test("a card says the original is unavailable exactly when the manifest says so"
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
-  await expect(page.locator("#search")).toBeFocused();
-  await expect(page.locator("#search")).toHaveValue("000123");
+  await expect(page.locator("#arxiv-query")).toBeFocused();
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 
   await page.goto(`/?database=${database}`);
@@ -1177,8 +1203,7 @@ test("a search reads one postings sequence per word and confirms every hit", asy
   await expect(page.locator(".entry-card")).toHaveCount(2);
 
   asked.length = 0;
-  await page.locator("#query").fill("quasicoherent 000124");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "quasicoherent 000124");
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-card")).toContainText("000124");
@@ -1217,15 +1242,14 @@ test("runtime data reads reuse a fresh HTTP response", async ({ page }) => {
 
   await page.goto(`/?database=${database}`);
   await page.evaluate(() => performance.clearResourceTimings());
-  await page.locator("#query").fill("cacheprobe");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "cacheprobe");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect.poll(async () => (await timings()).length).toBe(1);
 
   // The fixture gives this otherwise ordinary postings document max-age=60.
   // Submitting the same search still calls fetch, but the browser should
   // satisfy it from its HTTP cache rather than transferring it again.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(async () => (await timings()).length).toBe(2);
   const [network, cached] = await timings();
   expect(network.transferSize).toBeGreaterThan(0);
@@ -1263,8 +1287,7 @@ test("an over-limit term count is an accessible warning and can be corrected", a
   await page.goto(`/?database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   asked.length = 0;
-  await page.locator("#query").fill(query);
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, query);
   await expect(page.locator("#query")).toHaveValue(query);
   await expect(page.locator("#search-status")).toHaveText(
     `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
@@ -1273,14 +1296,12 @@ test("an over-limit term count is an accessible warning and can be corrected", a
   await page.waitForTimeout(100);
   expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
 
-  await page.locator("#query").fill("synthetically");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "synthetically");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#query")).not.toHaveAttribute("aria-invalid");
   await expect(page.locator("#query")).not.toHaveAttribute("aria-describedby");
 
-  await page.locator("#query").fill("");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "");
   await expect(page.locator("#entry-grid")).toBeVisible();
   await expect(page.locator("#search-status")).toBeHidden();
 });
@@ -1448,12 +1469,12 @@ test("transient and invalid availability responses are both retried", async ({ p
   const invalidLogged = page.waitForEvent("console", {
     predicate: (message) => message.text().includes("Source availability is unavailable"),
   });
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(() => availabilityRequests).toBe(2);
   await invalidLogged;
   await expect(card.locator(".repo-link")).toHaveText("example/challenge");
 
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(() => availabilityRequests).toBe(3);
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
@@ -1475,7 +1496,7 @@ test("a missing availability manifest is cached for the page", async ({ page }) 
   );
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect.poll(() => availabilityRequests).toBe(1);
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await page.waitForTimeout(50);
   expect(availabilityRequests).toBe(1);
@@ -1490,11 +1511,9 @@ test("a superseded slow search cannot repaint a newer query", async ({ page }) =
   });
   await page.goto(`/?database=${database}`);
 
-  await page.locator("#query").fill("quasicoherent");
-  await page.getByRole("button", { name: "Search" }).click();
+  await startSearch(page, "quasicoherent");
   await expect.poll(() => slowHeadRequests).toBe(1);
-  await page.locator("#query").fill("synthetically");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "synthetically");
 
   await expect(page.locator("#search-results .entry-id")).toHaveText(
     "PALOMAR-2026-07-29-000124 v1",
@@ -1532,8 +1551,7 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   }))).toEqual({ grid: true, status: true, toolbar: true });
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
 
-  await page.locator("#query").fill("");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "");
   await firstRecent;
   expect(await page.evaluate(() => ({
     grid: document.querySelector("#entry-grid").hidden,
@@ -1542,14 +1560,14 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   }))).toEqual({ grid: false, status: false, toolbar: false });
 
   // Clearing again while the first landing request is pending shares it.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await page.waitForTimeout(50);
   expect(recentRequests).toBe(1);
   releaseFirstRecent();
   await expect(page.locator("#status")).toContainText("could not be loaded");
 
   // Once that attempt has settled as failed, clearing retries it.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   expect(recentRequests).toBe(2);
 });
@@ -1558,8 +1576,7 @@ test("a search runs from a link, and says so when nothing carries the words", as
   await page.goto(`/?database=${database}&q=quasicoherent`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
 
-  await page.locator("#query").fill("quasicoherent unobtainium");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "quasicoherent unobtainium");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
   // The words with no postings are named rather than guessed about. They are
   // words nothing carries and not words the indexer drops, because the dropped
@@ -1574,8 +1591,7 @@ test("a hostile query cannot construct a path outside the postings grammar", asy
   await page.goto(`/?database=${database}`);
 
   asked.length = 0;
-  await page.locator("#query").fill("../../etc/passwd?x=1 <script>");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "../../etc/passwd?x=1 <script>");
   await expect(page.locator("#search-status")).toContainText("No result carries all of");
 
   // The stopword list is at a fixed path and is the only request under
@@ -1593,8 +1609,7 @@ test("a hostile query cannot construct a path outside the postings grammar", asy
 
 test("a query with no word in it leaves the listing alone", async ({ page }) => {
   await page.goto(`/?database=${database}`);
-  await page.locator("#query").fill("a !");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "a !");
   await expect(page.locator("#entry-grid")).toBeVisible();
   await expect(page.locator("#search-status")).toBeHidden();
 });
@@ -1610,8 +1625,7 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
   await page.goto(`/?database=${database}`);
 
   asked.length = 0;
-  await page.locator("#query").fill("the quasicoherent sheaves");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "the quasicoherent sheaves");
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-card")).toContainText("000124");
@@ -1622,10 +1636,110 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
 test("a search made only of words the indexer drops says which they were", async ({ page }) => {
   // Otherwise this is a registry that appears to hold nothing.
   await page.goto(`/?database=${database}`);
-  await page.locator("#query").fill("the of and");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "the of and");
 
   await expect(page.locator("#search-status")).toContainText("too common to be indexed");
   await expect(page.locator("#search-status")).toContainText("the");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+/** Hold one head request open, and hand back the way to let it go. */
+async function holdSearchHead(page, term) {
+  let release;
+  let noteRequest;
+  const requested = new Promise((resolve) => { noteRequest = resolve; });
+  await page.route(`**/database/search/t/${term}/head.json`, async (route) => {
+    noteRequest();
+    await new Promise((resolve) => { release = resolve; });
+    await route.continue().catch(() => {});
+  });
+  return { requested, release: () => release() };
+}
+
+test("typing runs one search at the pause, not one per keystroke", async ({ page }) => {
+  const heads = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/head.json")) heads.push(path);
+  });
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  // There is no button to press, so the pause is the whole of the instruction.
+  await page.locator("#query").pressSequentially("quasicoherent", { delay: 10 });
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+
+  expect(heads).toEqual(["/database/search/t/quasicoherent/head.json"]);
+  await expect(page).toHaveURL(/q=quasicoherent/);
+});
+
+test("a pause shows the entries already loaded, marked as not yet the answer", async ({ page }) => {
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  await expect(page.locator("#search-results")).toHaveClass(/preview/);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "0.55");
+  await expect(page.locator("#search-status")).toContainText("while the registry search runs");
+  await expect(page.locator("#search-status")).toContainText("newest 2 entries");
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  // A provisional card claims no more than the search card replacing it will.
+  await expect(page.locator("#search-results .entry-id").first()).not.toContainText("current");
+
+  held.release();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "1");
+});
+
+test("nothing loaded to show leaves the wait to the spinner alone", async ({ page }) => {
+  const held = await holdSearchHead(page, "synthetically");
+  // A linked search never reads the landing selection, so there is nothing in
+  // hand to show, and the status must not claim otherwise.
+  await page.goto(`/?database=${database}&q=synthetically`);
+  await held.requested;
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-status")).toHaveText("Searching the registry…");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+
+  held.release();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+test("a provisional match the index does not confirm is taken away", async ({ page }) => {
+  // What the dimming is for. "quasi" sits inside a word the newest entries
+  // carry, so it is in hand at once, but the index knows whole words and holds
+  // nothing under it. The cards go and the reader is told why.
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await runSearch(page, "quasi");
+  await expect(page.locator("#search-status")).toContainText("No result carries all of: quasi");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+test("emptying the box gives the listing and its filters back", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  // Set before searching, because a search takes the toolbar off the page.
+  await page.locator("#arxiv-query").fill("math.CO");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+
+  await runSearch(page, "quasicoherent");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("body")).toHaveClass(/registry-searching/);
+
+  await runSearch(page, "");
+  await expect(page.locator("body")).not.toHaveClass(/registry-searching/);
+  await expect(page.locator(".toolbar")).toBeVisible();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 });
