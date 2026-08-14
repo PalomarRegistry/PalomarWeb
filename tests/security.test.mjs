@@ -1063,9 +1063,9 @@ test("the page describes withdrawal from the states that actually allow it", asy
   const bases = /<section id="lawful-bases">[\s\S]*?<\/section>/.exec(privacy)[0];
   assert.doesNotMatch(privacy, /withdraw from any state before\s+registration/);
   assert.doesNotMatch(privacy, /Until you register, you can withdraw/);
-  assert.match(bases, /registered, already withdrawn, failed\s+mechanical verification, or a review that asked for changes/);
+  assert.match(bases, /registered,\s+already\s+withdrawn,\s+failed\s+mechanical\s+verification,\s+or\s+a\s+review\s+that\s+asked\s+for\s+changes/);
   assert.match(bases, /a dispatch it lost, a review it could\s+not run, a registration that stalled/);
-  assert.match(bases, /a\s+submission can end without your ever having been offered the scrub/);
+  assert.match(bases, /a\s+submission\s+can\s+end\s+without\s+your\s+ever\s+having\s+been\s+offered\s+the\s+scrub/);
 });
 
 test("the objection right is scoped to personal data about the objector", async () => {
@@ -1080,7 +1080,7 @@ test("the objection right is scoped to personal data about the objector", async 
   assert.match(bases, /object to the processing of personal\s+data concerning them/);
   assert.match(bases, /It is a right over\s+your own personal data, not over a record/);
   assert.match(bases, /objecting does not give you a veto over what a record says about\s+mathematics/);
-  assert.match(bases, /it is an outcome the\s+decision may reach, not the measure of the right/);
+  assert.match(bases, /it\s+is\s+an\s+outcome\s+the\s+decision\s+may\s+reach,\s+not\s+the\s+measure\s+of\s+the\s+right/);
   assert.match(bases, /Nor is the objection right a submitter’s takedown\s+route by another name/);
   assert.match(privacy, /which part of the material\s+is about you/);
   assert.doesNotMatch(
