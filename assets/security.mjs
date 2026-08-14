@@ -436,12 +436,28 @@ function availabilityEndpoint(value, field) {
 
 export function validateAvailability(manifest) {
   const document = object(manifest, "availability");
-  if (document.schema_version !== 1) fail("availability schema_version is unsupported");
+  // Schema 1 remains readable only for the deployment handoff: the old R2
+  // object can outlive the Worker deployment until the first public refresh.
+  // Schema 2 binds every observation row to the separately published exact
+  // target set and is what all new producers write.
+  if (![1, 2].includes(document.schema_version)) {
+    fail("availability schema_version is unsupported");
+  }
+  if (document.schema_version === 2) {
+    if (typeof document.targets_sha256 !== "string" ||
+        !/^[0-9a-f]{64}$/.test(document.targets_sha256)) {
+      fail("availability.targets_sha256 is malformed");
+    }
+    if (!Number.isSafeInteger(document.publication_revision) ||
+        document.publication_revision < 1) {
+      fail("availability.publication_revision is malformed");
+    }
+  }
   const generatedAt = availabilityTimestamp(document.generated_at);
   if (generatedAt === null) {
     fail("availability.generated_at is malformed");
   }
-  if (document.database_commit !== undefined) {
+  if (document.schema_version === 1 && document.database_commit !== undefined) {
     commit(document.database_commit, "availability.database_commit");
   }
   const coverage = object(document.coverage, "availability.coverage");

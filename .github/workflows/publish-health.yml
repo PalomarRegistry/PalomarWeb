@@ -53,6 +53,25 @@ jobs:
         env:
           DATA: https://data.palomar-registry.org
 
+      - name: Is the public-data origin healthy and singly exposed
+        env:
+          DATA: https://data.palomar-registry.org
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 "$DATA/healthz" |
+            jq -e '.ok == true' >/dev/null
+          curl --fail --silent --show-error --retry 3 \
+            "$DATA/source-availability-targets.json" |
+            jq -e '.schema_version == 1 and (.targets | type == "array")' >/dev/null
+          for forbidden in \
+            https://palomar-data-staging.palomar-server.workers.dev/schema-v2.json \
+            https://palomar-data.palomar-server.workers.dev/schema-v2.json; do
+            if curl --fail --silent --show-error --max-time 10 "$forbidden" >/dev/null; then
+              echo "::error::$forbidden is a second public front door"
+              exit 1
+            fi
+          done
+
       # The other direction: not whether the records the site reads are
       # readable, but whether the registry documents and the Policy document
       # selected for link health are still there at all.

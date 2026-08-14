@@ -76,9 +76,10 @@ export function availabilityEndpoint(overrides = {}) {
 
 export function availabilityManifest(repositories = [], overrides = {}) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     generated_at: "2026-08-08T12:00:00Z",
-    database_commit: "d".repeat(40),
+    targets_sha256: "d".repeat(64),
+    publication_revision: 1,
     coverage: { freshness_max_age_seconds: 18 * 60 * 60 },
     repositories,
     ...overrides,
