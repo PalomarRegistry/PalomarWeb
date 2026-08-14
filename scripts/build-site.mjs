@@ -26,6 +26,7 @@ const browserModuleFiles = [
   "searching.mjs",
   "security.mjs",
   "source-preservation.mjs",
+  "statement-preview.mjs",
   "subject-pages.mjs",
 ];
 const browserModulePaths = new Set(browserModuleFiles.map((file) => `/assets/${file}`));

@@ -71,6 +71,7 @@ export const AVAILABILITY_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 // raw lookalikes instead of falling back to repeated array scans.
 const availabilityIndexes = new WeakMap();
 const validatedSourceRecords = new WeakMap();
+const recentRenderIndexes = new WeakMap();
 
 function fail(message) {
   throw new Error(`invalid registry data: ${message}`);
@@ -282,6 +283,15 @@ export function recentUrl(databaseBase) {
   return expected;
 }
 
+export function recentRendersUrl(databaseBase) {
+  const base = new URL(databaseBase);
+  const expected = new URL("recent-renders.json", base);
+  if (expected.origin !== base.origin) {
+    fail("recent renders path escaped the database origin");
+  }
+  return expected;
+}
+
 /**
  * What is new, from `recent.json`.
  *
@@ -431,6 +441,68 @@ export function validateRecent(value) {
     validatedSourceRecords.set(receipt.record, receipt);
   }
   return document;
+}
+
+/**
+ * The content address of each listed result's rendering, from
+ * `recent-renders.json`.
+ *
+ * A landing row is the card and nothing else, so it cannot say where the
+ * result's rendering is served. This document says, for exactly the results on
+ * that page, and the landing page reads it only when a reader asks to see one.
+ *
+ * It carries the tree hash alone. The path is derivable from the identifier,
+ * the version and the hash, and the format and entrypoint are constants
+ * `renderArtifactUrl` applies rather than fields to be told, so a row that
+ * carried them would be a row that could disagree with them.
+ *
+ * Rows strictly increase by identifier, which is distinctness and a canonical
+ * order in one rule. One row per result, as on the page this accompanies, so a
+ * repeated identifier means this is not the projection it says it is, and
+ * reading it as if it were would offer a reader one result's statement under
+ * another result's name.
+ */
+export function validateRecentRenders(value) {
+  const document = exactObject(value, ["schema_version", "renders"], "recent renders");
+  if (document.schema_version !== RECENT_SCHEMA_VERSION) {
+    fail(`unsupported recent renders schema_version ${String(document.schema_version)}`);
+  }
+  const renders = array(document.renders, "recent renders rows");
+  if (renders.length > RECENT_ITEMS) fail("recent renders carries more rows than it may");
+  const index = new Map();
+  let previous = "";
+  for (const [position, value] of renders.entries()) {
+    const field = `recent renders rows[${position}]`;
+    const item = exactObject(value, ["artifact_tree_sha256", "id", "version"], field);
+    const id = string(item.id, `${field}.id`);
+    if (!ID_RE.test(id)) fail(`${field}.id is malformed`);
+    if (id <= previous) fail("recent renders rows are not in increasing identifier order");
+    previous = id;
+    const version = integer(item.version, `${field}.version`);
+    if (version < 1) fail(`${field}.version is not a version`);
+    const treeHash = string(item.artifact_tree_sha256, `${field}.artifact_tree_sha256`);
+    if (!SHA256_RE.test(treeHash)) fail(`${field}.artifact_tree_sha256 is malformed`);
+    index.set(id, Object.freeze({ id, version, artifact_tree_sha256: treeHash }));
+  }
+  // Captured by value while the document is accepted, so a lookup answers from
+  // what was checked rather than from a public row that has since been written
+  // over. Set only after the whole projection succeeds: a reference to an early
+  // row of a later-rejected document must not become presentation data.
+  recentRenderIndexes.set(document, index);
+  return document;
+}
+
+/**
+ * The validated render row for one result, or `null` if this page has none.
+ *
+ * Refuses a raw lookalike rather than scanning it, for the same reason the
+ * availability lookup does: an object that merely has the right keys has not
+ * been through the bounds above.
+ */
+export function recentRenderRow(document, id) {
+  const index = recentRenderIndexes.get(document);
+  if (!index) fail("recent renders document was not validated");
+  return index.get(id) || null;
 }
 
 function availabilityTimestamp(value) {

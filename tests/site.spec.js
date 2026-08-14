@@ -2169,3 +2169,103 @@ for (const scheme of ["light", "dark"]) {
     await readableTextOnly(page, `${scheme} entry`, 25);
   });
 }
+test("resting on a landing title raises the result's rendering over the listing", async ({ page }) => {
+  const asked = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await page.goto(`/?database=${database}`);
+  const title = page.locator(".entry-card h3 > a").first();
+  const identifier = await page.locator(".entry-card .entry-id").first().textContent();
+  const versioned = /(PALOMAR-[0-9-]+) v([0-9]+)/.exec(identifier);
+
+  // Nothing is read for a listing nobody has rested on.
+  expect(asked).not.toContain("/database/recent-renders.json");
+
+  await title.hover();
+  const panel = page.locator(".statement-preview");
+  await expect(panel).toBeVisible();
+  const frame = panel.locator("iframe");
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect(frame).toHaveAttribute(
+    "src",
+    `http://127.0.0.1:4173/database/renders/${versioned[1]}-v${versioned[2]}/${"a".repeat(64)}/Challenge/index.html`,
+  );
+  expect(asked).toContain("/database/recent-renders.json");
+  // The card is a landing row, so this must not have become a record read.
+  expect(asked.filter((path) => path.startsWith("/database/entries/"))).toEqual([]);
+
+  // The rendering runs, and is as unprivileged inside the panel as it is on an
+  // entry page.
+  const body = page.frameLocator(".statement-preview iframe").locator("body");
+  await expect(body).toHaveAttribute("data-script-ran", "true");
+  await expect(body).toHaveAttribute("data-top-access", "blocked");
+  await expect(page.locator("body")).not.toHaveAttribute("data-compromised", "true");
+
+  await page.mouse.move(5, 5);
+  await expect(panel).toHaveCount(0);
+});
+
+test("a search result previews from the record it already holds", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  // Runs on the typing pause now, and the provisional cards it stands in are
+  // drawn like the verified ones, so wait for the spinner rather than counting.
+  await runSearch(page, "quasicoherent");
+  await expect(page.locator("#search-results .entry-card").first()).toBeVisible();
+
+  const asked = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await page.locator("#search-results .entry-card h3 > a").first().hover();
+
+  await expect(page.locator(".statement-preview iframe")).toHaveAttribute(
+    "src",
+    /\/Challenge\/index\.html$/,
+  );
+  expect(asked).not.toContain("/database/recent-renders.json");
+});
+
+test("a preview survives the pointer crossing into it", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator(".entry-card h3 > a").first().hover();
+  const panel = page.locator(".statement-preview");
+  await expect(panel).toBeVisible();
+
+  const box = await panel.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(500);
+
+  await expect(panel).toBeVisible();
+});
+
+test("an absent or unusable render companion leaves the listing usable", async ({ page }) => {
+  for (const body of ["", '{"schema_version":1,"renders":[{"id":"nope"}]}']) {
+    await page.route("**/database/recent-renders.json", (route) =>
+      body
+        ? route.fulfill({ status: 200, contentType: "application/json", body })
+        : route.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
+    await page.goto(`/?database=${database}`);
+    const title = page.locator(".entry-card h3 > a").first();
+    await title.hover();
+    await page.waitForTimeout(600);
+
+    await expect(page.locator(".statement-preview")).toHaveCount(0);
+    // The listing is what matters, and it is untouched.
+    await expect(page.locator(".entry-card")).not.toHaveCount(0);
+    await expect(title).toBeVisible();
+  }
+});
+
+test("previews are not raised where a pointer cannot rest", async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true, isMobile: false });
+  const page = await context.newPage();
+  await page.emulateMedia({ media: "screen", forcedColors: "none" });
+  await page.goto(`/?database=${database}`);
+  // The controller asks `(hover: hover)`; a coarse pointer answers no, and the
+  // stylesheet refuses to show a panel even if one were somehow raised.
+  const hides = await page.evaluate(() =>
+    [...document.styleSheets]
+      .flatMap((sheet) => [...sheet.cssRules])
+      .some((rule) => rule.conditionText === "(hover: none)"
+        && [...rule.cssRules].some((inner) => inner.selectorText === ".statement-preview")));
+  expect(hides).toBe(true);
+  await context.close();
+});

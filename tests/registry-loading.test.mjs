@@ -6,6 +6,7 @@ import {
   availabilityManifest,
   entry,
   recent,
+  recentRenders,
   secondVersion,
   summary,
 } from "./registry-fixture.mjs";
@@ -177,6 +178,54 @@ test("the recent projection is fetched from the selected database and validated"
   );
   assert.deepEqual(loaded, document);
   assert.deepEqual(calls.map(({ url }) => url.pathname), ["/recent.json"]);
+});
+
+test("the render companion is read once a page and caches only a stable absence", async () => {
+  const database = new URL("https://data.palomar-registry.org/");
+  const document = recentRenders();
+  const calls = [];
+  const shared = createRegistryLoader({
+    fetch: routedFetch(new Map([["/recent-renders.json", jsonResponse(document)]]), calls),
+    location: productionLocation("index.html"),
+  });
+
+  const [first, second] = await Promise.all([
+    shared.loadRecentRenders(database),
+    shared.loadRecentRenders(database),
+  ]);
+  assert.deepEqual(first, document);
+  assert.equal(second, first, "one read however many previews ask");
+  assert.deepEqual(await shared.loadRecentRenders(database), document);
+  assert.equal(calls.length, 1);
+
+  // A release that has not published one yet is this page's answer. A
+  // transport failure is not: previews resume when the next rest retries.
+  const absentCalls = [];
+  const absent = createRegistryLoader({
+    fetch: routedFetch(
+      new Map([["/recent-renders.json", jsonResponse(null, 404)]]),
+      absentCalls,
+    ),
+    location: productionLocation("index.html"),
+  });
+  assert.equal(await absent.loadRecentRenders(database), null);
+  assert.equal(await absent.loadRecentRenders(database), null);
+  assert.equal(absentCalls.length, 1);
+
+  const warnings = [];
+  const transientCalls = [];
+  const transient = createRegistryLoader({
+    fetch: routedFetch(
+      new Map([["/recent-renders.json", jsonResponse(null, 503, "Service Unavailable")]]),
+      transientCalls,
+    ),
+    location: productionLocation("index.html"),
+    warn: (message) => warnings.push(message),
+  });
+  assert.equal(await transient.loadRecentRenders(database), null);
+  assert.equal(await transient.loadRecentRenders(database), null);
+  assert.equal(transientCalls.length, 2);
+  assert.match(warnings.join("\n"), /Render previews are unavailable/);
 });
 
 test("an unversioned entry read resolves and validates the current immutable record", async () => {
