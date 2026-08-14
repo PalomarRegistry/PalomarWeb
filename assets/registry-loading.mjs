@@ -120,6 +120,8 @@ export function createRegistryLoader({
     return validateSubjectYear(
       await fetchJson(subjectYearUrl(kind, code, expected.year, databaseBase), { signal }),
       expected,
+      kind,
+      code,
     );
   }
 

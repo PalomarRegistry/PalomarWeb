@@ -1332,6 +1332,7 @@ test("a code with nothing current under it answers, and one never used does not"
       entries: [],
       results: 0,
       versions: 0,
+      year_path: "subjects/msc/05C10/{year}.json",
       years: [],
     }),
   }));
