@@ -122,8 +122,11 @@
             it because Cloudflare is carrying the request. A second, slower
             limit is counted per account rather than per address, and it is
             durable: it lives in the private submission state under a file name
-            derived from your numeric account id, and what is written into it is
-            counters and times rather than a name.
+            derived from your numeric account id. What it holds is counters and
+            times. No rate document in that state carries a name, and the server
+            writes only a fixed list of fields into one, so a name cannot
+            reappear there quietly. Earlier documents did carry a login, and
+            git history keeps those bodies.
           </li>
         </ol>
         <p>
@@ -351,7 +354,10 @@
         <h2>Withdrawing before registration</h2>
         <p>
           Until you register, you can withdraw, and withdrawal is not only a
-          change of status. It scrubs the current private record.
+          change of status. It scrubs the current private record. It was applied
+          to the records withdrawn before it existed as well, so what it removes
+          is absent from every withdrawn record in the state, not only from the
+          ones withdrawn since.
         </p>
         <p>
           <strong>Removed:</strong> the free-text context you wrote, the
