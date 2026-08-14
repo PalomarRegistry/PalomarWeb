@@ -125,6 +125,26 @@ function exactObject(value, keys, field) {
   return item;
 }
 
+/**
+ * One RFC3339 instant in Z, refused rather than rounded into a neighbouring one.
+ *
+ * The shape is not the value. `2026-02-30T00:00:00Z` and `2026-99-99T99:99:99Z`
+ * both match the grammar, and the first is a day that does not exist while the
+ * second is not a time at all. A row carrying either reaches a date formatter,
+ * which throws on what it cannot format, so the document has to be refused
+ * where documents are refused rather than where dates are drawn.
+ */
+function instant(value, field) {
+  const text = string(value, field);
+  if (!TIMESTAMP_RE.test(text)) fail(`${field} is malformed`);
+  const moment = Date.parse(text);
+  if (Number.isNaN(moment) ||
+      new Date(moment).toISOString().replace(".000Z", "Z") !== text) {
+    fail(`${field} is malformed`);
+  }
+  return text;
+}
+
 function stringArray(value, field) {
   for (const [position, item] of array(value, field).entries()) {
     string(item, `${field}[${position}]`);
@@ -842,9 +862,7 @@ function validateSubjectRow(value, field, { kind, code, abstract }) {
     { id: row.id, path: row.path, status: row.status, title: row.title, version: row.version },
     field,
   );
-  if (!TIMESTAMP_RE.test(String(row.published_at))) {
-    fail(`${field}.published_at is not an instant`);
-  }
+  instant(row.published_at, `${field}.published_at`);
   if (abstract) boundedString(row.abstract, `${field}.abstract`, 10_000);
   const classification = exactObject(
     row.classification,
@@ -888,11 +906,23 @@ export function validateSubjectHead(value, kind, code) {
     fail("subject index is for a different classification code");
   }
   const entries = array(document.entries, "subject index entries");
-  if (entries.length > SUBJECT_HEAD_ITEMS) fail("subject index carries more rows than it may");
+  // Every row under a code is a *current* version, one per result, so the two
+  // counts are the same number and the front page is the whole of the code or
+  // the publisher's cap on it. A head that says otherwise is describing some
+  // other selection, and this page would present it as the current one.
+  if (document.results !== document.versions) {
+    fail("subject index counts a result that is not one current version");
+  }
+  if (entries.length !== Math.min(SUBJECT_HEAD_ITEMS, document.versions)) {
+    fail("subject index does not carry the rows it says it has");
+  }
   const rows = [];
+  const seen = new Set();
   for (const [position, value] of entries.entries()) {
     const field = `subject index entries[${position}]`;
     const row = validateSubjectRow(value, field, { ...at, abstract: true });
+    if (seen.has(row.id)) fail(`${field} repeats a result already on this page`);
+    seen.add(row.id);
     // Newest first, by the registration instant and then the identifier, which
     // is the order `selection.latest_entries` puts them in. The timestamps are
     // fixed-width UTC, so comparing them as text is comparing the moments.
@@ -928,17 +958,18 @@ export function validateSubjectPage(value, kind, code, day, page) {
     fail("subject page identity does not match its URL");
   }
   let previousId = "";
-  let previousVersion = 0;
   const rows = [];
   for (const [position, value] of array(document.entries, "subject page entries").entries()) {
     const field = `subject page entries[${position}]`;
     const row = validateSubjectRow(value, field, { ...at, abstract: false });
     pagedHere(row.id, day, page, field);
-    if (row.id < previousId || (row.id === previousId && row.version <= previousVersion)) {
-      fail("subject page entries are not in increasing identity and version order");
+    // Increasing, and strictly: one current version per result means a code's
+    // page never carries a result twice, so an identifier repeated here is two
+    // versions of one result presented as two results.
+    if (row.id <= previousId) {
+      fail("subject page entries are not in increasing identity order");
     }
     previousId = row.id;
-    previousVersion = row.version;
     rows.push(row);
   }
   return { ...document, entries: rows };

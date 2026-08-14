@@ -124,7 +124,9 @@ function subjectPage(overrides = {}) {
 }
 
 test("a subject route refuses a scheme or code it was never going to request", async () => {
-  for (const search of ["kind=feeds&code=math.CO", "kind=arxiv", "code=math.CO"]) {
+  const overlong = `code=${"a".repeat(33)}`;
+  for (const search of ["kind=feeds&code=math.CO", "kind=arxiv", "code=math.CO",
+    `kind=arxiv&${overlong}`]) {
     const view = pageDocument();
     await renderSubjectPage({
       params: new URLSearchParams(search),
@@ -199,19 +201,59 @@ test("the archive walk skips what is shown, keeps its order, and stops at the en
   assert.equal(page.view.nodes.get("#subject-more-status").textContent, "");
 });
 
-test("an archive whose pages hold fewer rows than its head claims still ends", async () => {
-  // The counts and the pages are written by the same publisher and should
-  // agree. If they ever do not, the reader must not be left with a button that
-  // can never do anything and says so once per click forever.
+test("a day inside the advertised range may be absent, and is read as empty", async () => {
+  // A page range is inclusive of its ends, not of everything between them. A
+  // code's pages are seeded by the results ever classified under it, and those
+  // serials have gaps, so a code holding serial 5 and serial 405 of one day has
+  // pages 1 and 3 and no page 2 while its day row still says 1 to 3.
   const page = subjectPage();
-  page.fixture.head.versions = 9;
-  page.fixture.head.results = 9;
+  const older = page.fixture.pages.get("2026-06-01:1");
+  page.fixture.year.days[0] = {
+    day: "2026-06-01",
+    first_page: 1,
+    last_page: 3,
+    results: 2,
+    versions: 2,
+  };
+  page.fixture.pages.delete("2026-06-01:1");
+  page.fixture.pages.set("2026-06-01:3", { ...older, page: 3 });
+  page.settings.loadSubjectPage = async (_kind, _code, day, number) => {
+    const document = page.fixture.pages.get(`${day}:${number}`);
+    if (!document) {
+      const error = new Error("404 Not Found");
+      error.status = 404;
+      throw error;
+    }
+    return document;
+  };
+
+  await renderSubjectPage(page.settings);
+  await page.view.nodes.get("#subject-more").click();
+  assert.deepEqual(page.shown.map((row) => row.id).slice(2), [
+    "PALOMAR-2026-06-01-000002",
+    "PALOMAR-2026-06-01-000001",
+  ]);
+  assert.equal(page.view.nodes.get("#subject-more-status").textContent, "");
+});
+
+test("a day that serves fewer rows than it lists is a failure, not a short listing", async () => {
+  // The one thing "absent means empty" must not be allowed to hide. A day whose
+  // pages have gone missing looks exactly like a day whose pages were never
+  // written, and the difference is the day's own declared totals.
+  const page = subjectPage();
+  const older = page.fixture.pages.get("2026-06-01:1");
+  page.fixture.pages.set("2026-06-01:1", { ...older, entries: older.entries.slice(0, 1) });
+
   await renderSubjectPage(page.settings);
   const more = page.view.nodes.get("#subject-more");
-
   await more.click();
-  assert.equal(page.shown.length, 4);
-  assert.equal(more.hidden, true, "an exhausted archive must retire its own control");
+
+  assert.match(
+    page.view.nodes.get("#subject-more-status").textContent,
+    /2026-06-01 serves 1 of the 2 results it lists/,
+  );
+  assert.equal(page.shown.length, 2, "a day that does not reconcile must not be half-shown");
+  assert.equal(more.hidden, false, "a day that failed is still a day to read");
 });
 
 test("a failed archive read keeps the page it has and does not step over the day", async () => {

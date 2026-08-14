@@ -82,19 +82,55 @@ function createArchiveWalk({ years, loadYear, loadPage }) {
     for (let read = 0; read < MAX_DAYS_PER_STEP && rows.length === 0; read += 1) {
       const day = await currentDay();
       if (day === null) return { rows, exhausted: true };
-      if (day.versions !== 0) {
-        const found = [];
-        for (let page = day.last_page; page >= day.first_page; page -= 1) {
-          const loaded = await loadPage(day.day, page);
-          for (const row of [...loaded.entries].reverse()) {
-            if (!seen.has(rowKey(row))) found.push(row);
-          }
-        }
-        rows.push(...found);
-      }
+      if (day.versions !== 0) rows.push(...await readDay(day, seen));
       dayIndex += 1;
     }
     return { rows, exhausted: atEnd() };
+  }
+
+  /**
+   * One day of a code, read whole and reconciled against what it claims.
+   *
+   * A page range is inclusive of its ends and not of everything between them.
+   * A code's pages are seeded by the results ever classified under it, and
+   * those serials have gaps, so a code holding serial 5 and serial 405 of one
+   * day has pages 1 and 3 and no page 2 -- while the day row still says 1 to 3,
+   * because that is the interval its pages span. An absent page inside the
+   * range is therefore an ordinary answer.
+   *
+   * Which is exactly why the counts are checked here. "Absent means empty" and
+   * "absent means broken" look identical from one request, so the day's own
+   * declared totals are what tells them apart: a day that serves fewer rows
+   * than it says it has is a contract failure, and saying so is better than a
+   * listing that quietly stops short of what its heading promises.
+   */
+  async function readDay(day, seen) {
+    const found = [];
+    const identifiers = new Set();
+    let rows = 0;
+    for (let page = day.last_page; page >= day.first_page; page -= 1) {
+      const loaded = await emptyIfAbsent(() => loadPage(day.day, page));
+      rows += loaded.length;
+      for (const row of [...loaded].reverse()) {
+        identifiers.add(row.id);
+        if (!seen.has(rowKey(row))) found.push(row);
+      }
+    }
+    if (rows !== day.versions || identifiers.size !== day.results) {
+      throw new Error(
+        `${day.day} serves ${rows} of the ${day.versions} results it lists`,
+      );
+    }
+    return found;
+  }
+
+  async function emptyIfAbsent(read) {
+    try {
+      return (await read()).entries;
+    } catch (error) {
+      if (error.status === 404) return [];
+      throw error;
+    }
   }
 
   return { next };
@@ -122,51 +158,78 @@ export async function renderSubjectPage({
   const more = document.querySelector("#subject-more");
   const moreStatus = document.querySelector("#subject-more-status");
   const kind = params.get("kind");
-  const code = (params.get("code") || "").slice(0, CODE_PARAMETER_LIMIT);
-  if (!SUBJECT_KINDS.has(kind) || !code) {
+  const code = params.get("code") || "";
+  // Refused at its length rather than cut down to it. A code is not free text,
+  // and a truncated one is a different code: it would be looked up, and
+  // reported back, as something the reader never asked for.
+  if (!SUBJECT_KINDS.has(kind) || !code || code.length > CODE_PARAMETER_LIMIT) {
     status.textContent = "This subject link has a missing or invalid classification scheme or code.";
     status.classList.add("error");
     return;
   }
 
+  const seen = new Set();
   let head;
   try {
     head = await loadSubjectHead(kind, code);
+    renderHeading(kind, code, head, content);
+    const show = (rows) => {
+      for (const row of rows) seen.add(rowKey(row));
+      renderRows(rows, content);
+    };
+    show(head.entries);
+    if (!head.entries.length) {
+      // Published, and empty. A code whose last classifier was superseded or
+      // withdrawn keeps answering rather than starting to 404 at a URL somebody
+      // has linked, so this is what that answer looks like.
+      content.append(emptyNotice(document, code));
+    }
+    bindArchive({
+      code,
+      head,
+      kind,
+      loadSubjectPage,
+      loadSubjectYear,
+      more,
+      moreStatus,
+      seen,
+      show,
+    });
   } catch (error) {
     // A code the registry has never used has no document, and that is an
     // answer rather than a fault: every code it has ever used keeps one.
+    // Composing the page is inside this too, so a row the reader's browser
+    // cannot draw says so here instead of leaving the page reading for ever.
     status.textContent = error.status === 404
       ? `No result has ever been classified ${code}.`
       : `This subject could not be loaded: ${error.message}`;
     status.classList.add("error");
     return;
   }
-
-  renderHeading(kind, code, head, content);
-  const seen = new Set();
-  const show = (rows) => {
-    for (const row of rows) seen.add(rowKey(row));
-    renderRows(rows, content);
-  };
-  show(head.entries);
-  if (!head.entries.length) {
-    // Published, and empty. A code whose last classifier was superseded or
-    // withdrawn keeps answering rather than starting to 404 at a URL somebody
-    // has linked, so this is what that answer looks like.
-    content.append(emptyNotice(document, code));
-  }
   status.hidden = true;
   content.hidden = false;
+}
 
+function bindArchive({
+  code,
+  head,
+  kind,
+  loadSubjectPage,
+  loadSubjectYear,
+  more,
+  moreStatus,
+  seen,
+  show,
+}) {
   const walk = createArchiveWalk({
     years: head.years,
     loadYear: (year) => loadSubjectYear(kind, code, year),
     loadPage: (day, page) => loadSubjectPage(kind, code, day, page),
   });
-  // Exhaustion is the archive's own answer, and the count is the head's. A
-  // reader is offered the button only while both still expect a row: a code
-  // whose pages hold fewer rows than its head claims would otherwise leave a
-  // control that could never do anything, and say so once per click forever.
+  // Two ways to be finished, and a reader is offered the button only while
+  // neither has happened: the head's count is met, or the archive says it has
+  // no more days. Either alone would leave a control that can never do
+  // anything and says so once per click for ever.
   let exhausted = head.years.length === 0;
   const updateMore = () => {
     more.hidden = exhausted || seen.size >= head.versions;

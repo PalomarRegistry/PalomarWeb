@@ -250,10 +250,15 @@ export async function publicDataState(
       const current = entries.at(-1);
       currentByPath.set(current.path, current);
     }
+    // Every code any current version carries, not only the codes of the newest
+    // two hundred. A result outside `recent.json` links to its subject page
+    // from its own entry page, and a health check that never asked for that
+    // document would not notice it had stopped being served.
     const codes = new Map();
-    for (const summary of recent.entries) {
-      for (const code of summary.classification.arxiv) codes.set(`arxiv/${code}`, ["arxiv", code]);
-      for (const code of summary.classification.msc2020) codes.set(`msc/${code}`, ["msc", code]);
+    for (const path of currentByPath.keys()) {
+      const { arxiv, msc2020 } = entriesByPath.get(path).classification;
+      for (const code of arxiv) codes.set(`arxiv/${code}`, ["arxiv", code]);
+      for (const code of msc2020) codes.set(`msc/${code}`, ["msc", code]);
     }
     await mapBounded([...codes.values()], async ([kind, code]) => {
       const head = validators.validateSubjectHead(
@@ -266,10 +271,20 @@ export async function publicDataState(
         if (!current || current.version !== row.version || current.title !== row.title) {
           throw new Error(`subject ${kind}/${code} names ${row.path}, which is not a current version`);
         }
-        const declared = entriesByPath.get(row.path).classification;
+        // Every field the subject page shows, against the record it claims to
+        // be showing. A row that reads correctly and says something its record
+        // does not is the failure this surface can still have: the abstract and
+        // the sibling codes are rendered, and the instant is what orders them.
+        const entry = entriesByPath.get(row.path);
+        const declared = entry.classification;
         const carried = kind === "arxiv" ? declared.arxiv : declared.msc2020;
         if (!carried.includes(code)) {
           throw new Error(`subject ${kind}/${code} carries ${row.path}, whose record does not`);
+        }
+        if (row.published_at !== entry.registered_at || row.abstract !== entry.abstract ||
+            row.classification.arxiv.join(" ") !== declared.arxiv.join(" ") ||
+            row.classification.msc2020.join(" ") !== declared.msc2020.join(" ")) {
+          throw new Error(`subject ${kind}/${code} projects ${row.path} as something its record is not`);
         }
       }
       return head;

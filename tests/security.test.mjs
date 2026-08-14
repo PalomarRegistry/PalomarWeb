@@ -1253,10 +1253,34 @@ test("a subject document is refused unless it is about the code that was asked f
       "arxiv", "math.CO"),
     /are not newest first/,
   );
+  // The front page is the whole of the code or the publisher's cap on it, and
+  // every row is one current version of a distinct result.
   assert.throws(
-    () => validateSubjectHead({ ...head, entries: Array.from({ length: 51 }, () => front) },
-      "arxiv", "math.CO"),
-    /carries more rows than it may/,
+    () => validateSubjectHead({ ...head, entries: [front] }, "arxiv", "math.CO"),
+    /does not carry the rows it says it has/,
+  );
+  assert.throws(
+    () => validateSubjectHead({ ...head, results: 1 }, "arxiv", "math.CO"),
+    /counts a result that is not one current version/,
+  );
+  assert.throws(
+    () => validateSubjectHead({ ...head, entries: [front, front] }, "arxiv", "math.CO"),
+    /repeats a result already on this page/,
+  );
+  assert.throws(
+    () => validateSubjectPage({ ...page, entries: [archived, archived] },
+      "arxiv", "math.CO", "2026-07-29", 1),
+    /not in increasing identity order/,
+  );
+  // A shape that is a grammar and not a moment. It reaches a date formatter,
+  // which throws on what it cannot format, so it is refused here instead.
+  assert.throws(
+    () => validateSubjectHead(
+      { ...head, entries: [subjectRow({ published_at: "2026-02-30T00:00:00Z" }), head.entries[1]] },
+      "arxiv",
+      "math.CO",
+    ),
+    /published_at is malformed/,
   );
   // The front page carries abstracts and the archive pages do not, and each is
   // refused the other's shape rather than tolerating both.

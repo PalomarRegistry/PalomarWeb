@@ -23,11 +23,15 @@ const registryValidators = {
 
 const CLASSIFICATION = { arxiv: ["math.CO"], msc2020: ["05C10"] };
 
-function subjectHead(kind, code, rows) {
+function subjectHead(kind, code, rows, registeredAt = "2026-08-08T12:00:00Z") {
   return {
     kind,
     code,
-    entries: rows.map((row) => ({ ...row, classification: CLASSIFICATION })),
+    entries: rows.map((row) => ({
+      ...row,
+      published_at: registeredAt,
+      classification: CLASSIFICATION,
+    })),
   };
 }
 
@@ -266,22 +270,31 @@ test("live-data health refuses a subject page naming what is not a current versi
   assert.match(state.reason, /which is not a current version/);
 });
 
-test("live-data health refuses a subject page carrying a code its record does not", async () => {
-  const fixture = oneEntryRegistry();
-  const responses = new Map(fixture.responses);
-  responses.set(`https://data.example/entries/${fixture.row.id}.json`, fixture.entry);
-  responses.set(`https://data.example/entries/${fixture.row.id}-v1.json`, {
-    ...fixture.entry,
-    classification: { arxiv: ["math.MG"], msc2020: ["05C10"] },
-  });
-  const state = await publicDataState(
-    "https://data.example",
-    responseFrom(responses),
-    registryValidators,
-  );
+test("live-data health refuses a subject row that is not the record it names", async () => {
+  // Every field the subject page draws is compared with the record behind it.
+  // A row that reads perfectly well and says something its record does not is
+  // the failure this surface can still have.
+  for (const [field, wrong] of [
+    ["published_at", "2026-08-08T23:59:59Z"],
+    ["abstract", "An abstract the record does not carry."],
+    ["classification", { arxiv: ["math.CO", "math.MG"], msc2020: ["05C10"] }],
+  ]) {
+    const fixture = oneEntryRegistry();
+    const responses = new Map(fixture.responses);
+    const head = subjectHead("arxiv", "math.CO", [fixture.row]);
+    responses.set("https://data.example/subjects/arxiv/math.CO.json", {
+      ...head,
+      entries: [{ ...head.entries[0], [field]: wrong }],
+    });
+    const state = await publicDataState(
+      "https://data.example",
+      responseFrom(responses),
+      registryValidators,
+    );
 
-  assert.equal(state.healthy, false);
-  assert.match(state.reason, /whose record does not/);
+    assert.equal(state.healthy, false, field);
+    assert.match(state.reason, /as something its record is not/);
+  }
 });
 
 test("live-data health fails closed when a version index omits or rewrites browse history", async () => {
