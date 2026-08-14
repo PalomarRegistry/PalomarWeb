@@ -866,9 +866,15 @@ test("About describes the current review and version contracts", async () => {
   assert.doesNotMatch(about, /durable-evidence schema \(version 5\)/);
   assert.match(about, /review-failed/);
   assert.match(about, /operational fault, not a decision/);
-  assert.match(about, /append-only canonical history/);
-  assert.match(about, /Moderator may exceptionally retract one exact version/);
+  assert.match(about, /canonical history, which is\s+append-only in ordinary operation/);
+  assert.match(about, /Moderator may exceptionally\s+retract one exact version/);
   assert.doesNotMatch(about, /registered record is never removed/);
+  // The append-only rule is Palomar's own, and About may not state it as
+  // though it outranked the law: an unqualified "permanent" would promise a
+  // submitter something the lawful-request process can override.
+  assert.match(about, /does not do is override a\s+legal obligation/);
+  assert.match(about, /href="privacy\.html#after-registration"/);
+  assert.doesNotMatch(about, /Registration is permanent/);
 });
 
 test("About publishes the three distinct governance rosters", async () => {
@@ -1033,7 +1039,9 @@ test("the favicon ships with the site and every page asks for it", async () => {
   assert.match(build, /"favicon\.svg"/);
   for (const name of htmlFiles) {
     const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
-    assert.match(html, /rel="icon" href="favicon\.svg"/, `${name} does not ask for the favicon`);
+    // 404.html asks for it from the root, because it is served at addresses
+    // that are not its own; the rest ask for it beside themselves.
+    assert.match(html, /rel="icon" href="\/?favicon\.svg"/, `${name} does not ask for the favicon`);
   }
   const icon = await readFile(new URL("../favicon.svg", import.meta.url), "utf8");
   // One flat colour per scheme, and nothing that a strict policy would refuse.

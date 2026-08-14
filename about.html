@@ -569,17 +569,19 @@
         </p>
         <h3 id="what-is-public">What is public, and what is not</h3>
         <p>
-          Public from the moment you submit: your repository, commit, declared
-          authorization relationship, and any approval evidence you provide.
-          Mechanical verification runs in a public GitHub Actions workflow, and
-          its logs are public. Whether you later register is inferable from the
-          registry.
+          Public from verification onward: your repository, your commit, and the
+          submission identifier. Mechanical verification runs in a public GitHub
+          Actions workflow, and its logs are public. That dispatch carries the
+          repository, the commit, the identifier and the paths you gave, and
+          nothing else you wrote. Whether you later register is inferable from
+          the registry.
         </p>
         <p>
-          Not public unless you register: the editorial review and the decision.
-          If a review goes badly, or you simply change your mind, withdrawing
-          leaves no public trace of either. The already-public verification run
-          remains.
+          Not public unless you register: the editorial review and the decision,
+          and the record itself, which carries your declared authorization
+          relationship and any approval evidence you wrote. If a review goes
+          badly, or you simply change your mind, withdrawing leaves no public
+          trace of any of it. The already-public verification run remains.
         </p>
         <p>
           Not published whichever you choose: your identity as submitter.
@@ -630,11 +632,15 @@
         <p>
           Nothing is registered until you ask for it. If the review is an
           acceptance, your status page offers two choices: register, or withdraw.
-          Registration is permanent: the record, the review, and your repository
-          and commit enter Palomar's append-only canonical history. A named
-          Moderator may exceptionally retract one exact version from the active
-          public registry; that does not delete or rewrite the canonical record,
-          and the public service retains a minimal tombstone. Acceptance is not
+          Registration is meant to be permanent: the record, the review, and
+          your repository and commit enter Palomar's canonical history, which is
+          append-only in ordinary operation. A named Moderator may exceptionally
+          retract one exact version from the active public registry; that does
+          not delete or rewrite the canonical record, and the public service
+          retains a minimal tombstone. What that rule does not do is override a
+          legal obligation Palomar is under, and the
+          <a href="privacy.html#after-registration">privacy policy</a> describes
+          the process by which one reaches the ledger. Acceptance is not
           registration; an accepted submission appears in the registry once the
           corresponding database pull request is merged.
         </p>

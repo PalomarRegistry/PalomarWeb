@@ -151,8 +151,13 @@ export async function buildSite({ output, version }) {
   for (const file of htmlFiles) {
     const target = path.join(destination, file);
     const source = await readFile(target, "utf8");
+    // Both spellings, because 404.html addresses its assets from the root: it
+    // is served for every unresolved address, so a relative href would resolve
+    // against the directory the reader was aiming at. An asset that escaped
+    // versioning here would be the one asset served from a stale cache.
     const versioned = source
       .replaceAll('href="assets/style.css"', `href="assets/style.css?v=${version}"`)
+      .replaceAll('href="/assets/style.css"', `href="/assets/style.css?v=${version}"`)
       .replaceAll('src="assets/about.js"', `src="assets/about.js?v=${version}"`)
       .replaceAll('src="assets/app.js"', `src="assets/app.js?v=${version}"`);
     await writeFile(target, versioned);

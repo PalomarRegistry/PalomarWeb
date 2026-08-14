@@ -104,8 +104,30 @@ test("every shipped page carries a footer link to the privacy policy", async () 
     assert.ok(footer, `${file} has no footer to carry the privacy link`);
     assert.match(
       footer,
-      /<a href="privacy\.html">Privacy<\/a>/,
+      /<a href="\/?privacy\.html">Privacy<\/a>/,
       `${file} does not link the privacy policy from its footer`,
     );
   }
+});
+
+// GitHub Pages answers every address it cannot resolve with this one file, so
+// it is read at `/entry/missing/thing` as readily as at `/404.html`. A relative
+// href there resolves against the directory the reader was aiming at: the
+// stylesheet becomes a second 404, and the two links out of the page land one
+// level up from home. Every local reference on this page must therefore be
+// root-absolute, and only this page has that requirement.
+test("404.html addresses everything from the site root", async () => {
+  const html = await readFile(new URL("../404.html", import.meta.url), "utf8");
+  const references = [...html.matchAll(/(?:href|src)="([^"]*)"/g)].map((match) => match[1]);
+  assert.ok(references.length >= 6, "404.html was expected to carry links and assets");
+  const relative = references.filter((reference) =>
+    !/^(?:https?:|mailto:|data:|#|\/)/.test(reference));
+  assert.deepEqual(
+    relative,
+    [],
+    `404.html has references that break when it answers a nested address: ${relative.join(", ")}`,
+  );
+  assert.match(html, /href="\/assets\/style\.css"/);
+  assert.match(html, /<a href="\/">Return to the registry<\/a>/);
+  assert.match(html, /<a href="\/privacy\.html">Privacy<\/a>/);
 });
