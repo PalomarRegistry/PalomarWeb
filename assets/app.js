@@ -472,10 +472,10 @@ async function renderIndex() {
     };
     applyCategoryParameter(arxiv, "arxiv", 32);
     applyCategoryParameter(msc, "msc", 5);
-    // A deep link that filters by subject is a request to act on it, so the
-    // hidden-until-opened controls are opened by the parameters that use them.
-    // The fallback selector keeps cached HTML from the previous deployment
-    // (which has no disclosure) working unchanged.
+    // The subject inputs are always on the toolbar now. Cached HTML from a
+    // previous deployment still keeps them behind a disclosure, so a deep link
+    // that filters by subject opens it there rather than leaving the page
+    // filtered by controls the reader cannot see.
     const advancedFilters = document.querySelector(".advanced-filters");
     if (advancedFilters && (params.has("arxiv") || params.has("msc"))) {
       advancedFilters.open = true;
