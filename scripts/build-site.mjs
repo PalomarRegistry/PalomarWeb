@@ -21,6 +21,7 @@ const browserModuleFiles = [
   "entry-pages.mjs",
   "formalization-presentation.mjs",
   "loading.mjs",
+  "presentation-text.mjs",
   "registry-loading.mjs",
   "rendering.js",
   "searching.mjs",
