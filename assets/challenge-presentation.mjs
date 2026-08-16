@@ -1,6 +1,7 @@
 import {
   challengeArtifactUrl,
   challengeMetadataUrl,
+  challengePlaygroundUrl,
   challengeSourceUrl,
   isInlineChallenge,
 } from "./rendering.js";
@@ -216,6 +217,22 @@ export function createChallengePresentation({ fetchJson, document, window, local
         ),
         "challenge-source",
       ),
+    );
+    if (entry.trust.level === "high") {
+      links.append(
+        " · ",
+        sourceLink(
+          "Open in Lean Playground",
+          availability,
+          (manifest) => challengePlaygroundUrl(
+            entry,
+            topSourceLocation(entry, manifest).repository,
+          ),
+          "challenge-playground",
+        ),
+      );
+    }
+    links.append(
       " · ",
       internalLink("Inspect statement dependencies", dependencyRecordUrl),
       " · ",

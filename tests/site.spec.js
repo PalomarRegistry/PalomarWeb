@@ -984,6 +984,14 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   );
   await expect(source).toHaveText("View full pinned statement file (Task.lean)");
   await expect(
+    page.getByRole("link", { name: "Open in Lean Playground" }),
+  ).toHaveAttribute(
+    "href",
+    `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2Fexample%2Fchallenge%2F${
+      "1".repeat(40)
+    }%2Fproject%2FComparator%2FTask.lean`,
+  );
+  await expect(
     page.getByRole("link", { name: "Inspect statement dependencies" }),
   ).toHaveAttribute("href", /#statement-dependencies$/);
   await expect(
@@ -1116,6 +1124,7 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   await expect(page.locator("#statement-dependencies")).toContainText(
     "TauCetiProject/TauCeti",
   );
+  await expect(page.getByRole("link", { name: "Open in Lean Playground" })).toHaveCount(0);
   await expect(page.locator(".challenge-presentation iframe")).toHaveCount(0);
   await expect(page.locator(".challenge-fallback")).toBeVisible();
   await expect(page.locator(".challenge-fallback")).toContainText(

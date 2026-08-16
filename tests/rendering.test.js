@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   challengeArtifactUrl,
   challengeMetadataUrl,
+  challengePlaygroundUrl,
   challengeSourceUrl,
   isInlineChallenge,
   renderArtifactUrl,
@@ -135,4 +136,22 @@ test("source URL is always the immutable canonical GitHub file", () => {
   const controlCharacter = entry();
   controlCharacter.formalization.challenge_path = "project/Task\n.lean";
   assert.throws(() => challengeSourceUrl(controlCharacter), /canonical/);
+});
+
+test("playground URL loads the immutable source through Lean Web", () => {
+  assert.equal(
+    challengePlaygroundUrl(entry()).href,
+    `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2Fexample%2Fchallenge%2F${
+      "1".repeat(40)
+    }%2FChallenge.lean`,
+  );
+
+  const nested = entry();
+  nested.formalization.challenge_path = "project/Comparator/Task.lean";
+  assert.equal(
+    challengePlaygroundUrl(nested, "PalomarArchive/challenge").href,
+    `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2FPalomarArchive%2Fchallenge%2F${
+      "1".repeat(40)
+    }%2Fproject%2FComparator%2FTask.lean`,
+  );
 });

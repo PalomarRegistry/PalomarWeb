@@ -51,6 +51,32 @@ export function challengeSourceUrl(entry, repositoryOverride = null) {
 }
 
 /**
+ * Open a Mathlib-only Challenge in Lean Web from the same immutable source
+ * revision used by Palomar's statement link.
+ *
+ * Lean Web accepts a source URL in its `url` hash argument. Give it the raw
+ * GitHub URL directly: its convenience conversion for ordinary GitHub blob
+ * links treats the revision as a branch name, which does not work for the
+ * commit-pinned links Palomar publishes.
+ */
+export function challengePlaygroundUrl(entry, repositoryOverride = null) {
+  const source = new URL(challengeSourceUrl(entry, repositoryOverride));
+  const blobPrefix = `/${repositoryOverride || entry.source.repository}/blob/`;
+  if (source.hostname !== "github.com" || !source.pathname.startsWith(blobPrefix)) {
+    throw new Error("entry has invalid canonical Challenge playground metadata");
+  }
+  const rawSource = new URL(source);
+  rawSource.hostname = "raw.githubusercontent.com";
+  rawSource.pathname = `/${repositoryOverride || entry.source.repository}/${
+    source.pathname.slice(blobPrefix.length)
+  }`;
+
+  const playground = new URL("https://live.lean-lang.org/");
+  playground.hash = new URLSearchParams({ url: rawSource.href }).toString();
+  return playground;
+}
+
+/**
  * Where one result's Verso rendering is served, from its content address.
  *
  * The path a record carries is derivable from exactly these three, and the

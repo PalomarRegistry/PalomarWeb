@@ -151,6 +151,11 @@ test("an inline presentation keeps links confined and accepts height only from i
     source.href,
     `https://github.com/example/challenge/blob/${record.source.commit}/Challenge.lean`,
   );
+  const [playground] = byClass(result.section, "challenge-playground");
+  assert.equal(
+    playground.href,
+    `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2Fexample%2Fchallenge%2F${record.source.commit}%2FChallenge.lean`,
+  );
 
   const [onMessage] = browser.listeners.get("message");
   onMessage({ source: {}, data: { type: "palomar-render-height", height: 500 } });
@@ -187,8 +192,10 @@ test("late availability updates statement source controls in place", async () =>
   );
   const [source] = byClass(result.section, "challenge-source");
   const [comparator] = byClass(result.section, "comparator-source");
+  const [playground] = byClass(result.section, "challenge-playground");
   assert.match(source.href, /github\.com\/example\/challenge\/blob\//);
   assert.match(comparator.href, /github\.com\/example\/challenge\/blob\//);
+  assert.match(playground.href, /raw\.githubusercontent\.com%2Fexample%2Fchallenge%2F/);
 
   const checkedAt = new Date(Math.floor(Date.now() / 1_000) * 1_000)
     .toISOString()
@@ -204,6 +211,25 @@ test("late availability updates statement source controls in place", async () =>
     comparator.href,
     /github\.com\/PalomarArchive\/example--challenge--fixture\/blob\//,
   );
+  assert.match(
+    playground.href,
+    /raw\.githubusercontent\.com%2FPalomarArchive%2Fexample--challenge--fixture%2F/,
+  );
+});
+
+test("qualified entries do not offer the Mathlib playground", async () => {
+  const browser = fakeBrowser();
+  const record = acceptedEntry();
+  record.trust.level = "qualified";
+  const present = createChallengePresentation({
+    ...browser,
+    fetchJson: async () => renderMetadata(),
+    localPageUrl: () => new URL("http://127.0.0.1:4173/entry.html"),
+  });
+
+  const result = await present(record, new URL("http://127.0.0.1:4173/database/"));
+
+  assert.equal(byClass(result.section, "challenge-playground").length, 0);
 });
 
 test("a missing large entry render keeps its source controls and uses the missing-artifact fallback", async () => {
