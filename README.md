@@ -125,7 +125,8 @@ matches its manifest observations, resolves repository locations, publishes the
 progressive entry result, and decorates existing source controls,
 `entry-pages.mjs` owns entry-route input and page-state
 transitions, `challenge-presentation.mjs` owns the named-declarations artifact's
-entry correspondence and presentation states, `formalization-presentation.mjs`
+entry correspondence, source and Mathlib playground controls, and presentation
+states, `formalization-presentation.mjs`
 owns statement trust labels and the statement/proof dependency presentation,
 `entry-history-presentation.mjs` owns the entry page's canonical link,
 supersession notice, and immutable version-history section;
