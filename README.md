@@ -52,10 +52,8 @@ ever used keeps answering after its last classifier is superseded, so an empty
 page is an answer and not a 404.
 
 The toolbar also filters the rows the landing page holds by text or trust, with
-the arXiv and MSC2020 subject inputs tucked behind a "Subject filters"
-disclosure until a deep link such as `?arxiv=math.AG` opens it; the opened
-inputs take room in the toolbar rather than floating over the rows below. The
-classification fields suggest codes represented by those rows but also accept
+the arXiv and MSC2020 subject inputs on its line, at its right edge, and a deep
+link such as `?arxiv=math.AG` fills them in. The classification fields suggest codes represented by those rows but also accept
 any exact code, so such a deep link produces a useful empty result even before
 that classification has an entry. That filter is over `recent.json`, which is
 the newest 200 current versions and not the registry, so it narrows what is on
