@@ -43,16 +43,16 @@ function entry(overrides = {}) {
   return Object.assign(value, overrides);
 }
 
-test("inline policy includes both size limits and exactly one declaration", () => {
+test("inline policy is based only on the statement line count", () => {
   assert.equal(isInlineChallenge(entry()), true);
   assert.equal(isInlineChallenge(entry({ trust: { challenge_lines: 101, challenge_bytes: 1 } })), false);
   assert.equal(
     isInlineChallenge(entry({ trust: { challenge_lines: 1, challenge_bytes: 32 * 1024 + 1 } })),
-    false,
+    true,
   );
   const two = entry();
   two.formalization.definition_names.push("Example.definition");
-  assert.equal(isInlineChallenge(two), false);
+  assert.equal(isInlineChallenge(two), true);
 });
 
 test("artifact URL is derived only from the content-addressed registry fields", () => {

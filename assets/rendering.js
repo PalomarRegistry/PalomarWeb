@@ -1,5 +1,4 @@
 export const INLINE_CHALLENGE_MAX_LINES = 100;
-export const INLINE_CHALLENGE_MAX_BYTES = 32 * 1024;
 
 // A constant of the render format rather than a field to read. A record still
 // declares it, and is refused below if it declares anything else.
@@ -11,19 +10,11 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 export function isInlineChallenge(entry) {
-  const formalization = entry?.formalization;
   const trust = entry?.trust;
-  const theoremNames = formalization?.theorem_names;
-  const definitionNames = formalization?.definition_names;
-  if (!Array.isArray(theoremNames) || !Array.isArray(definitionNames)) return false;
   return (
-    theoremNames.length + definitionNames.length === 1 &&
     Number.isInteger(trust?.challenge_lines) &&
     trust.challenge_lines >= 0 &&
-    trust.challenge_lines <= INLINE_CHALLENGE_MAX_LINES &&
-    Number.isInteger(trust?.challenge_bytes) &&
-    trust.challenge_bytes >= 0 &&
-    trust.challenge_bytes <= INLINE_CHALLENGE_MAX_BYTES
+    trust.challenge_lines <= INLINE_CHALLENGE_MAX_LINES
   );
 }
 
