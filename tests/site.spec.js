@@ -1094,7 +1094,9 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
       return bounds.top >= 0 && bounds.bottom <= window.innerHeight;
     });
   }).toBe(true);
-  await expect(rendered.locator("#theorem-end")).toBeInViewport();
+  // The poll above checks the frame's viewport directly. Playwright's
+  // toBeInViewport also intersects that with the parent page's viewport,
+  // coupling this assertion to how many lines of controls precede the frame.
 });
 
 test("a missing formatted Challenge leaves the accepted entry and pinned source usable", async ({ page }) => {
