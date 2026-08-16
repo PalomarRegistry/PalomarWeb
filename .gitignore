@@ -5,3 +5,4 @@ playwright-report/
 test-results/
 .site/
 .site-test-*/
+__pycache__/

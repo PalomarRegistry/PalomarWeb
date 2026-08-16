@@ -20,6 +20,32 @@ function fileAtPreviousDeployment(path) {
 }
 
 /**
+ * Ask the registry a deliberate question and do not wait out the typing pause.
+ *
+ * The value is set rather than typed on purpose. Typing schedules the debounced
+ * search, which would race the Enter below and make the request counts these
+ * tests assert on depend on how fast the machine is. Enter is still a real key
+ * press, because the form no longer has a button and that is the only way in.
+ * The tests that cover typing itself type.
+ */
+async function startSearch(page, query) {
+  await page.locator("#query").evaluate((input, value) => { input.value = value; }, query);
+  await page.locator("#query").press("Enter");
+}
+
+/**
+ * Ask, and wait until the registry rather than the page has answered.
+ *
+ * While a search runs the page stands in the entries it already holds, drawn
+ * exactly like the cards that will replace them. Counting cards therefore
+ * cannot tell the two apart, and the spinner is what can.
+ */
+async function runSearch(page, query) {
+  await startSearch(page, query);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+}
+
+/**
  * Which entry schema the previous deployment's validator would accept.
  *
  * Cached JavaScript can only be compatible with records it can read. When the
@@ -57,6 +83,25 @@ test("the registry follows the browser's light and dark preference", async ({ pa
     "background-color", "rgb(232, 232, 232)",
   );
   await expect(page.locator(".filter.active")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+});
+
+test("the render frame lands on the same paper as the page around it", async ({ page }) => {
+  // The framed render is a separate document on a separate origin, so the page
+  // cannot reach in and theme it, and does not try: the frame reads
+  // prefers-color-scheme itself. That only looks right if the two palettes
+  // agree, which is what is asserted on both sides of the boundary here.
+  const paper = { dark: "rgb(16, 18, 22)", light: "rgb(255, 255, 255)" };
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto(`/render.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+  const frame = page.locator(".challenge-presentation iframe");
+  for (const scheme of ["dark", "light"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await expect(page.locator("html")).toHaveCSS("background-color", paper[scheme]);
+    await expect(frame).toHaveCSS("background-color", paper[scheme]);
+    await expect(
+      page.frameLocator(".challenge-presentation iframe").locator("body"),
+    ).toHaveCSS("background-color", paper[scheme]);
+  }
 });
 
 test("about headings expose hoverable links that copy their section URL", async ({ context, page }) => {
@@ -171,6 +216,21 @@ test("landing cards show the registration date and dated identifier", async ({ p
   expect(dynamicRequests).toHaveLength(2);
 });
 
+test("card metadata is on the card, not behind a toggle", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").first();
+
+  // Titles in this registry are repository names, so the authors and the
+  // theorem are what make a row identifiable while scanning the list. They
+  // are read without opening anything, and there is nothing to open.
+  await expect(card.locator(".card-meta")).toBeVisible();
+  await expect(card.locator(".card-meta")).toContainText("Example");
+  await expect(card.locator(".card-meta")).toContainText("Example.theorem");
+  await expect(card.locator(".card-subjects")).toContainText("math.CO");
+  await expect(card.locator(".card-project")).toContainText("Project directory");
+  await expect(card.locator("details")).toHaveCount(0);
+});
+
 test("landing cards preserve the publisher's newest-first order", async ({ page }) => {
   const registeredAt = new Map([
     ["PALOMAR-2026-07-29-000124", "2026-07-29T23:00:00Z"],
@@ -250,6 +310,8 @@ test("an unavailable recent summary reports failure instead of emptiness", async
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
+  await expect(page.locator("#arxiv-query")).toBeVisible();
+  await expect(page.locator("#msc-query")).toBeVisible();
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
   await expect(page.locator('#msc-options option[value="05C10"]')).toHaveCount(1);
 
@@ -269,6 +331,7 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
 
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
+  await expect(page.locator("#arxiv-query")).toBeVisible();
   await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
@@ -319,16 +382,21 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   await expect(page.locator(".entry-classification")).toContainText("math.CO");
   await expect(page.locator(".entry-classification")).toContainText("05C10");
   // A classification is a way to find the neighbours, so the code itself is
-  // the link, and it goes to the entries that share it. The feeds it used to
-  // link to were never published, so every one of them was a 404.
+  // the link, and it goes to the subject page for it: every current version
+  // carrying the code, not the handful the landing page happens to hold. The
+  // feeds it used to link to were never published, so every one was a 404.
   await expect(page.locator(".entry-classification").getByRole("link", { name: "RSS" })).toHaveCount(0);
   const mscLink = page.locator(".entry-classification .category-link", { hasText: "05C10" });
-  await expect(mscLink).toHaveAttribute("href", /index\.html\?msc=05C10/);
+  await expect(mscLink).toHaveAttribute("href", /subject\.html\?kind=msc&code=05C10/);
   await expect(
     page.locator(".entry-classification .category-link", { hasText: "math.CO" }),
-  ).toHaveAttribute("href", /index\.html\?arxiv=math\.CO/);
-  // And a code nobody can read is glossed with what it means.
+  ).toHaveAttribute("href", /subject\.html\?kind=arxiv&code=math\.CO/);
+  // And a code nobody can read is glossed with what it means, in both
+  // taxonomies: math.MG does not announce itself as metric geometry either.
   await expect(mscLink).toHaveAttribute("title", /05C10 — .+/);
+  await expect(
+    page.locator(".entry-classification .category-link", { hasText: "math.CO" }),
+  ).toHaveAttribute("title", "math.CO — Combinatorics");
   await expect(page).toHaveURL(/entry\.html\?id=PALOMAR-2026-07-29-000123&version=2&database=/);
   await expect(page).toHaveURL(/#version-history$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -365,14 +433,79 @@ test("an entry answers its reader's first three questions first", async ({ page 
 
   // The dependencies are further down this page, so following the link scrolls
   // rather than loading anything. (The href is absolute either way, so what is
-  // worth asserting is where it lands.)
+  // worth asserting is where it lands.) The dense sections start collapsed, so
+  // the fragment link has to open the section before the browser scrolls to it.
+  await expect(page.locator("#statement-dependencies .section-collapse")).not.toHaveAttribute(
+    "open",
+    "",
+  );
   const before = page.url();
   await page
     .locator(".challenge-links")
     .getByRole("link", { name: "Inspect statement dependencies" })
     .click();
   await expect(page.locator("#statement-dependencies")).toBeInViewport();
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute(
+    "open",
+    "",
+  );
   expect(page.url().split("#")[0]).toBe(before.split("#")[0]);
+});
+
+test("a hash that arrives without a click still opens its section", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator("#statement-dependencies")).toBeVisible();
+  await expect(page.locator("#statement-dependencies .section-collapse")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+
+  // What the address bar and the history buttons do: the fragment changes on a
+  // page that is already loaded, with no link to intercept.
+  await page.evaluate(() => {
+    window.location.hash = "#statement-dependencies";
+  });
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute(
+    "open",
+    "",
+  );
+  await expect(page.locator("#statement-dependencies")).toBeInViewport();
+});
+
+test("the licence caveat travels with the licence evidence it qualifies", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const collapse = page.locator(".entry-evidence .section-collapse");
+
+  // A page that says this licence evidence covers the snapshot only, while the
+  // licence row is folded away, is a caveat about nothing on the page.
+  await expect(collapse).toBeVisible();
+  await expect(collapse.locator(".licence-boundary")).toHaveCount(1);
+  await expect(page.locator(".licence-boundary")).toBeHidden();
+
+  await collapse.locator("summary").click();
+  await expect(collapse).toHaveAttribute("open", "");
+  await expect(page.locator(".licence-boundary")).toBeVisible();
+  await expect(collapse.locator("dl.details")).toContainText("Repository licence");
+});
+
+test("the subject filters share the toolbar's line, ending at its right edge", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card").first();
+
+  const toolbar = await page.locator(".toolbar").boundingBox();
+  const trust = await page.locator(".filters").boundingBox();
+  const inputs = await page.locator(".category-filters").boundingBox();
+  const listed = await card.boundingBox();
+
+  // One line: the subject inputs start after the trust filters end, and their
+  // vertical centres agree.
+  expect(inputs.x).toBeGreaterThan(trust.x + trust.width);
+  expect(Math.abs((inputs.y + inputs.height / 2) - (trust.y + trust.height / 2)))
+    .toBeLessThan(4);
+  // Justified right, and still clear of the list below.
+  expect(Math.abs((inputs.x + inputs.width) - (toolbar.x + toolbar.width)))
+    .toBeLessThan(16);
+  expect(inputs.y + inputs.height).toBeLessThanOrEqual(listed.y);
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
@@ -399,7 +532,7 @@ test("a thin wrapper says where the mathematics is before anything else", async 
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   const rows = page.locator(".entry-provenance .provenance-details .detail-row dt");
   await expect(rows.first()).toHaveText("Substantive formalization");
-  await expect(page.getByRole("link", { name: `${repository}@${commit.slice(0, 12)}` }))
+  await expect(page.getByRole("link", { name: `${repository}@${commit.slice(0, 12)}`, includeHidden: true }))
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
@@ -518,6 +651,7 @@ test("a missing original automatically switches source links to the Palomar copy
     "href",
     /github\.com\/PalomarArchive\/example--challenge\/blob\/1{40}\/project\/Comparator\/Task\.lean$/,
   );
+  await page.locator(".entry-solution .section-collapse > summary").click();
   await page.locator("details.solution-dependencies > summary").click();
   await expect(page.getByRole("link", { name: "example/dependency (Palomar copy)" })).toHaveAttribute(
     "href",
@@ -631,9 +765,9 @@ test("a card says the original is unavailable exactly when the manifest says so"
   const card = page.locator(".entry-card").first();
   await expect(card).toHaveCount(1);
   await availabilityRequested;
-  await page.locator("#search").fill("000123");
+  await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-  await page.locator("#search").evaluate((input) => input.focus());
+  await page.locator("#arxiv-query").evaluate((input) => input.focus());
   await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
   // Cards and filters are usable while availability is still pending.
   await expect(card.locator(".repo-link")).toHaveText("example/challenge");
@@ -641,8 +775,8 @@ test("a card says the original is unavailable exactly when the manifest says so"
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
-  await expect(page.locator("#search")).toBeFocused();
-  await expect(page.locator("#search")).toHaveValue("000123");
+  await expect(page.locator("#arxiv-query")).toBeFocused();
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 
   await page.goto(`/?database=${database}`);
@@ -714,7 +848,7 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
   const fullRecord = page.locator(".entry-evidence .detail-row", {
     has: page.getByText("Full registry record", { exact: true }),
   });
-  await expect(fullRecord.getByRole("link")).toHaveText(
+  await expect(fullRecord.getByRole("link", { includeHidden: true })).toHaveText(
     "PALOMAR-2026-07-29-000123-v1.json",
   );
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
@@ -744,7 +878,7 @@ test("entries display repository licence evidence and its boundary", async ({ pa
   // One row, not four: the licence, the file, and the digest. Declared and
   // detected are the same fact when they agree, which is the ordinary case.
   await expect(evidence).toContainText("Repository licence");
-  await expect(evidence.getByRole("link", { name: "LICENSE.md" })).toHaveAttribute(
+  await expect(evidence.getByRole("link", { name: "LICENSE.md", includeHidden: true })).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/LICENSE.md`,
   );
@@ -903,9 +1037,9 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   });
   await expect(editorialAssurance.locator("code")).toHaveText("Challenge.lean");
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
-  await expect(page.getByText("Verification workflow commit")).toBeVisible();
+  await expect(page.locator(".entry-evidence")).toContainText("Verification workflow commit");
   await expect(page.getByRole("link", { name: "Archived editorial review" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean" }).first()).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean", includeHidden: true }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Answer.lean`,
   );
@@ -926,15 +1060,27 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".entry-evidence")).toContainText("Project directory");
   await expect(page.locator(".entry-evidence")).toContainText("project");
   await expect(page.locator(".entry-solution .token-list code")).toHaveText("ExampleDependency");
+  await page.locator(".entry-solution .section-collapse > summary").click();
   await page.locator(".solution-dependencies summary").click();
   await expect(page.locator(".dependency-list")).toContainText("example/dependency");
   await expect(page.getByRole("link", { name: "shared" })).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/tree/${"1".repeat(40)}/shared`,
   );
-  await iframe.hover();
-  await page.mouse.wheel(0, 2000);
-  await expect.poll(() => rendered.locator("html").evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  // A wheel is hit-tested against the compositor's last committed frame, so
+  // one sent immediately after hover() has scrolled the frame into view can
+  // still be aimed at where the page used to be and scroll the page instead:
+  // the frame stays at 0 and never moves again, because nothing sends a
+  // second wheel. Re-aim and send until the frame's own document moves. What
+  // is being asserted is that a wheel over the frame scrolls the frame rather
+  // than the page around it, not how many events that takes. Chromium latches
+  // a wheel gesture to one scroller, so the frame absorbs the whole of the
+  // wheel that reaches it and stops at its own end.
+  await expect.poll(async () => {
+    await iframe.hover();
+    await page.mouse.wheel(0, 2000);
+    return rendered.locator("html").evaluate((node) => node.scrollTop);
+  }).toBeGreaterThan(0);
   await expect(rendered.locator("#theorem-end")).toBeInViewport();
 });
 
@@ -991,9 +1137,6 @@ test("qualified statement and proof dependencies retain their distinct presentat
   const statement = page.locator("#statement-dependencies");
   await expect(statement.getByRole("heading", { name: "Depends on additional libraries" }))
     .toBeVisible();
-  await expect(statement.locator(".trust-badge")).toHaveText(
-    "Statement dependencies: additional libraries",
-  );
   await expect(statement.locator(".plain-list li")).toHaveText([
     "leanprover-community/mathlib4",
     "TauCetiProject/TauCeti",
@@ -1005,6 +1148,7 @@ test("qualified statement and proof dependencies retain their distinct presentat
   await expect(proof.locator(".solution-dependencies summary")).toHaveText(
     "1 project dependencies used by the proof",
   );
+  await proof.locator(".section-collapse > summary").click();
   await proof.locator(".solution-dependencies summary").click();
   await expect(proof.getByRole("link", { name: "example/dependency" })).toHaveAttribute(
     "href",
@@ -1105,6 +1249,111 @@ test("classification codes are spaced, and their descriptions are hovers", async
   expect(visible).not.toContain("Planar graphs");
 });
 
+test("a card's classifications are muted links, glossed on hover", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const card = page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000123" });
+  const arxiv = card.locator(".category-token", { hasText: "math.CO" });
+  const msc = card.locator(".category-token", { hasText: "MSC 05C10" });
+
+  // The whole registry under that code, not the two hundred rows this page
+  // happens to hold. Both taxonomies are glossed, so a row is not half live.
+  await expect(arxiv).toHaveAttribute("href", /subject\.html\?kind=arxiv&code=math\.CO/);
+  await expect(msc).toHaveAttribute("href", /subject\.html\?kind=msc&code=05C10/);
+  await expect(arxiv).toHaveAttribute("title", "math.CO — Combinatorics");
+  await expect(msc).toHaveAttribute("title", /^05C10 — Planar graphs/);
+  // The description is a hover, not a second line: a card has no room for it
+  // beside the code. It is still in the accessibility tree as text, because a
+  // title attribute alone reaches nobody who is not holding a mouse.
+  const visible = await card.evaluate((node) =>
+    [...node.querySelectorAll("*")]
+      .filter((child) => !child.classList.contains("visually-hidden"))
+      .filter((child) => child.children.length === 0)
+      .map((child) => child.textContent)
+      .join(" "));
+  expect(visible).not.toContain("Combinatorics");
+  await expect(card.locator(".visually-hidden", { hasText: "Combinatorics" })).toHaveCount(1);
+
+  // Muted, and it says it is a link only when you are on it. The link colour
+  // would make the smallest thing on a card the loudest thing on it, so a code
+  // is the colour of the metadata around it and not the colour of a link.
+  const meta = await card.locator(".card-meta").evaluate((node) =>
+    getComputedStyle(node).color);
+  const link = await card.locator(".repo-link").evaluate((node) =>
+    getComputedStyle(node).color);
+  await expect(arxiv).toHaveCSS("color", meta);
+  expect(meta).not.toBe(link);
+  await expect(arxiv).toHaveCSS("text-decoration-line", "none");
+  await arxiv.hover();
+  await expect(arxiv).toHaveCSS("text-decoration-line", "underline");
+  await expect(arxiv).toHaveCSS("text-decoration-style", "dotted");
+  // And by keyboard too, which a hover-only affordance would never reach.
+  await arxiv.focus();
+  await expect(arxiv).toHaveCSS("text-decoration-line", "underline");
+});
+
+test("a subject page lists every current version under one code, newest first", async ({ page }) => {
+  await page.goto(`/subject.html?kind=arxiv&code=math.AG&database=${database}`);
+
+  await expect(page.locator(".subject-heading h1")).toHaveText("math.AG");
+  await expect(page.locator(".subject-gloss")).toHaveText("Algebraic Geometry");
+  await expect(page.locator(".subject-counts")).toContainText("60 results, 60 current versions");
+  await expect(page).toHaveTitle("math.AG — Palomar");
+
+  // The front page is the newest fifty and says so by carrying exactly that
+  // many; the rest is the archive behind it.
+  const rows = page.locator(".subject-row");
+  await expect(rows).toHaveCount(50);
+  await expect(rows.first()).toContainText("PALOMAR-2026-06-03-000020");
+  await expect(rows.first().locator("h2 a")).toHaveAttribute(
+    "href",
+    /entry\.html\?id=PALOMAR-2026-06-03-000020&version=1/,
+  );
+  await expect(rows.last()).toContainText("PALOMAR-2026-06-01-000011");
+
+  // One click walks back through the days it has already shown without
+  // repeating a row, and the button goes when the count is met.
+  const more = page.locator("#subject-more");
+  await expect(more).toBeVisible();
+  await more.click();
+  await expect(rows).toHaveCount(60);
+  await expect(rows.last()).toContainText("PALOMAR-2026-06-01-000001");
+  await expect(more).toBeHidden();
+  await expect(page.locator("#subject-more-status")).toBeHidden();
+});
+
+test("a code with nothing current under it answers, and one never used does not", async ({ page }) => {
+  // Seeded and empty. PalomarDatabase keeps a page for every code the registry
+  // has ever used, so a code whose last classifier was superseded is an empty
+  // answer rather than a URL that started to 404 under a reader.
+  await page.route(/\/database\/subjects\/msc\/05C10\.json$/, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      schema_version: 1,
+      kind: "msc",
+      code: "05C10",
+      entries: [],
+      results: 0,
+      versions: 0,
+      year_path: "subjects/msc/05C10/{year}.json",
+      years: [],
+    }),
+  }));
+  await page.goto(`/subject.html?kind=msc&code=05C10&database=${database}`);
+  await expect(page.locator(".subject-heading h1")).toHaveText("05C10");
+  await expect(page.locator(".subject-row")).toHaveCount(0);
+  await expect(page.locator("#subject-content")).toContainText("No current version is classified");
+  await expect(page.locator("#subject-more")).toBeHidden();
+
+  await page.goto(`/subject.html?kind=msc&code=99Z99&database=${database}`);
+  await expect(page.locator("#status")).toHaveText(
+    "No result has ever been classified 99Z99.",
+  );
+  await expect(page.locator("#subject-content")).toBeHidden();
+
+  await page.goto(`/subject.html?kind=feeds&code=math.CO&database=${database}`);
+  await expect(page.locator("#status")).toContainText("missing or invalid classification scheme");
+});
+
 test("an entry shows the decision and the comments, never the scores", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   const editorial = page.locator(".entry-editorial");
@@ -1177,8 +1426,7 @@ test("a search reads one postings sequence per word and confirms every hit", asy
   await expect(page.locator(".entry-card")).toHaveCount(2);
 
   asked.length = 0;
-  await page.locator("#query").fill("quasicoherent 000124");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "quasicoherent 000124");
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-card")).toContainText("000124");
@@ -1217,15 +1465,14 @@ test("runtime data reads reuse a fresh HTTP response", async ({ page }) => {
 
   await page.goto(`/?database=${database}`);
   await page.evaluate(() => performance.clearResourceTimings());
-  await page.locator("#query").fill("cacheprobe");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "cacheprobe");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect.poll(async () => (await timings()).length).toBe(1);
 
   // The fixture gives this otherwise ordinary postings document max-age=60.
   // Submitting the same search still calls fetch, but the browser should
   // satisfy it from its HTTP cache rather than transferring it again.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(async () => (await timings()).length).toBe(2);
   const [network, cached] = await timings();
   expect(network.transferSize).toBeGreaterThan(0);
@@ -1263,8 +1510,7 @@ test("an over-limit term count is an accessible warning and can be corrected", a
   await page.goto(`/?database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   asked.length = 0;
-  await page.locator("#query").fill(query);
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, query);
   await expect(page.locator("#query")).toHaveValue(query);
   await expect(page.locator("#search-status")).toHaveText(
     `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
@@ -1273,14 +1519,12 @@ test("an over-limit term count is an accessible warning and can be corrected", a
   await page.waitForTimeout(100);
   expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
 
-  await page.locator("#query").fill("synthetically");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "synthetically");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#query")).not.toHaveAttribute("aria-invalid");
   await expect(page.locator("#query")).not.toHaveAttribute("aria-describedby");
 
-  await page.locator("#query").fill("");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "");
   await expect(page.locator("#entry-grid")).toBeVisible();
   await expect(page.locator("#search-status")).toBeHidden();
 });
@@ -1448,12 +1692,12 @@ test("transient and invalid availability responses are both retried", async ({ p
   const invalidLogged = page.waitForEvent("console", {
     predicate: (message) => message.text().includes("Source availability is unavailable"),
   });
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(() => availabilityRequests).toBe(2);
   await invalidLogged;
   await expect(card.locator(".repo-link")).toHaveText("example/challenge");
 
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect.poll(() => availabilityRequests).toBe(3);
   await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
   await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
@@ -1475,7 +1719,7 @@ test("a missing availability manifest is cached for the page", async ({ page }) 
   );
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect.poll(() => availabilityRequests).toBe(1);
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await page.waitForTimeout(50);
   expect(availabilityRequests).toBe(1);
@@ -1490,11 +1734,9 @@ test("a superseded slow search cannot repaint a newer query", async ({ page }) =
   });
   await page.goto(`/?database=${database}`);
 
-  await page.locator("#query").fill("quasicoherent");
-  await page.getByRole("button", { name: "Search" }).click();
+  await startSearch(page, "quasicoherent");
   await expect.poll(() => slowHeadRequests).toBe(1);
-  await page.locator("#query").fill("synthetically");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "synthetically");
 
   await expect(page.locator("#search-results .entry-id")).toHaveText(
     "PALOMAR-2026-07-29-000124 v1",
@@ -1532,8 +1774,7 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   }))).toEqual({ grid: true, status: true, toolbar: true });
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
 
-  await page.locator("#query").fill("");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "");
   await firstRecent;
   expect(await page.evaluate(() => ({
     grid: document.querySelector("#entry-grid").hidden,
@@ -1542,14 +1783,14 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   }))).toEqual({ grid: false, status: false, toolbar: false });
 
   // Clearing again while the first landing request is pending shares it.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await page.waitForTimeout(50);
   expect(recentRequests).toBe(1);
   releaseFirstRecent();
   await expect(page.locator("#status")).toContainText("could not be loaded");
 
   // Once that attempt has settled as failed, clearing retries it.
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator("#query").press("Enter");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   expect(recentRequests).toBe(2);
 });
@@ -1558,8 +1799,7 @@ test("a search runs from a link, and says so when nothing carries the words", as
   await page.goto(`/?database=${database}&q=quasicoherent`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
 
-  await page.locator("#query").fill("quasicoherent unobtainium");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "quasicoherent unobtainium");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
   // The words with no postings are named rather than guessed about. They are
   // words nothing carries and not words the indexer drops, because the dropped
@@ -1574,8 +1814,7 @@ test("a hostile query cannot construct a path outside the postings grammar", asy
   await page.goto(`/?database=${database}`);
 
   asked.length = 0;
-  await page.locator("#query").fill("../../etc/passwd?x=1 <script>");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "../../etc/passwd?x=1 <script>");
   await expect(page.locator("#search-status")).toContainText("No result carries all of");
 
   // The stopword list is at a fixed path and is the only request under
@@ -1593,8 +1832,7 @@ test("a hostile query cannot construct a path outside the postings grammar", asy
 
 test("a query with no word in it leaves the listing alone", async ({ page }) => {
   await page.goto(`/?database=${database}`);
-  await page.locator("#query").fill("a !");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "a !");
   await expect(page.locator("#entry-grid")).toBeVisible();
   await expect(page.locator("#search-status")).toBeHidden();
 });
@@ -1610,8 +1848,7 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
   await page.goto(`/?database=${database}`);
 
   asked.length = 0;
-  await page.locator("#query").fill("the quasicoherent sheaves");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "the quasicoherent sheaves");
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-card")).toContainText("000124");
@@ -1622,10 +1859,413 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
 test("a search made only of words the indexer drops says which they were", async ({ page }) => {
   // Otherwise this is a registry that appears to hold nothing.
   await page.goto(`/?database=${database}`);
-  await page.locator("#query").fill("the of and");
-  await page.getByRole("button", { name: "Search" }).click();
+  await runSearch(page, "the of and");
 
   await expect(page.locator("#search-status")).toContainText("too common to be indexed");
   await expect(page.locator("#search-status")).toContainText("the");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+/** Hold one head request open, and hand back the way to let it go. */
+async function holdSearchHead(page, term) {
+  let release;
+  let noteRequest;
+  const requested = new Promise((resolve) => { noteRequest = resolve; });
+  await page.route(`**/database/search/t/${term}/head.json`, async (route) => {
+    noteRequest();
+    await new Promise((resolve) => { release = resolve; });
+    await route.continue().catch(() => {});
+  });
+  return { requested, release: () => release() };
+}
+
+test("typing runs one search at the pause, not one per keystroke", async ({ page }) => {
+  const heads = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/head.json")) heads.push(path);
+  });
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  // There is no button to press, so the pause is the whole of the instruction.
+  await page.locator("#query").pressSequentially("quasicoherent", { delay: 10 });
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+
+  expect(heads).toEqual(["/database/search/t/quasicoherent/head.json"]);
+  await expect(page).toHaveURL(/q=quasicoherent/);
+});
+
+test("a keystroke abandons the answer to the query it just replaced", async ({ page }) => {
+  // The gap the generation counter alone does not close: it turns over when a
+  // search starts, and the next one does not start until the pause. Between
+  // the two, an answer to what the reader has already typed past would arrive
+  // verified and undimmed under a box that says something else.
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+
+  // One real keystroke, and then the old answer is let go immediately -- well
+  // inside the pause that would otherwise still be running.
+  await page.locator("#query").press("End");
+  await page.locator("#query").press("x");
+  await expect(page.locator("#query")).toHaveValue("quasicoherentx");
+  held.release();
+  await page.waitForTimeout(150);
+
+  // Nothing the abandoned query found may be standing here, verified or not.
+  // Nothing in hand carries "quasicoherentx" either, so the page is honestly
+  // empty rather than showing the two cards the old query had just confirmed.
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-status")).toContainText("Searching the registry");
+
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-status")).toContainText("No result carries all of");
+});
+
+test("confirming a result keeps the reader on the card they were standing on", async ({ page }) => {
+  // The provisional cards are replaced wholesale, so without this the reader's
+  // focus goes with the node that carried it and lands on the document.
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  const card = (id) => page.locator(`#search-results .entry-card[data-id="${id}"]`);
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000123");
+  await card("PALOMAR-2026-07-29-000123").locator("h3 a").focus();
+
+  held.release();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  // Verified results come back in posting order, so this result is no longer
+  // the first card. Focus follows the result, not the position.
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000124");
+  await expect(card("PALOMAR-2026-07-29-000123").locator("h3 a")).toBeFocused();
+});
+
+test("a pause shows the entries already loaded, marked as not yet the answer", async ({ page }) => {
+  const held = await holdSearchHead(page, "quasicoherent");
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await startSearch(page, "quasicoherent");
+  await held.requested;
+  await expect(page.locator("#search-results")).toHaveClass(/preview/);
+  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  // Set apart by ground, not by fading: these are cards a reader reads and may
+  // click, so the text stays at full contrast.
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveCSS("background-color", "rgb(242, 242, 242)");
+  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "1");
+  await expect(page.locator("#search-status")).toContainText("while the registry search runs");
+  await expect(page.locator("#search-status")).toContainText("newest 2 entries");
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  // A provisional card claims no more than the search card replacing it will.
+  await expect(page.locator("#search-results .entry-id").first()).not.toContainText("current");
+
+  held.release();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-results")).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("#search-results .entry-card").first())
+    .toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+});
+
+test("nothing loaded to show leaves the wait to the spinner alone", async ({ page }) => {
+  const held = await holdSearchHead(page, "synthetically");
+  // A linked search never reads the landing selection, so there is nothing in
+  // hand to show, and the status must not claim otherwise.
+  await page.goto(`/?database=${database}&q=synthetically`);
+  await held.requested;
+  await expect(page.locator("#search-spinner")).toBeVisible();
+  await expect(page.locator("#search-status")).toHaveText("Searching the registry…");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+
+  held.release();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+test("a provisional match the index does not confirm is taken away", async ({ page }) => {
+  // What the dimming is for. "quasi" sits inside a word the newest entries
+  // carry, so it is in hand at once, but the index knows whole words and holds
+  // nothing under it. The cards go and the reader is told why.
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+
+  await runSearch(page, "quasi");
+  await expect(page.locator("#search-status")).toContainText("No result carries all of: quasi");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
+  await expect(page.locator("#search-spinner")).toBeHidden();
+});
+
+test("emptying the box gives the listing and its filters back", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  // Set before searching, because a search takes the toolbar off the page.
+  await page.locator("#arxiv-query").fill("math.CO");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+
+  await runSearch(page, "quasicoherent");
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
+  await expect(page.locator("body")).toHaveClass(/registry-searching/);
+
+  await runSearch(page, "");
+  await expect(page.locator("body")).not.toHaveClass(/registry-searching/);
+  await expect(page.locator(".toolbar")).toBeVisible();
+  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+});
+
+/**
+ * Every run of text on the page, measured as a reader's eye receives it.
+ *
+ * `appearance.test.js` reads the palette and checks the pairs named in it,
+ * which cannot see what compositing does: an `opacity` below one fades text
+ * and its ground together toward whatever is behind them, and a colour carrying
+ * its own alpha does the same, so both leave the declared pair intact and the
+ * seen pair failing. This runs in a browser and asks the rendered tree, so it
+ * answers for whatever the page actually puts on the screen.
+ *
+ * Not a replacement for the palette test. That one is fast, runs without a
+ * browser, and names the pairs it protects; this one covers what is drawn.
+ */
+const CONTRAST_AUDIT = `(() => {
+  const parse = (value) => {
+    const parts = value.match(/[\\d.]+/g);
+    if (!parts || value === "transparent") return [0, 0, 0, 0];
+    const [r, g, b, a = 1] = parts.map(Number);
+    return [r, g, b, a];
+  };
+  const over = (top, bottom, alpha) =>
+    bottom.map((channel, index) => channel + (top[index] - channel) * alpha);
+  const channelLuminance = (value) => {
+    const scaled = value / 255;
+    return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([r, g, b]) =>
+    0.2126 * channelLuminance(r) + 0.7152 * channelLuminance(g) + 0.0722 * channelLuminance(b);
+  const contrast = (a, b) => {
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (high + 0.05) / (low + 0.05);
+  };
+  // Opacity applies to an element and its whole subtree as one group, so it
+  // multiplies down the ancestor chain and reaches the text through it.
+  const opacityAt = (node) => {
+    let product = 1;
+    for (let at = node; at && at.nodeType === 1; at = at.parentElement) {
+      product *= Number(getComputedStyle(at).opacity);
+    }
+    return product;
+  };
+  // What is behind this text, built from the canvas up: each ancestor's ground
+  // laid down in turn, faded by whatever opacity applies to it.
+  const groundUnder = (node) => {
+    const chain = [];
+    for (let at = node; at; at = at.parentElement) chain.unshift(at);
+    let ground = [255, 255, 255];
+    for (const at of chain) {
+      const [r, g, b, alpha] = parse(getComputedStyle(at).backgroundColor);
+      const effective = alpha * opacityAt(at);
+      if (effective > 0) ground = over([r, g, b], ground, effective);
+    }
+    return ground;
+  };
+  const describe = (node) => {
+    const id = node.id ? "#" + node.id : "";
+    const classes = typeof node.className === "string" && node.className
+      ? "." + node.className.trim().split(/\\s+/).join(".")
+      : "";
+    return node.tagName.toLowerCase() + id + classes;
+  };
+
+  const failures = [];
+  let read = 0;
+  for (const node of document.querySelectorAll("body *")) {
+    const owns = [...node.childNodes]
+      .some((child) => child.nodeType === 3 && child.textContent.trim());
+    if (!owns) continue;
+    const style = getComputedStyle(node);
+    if (style.visibility === "hidden" || style.display === "none") continue;
+    const box = node.getBoundingClientRect();
+    // Anything this small is clipped away from sight rather than read: the
+    // visually-hidden runs the page gives to assistive technology are 1px.
+    if (box.width < 2 || box.height < 2) continue;
+    const seen = opacityAt(node);
+    if (seen === 0) continue;
+
+    read += 1;
+    const ground = groundUnder(node);
+    const [r, g, b, alpha] = parse(style.color);
+    const ink = over([r, g, b], ground, alpha * seen);
+    const size = Number.parseFloat(style.fontSize);
+    const weight = Number(style.fontWeight) || 400;
+    const large = size >= 24 || (size >= 18.66 && weight >= 700);
+    const needed = large ? 3 : 4.5;
+    const ratio = contrast(ink, ground);
+    if (ratio + 0.005 < needed) {
+      failures.push(
+        describe(node) + " reads " + ratio.toFixed(2) + ":1, needs " + needed +
+        " (text " + ink.map(Math.round).join(",") + " on " + ground.map(Math.round).join(",") + ")",
+      );
+    }
+  }
+  return { failures, read };
+})()`;
+
+async function readableTextOnly(page, where, least) {
+  const { failures, read } = await page.evaluate(CONTRAST_AUDIT);
+  expect(failures, `${where}: text below WCAG AA once composited`).toEqual([]);
+  // A check that has stopped finding text passes for the wrong reason. The
+  // floors are well under what each state carries, so they answer "is this
+  // still looking at the page" without breaking every time the copy changes.
+  expect(read, `${where}: only ${read} runs of text were read`)
+    .toBeGreaterThanOrEqual(least);
+}
+
+for (const scheme of ["light", "dark"]) {
+  test(`${scheme} text stays readable once opacity and grounds are composited`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+
+    await page.goto(`/?database=${database}`);
+    await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+    await readableTextOnly(page, `${scheme} listing`, 40);
+
+    await expect(page.locator("#arxiv-query")).toBeVisible();
+    await readableTextOnly(page, `${scheme} listing with the subject filters`, 40);
+
+    // The state this check exists for. The provisional cards are drawn on their
+    // own ground, and the first attempt at setting them apart faded them.
+    const held = await holdSearchHead(page, "quasicoherent");
+    await startSearch(page, "quasicoherent");
+    await held.requested;
+    await expect(page.locator("#search-results")).toHaveClass(/preview/);
+    await readableTextOnly(page, `${scheme} provisional matches`, 25);
+
+    held.release();
+    await expect(page.locator("#search-spinner")).toBeHidden();
+    await readableTextOnly(page, `${scheme} verified results`, 25);
+
+    await page.goto(
+      `/entry.html?id=PALOMAR-2026-07-29-000123&version=2&database=${database}`,
+    );
+    await expect(page.locator("h1")).toBeVisible();
+    await readableTextOnly(page, `${scheme} entry`, 25);
+  });
+}
+test("resting on a landing title raises the result's rendering over the listing", async ({ page }) => {
+  const asked = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await page.goto(`/?database=${database}`);
+  const title = page.locator(".entry-card h3 > a").first();
+  const identifier = await page.locator(".entry-card .entry-id").first().textContent();
+  const versioned = /(PALOMAR-[0-9-]+) v([0-9]+)/.exec(identifier);
+
+  // Nothing is read for a listing nobody has rested on.
+  expect(asked).not.toContain("/database/recent-renders.json");
+
+  await title.hover();
+  const panel = page.locator(".statement-preview");
+  await expect(panel).toBeVisible();
+  const frame = panel.locator("iframe");
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect(frame).toHaveAttribute(
+    "src",
+    `http://127.0.0.1:4173/database/renders/${versioned[1]}-v${versioned[2]}/${"a".repeat(64)}/Challenge/index.html`,
+  );
+  expect(asked).toContain("/database/recent-renders.json");
+  // The card is a landing row, so this must not have become a record read.
+  expect(asked.filter((path) => path.startsWith("/database/entries/"))).toEqual([]);
+
+  // The rendering runs, and is as unprivileged inside the panel as it is on an
+  // entry page.
+  const body = page.frameLocator(".statement-preview iframe").locator("body");
+  await expect(body).toHaveAttribute("data-script-ran", "true");
+  await expect(body).toHaveAttribute("data-top-access", "blocked");
+  await expect(page.locator("body")).not.toHaveAttribute("data-compromised", "true");
+
+  await page.mouse.move(5, 5);
+  await expect(panel).toHaveCount(0);
+});
+
+test("a search result previews from the record it already holds", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  // Runs on the typing pause now, and the provisional cards it stands in are
+  // drawn like the verified ones, so wait for the spinner rather than counting.
+  await runSearch(page, "quasicoherent");
+  await expect(page.locator("#search-results .entry-card").first()).toBeVisible();
+
+  const asked = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await page.locator("#search-results .entry-card h3 > a").first().hover();
+
+  await expect(page.locator(".statement-preview iframe")).toHaveAttribute(
+    "src",
+    /\/Challenge\/index\.html$/,
+  );
+  expect(asked).not.toContain("/database/recent-renders.json");
+});
+
+test("a preview survives the pointer crossing into it", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator(".entry-card h3 > a").first().hover();
+  const panel = page.locator(".statement-preview");
+  await expect(panel).toBeVisible();
+
+  const box = await panel.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(500);
+
+  await expect(panel).toBeVisible();
+});
+
+test("an absent or unusable render companion leaves the listing usable", async ({ page }) => {
+  for (const body of ["", '{"schema_version":1,"renders":[{"id":"nope"}]}']) {
+    await page.route("**/database/recent-renders.json", (route) =>
+      body
+        ? route.fulfill({ status: 200, contentType: "application/json", body })
+        : route.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
+    await page.goto(`/?database=${database}`);
+    const title = page.locator(".entry-card h3 > a").first();
+    await title.hover();
+    await page.waitForTimeout(600);
+
+    await expect(page.locator(".statement-preview")).toHaveCount(0);
+    // The listing is what matters, and it is untouched.
+    await expect(page.locator(".entry-card")).not.toHaveCount(0);
+    await expect(title).toBeVisible();
+  }
+});
+
+test("previews are not raised where a pointer cannot rest", async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true, isMobile: false });
+  const page = await context.newPage();
+  await page.emulateMedia({ media: "screen", forcedColors: "none" });
+  await page.goto(`/?database=${database}`);
+  // The controller asks `(hover: hover)`; a coarse pointer answers no, and the
+  // stylesheet refuses to show a panel even if one were somehow raised.
+  const hides = await page.evaluate(() =>
+    [...document.styleSheets]
+      .flatMap((sheet) => [...sheet.cssRules])
+      .some((rule) => rule.conditionText === "(hover: none)"
+        && [...rule.cssRules].some((inner) => inner.selectorText === ".statement-preview")));
+  expect(hides).toBe(true);
+  await context.close();
 });

@@ -51,7 +51,12 @@ test("deployment build versions coupled browser assets", async () => {
       path.join(destination, "assets", "searching.mjs"),
       "utf8",
     );
+    const notFound = await readFile(path.join(destination, "404.html"), "utf8");
     assert.match(index, /assets\/style\.css\?v=0123456789abcdef/);
+    // 404.html addresses its assets from the root, so it needs the other
+    // spelling of the same rewrite; an unversioned stylesheet would be served
+    // from cache after a palette change.
+    assert.match(notFound, /href="\/assets\/style\.css\?v=0123456789abcdef"/);
     assert.match(index, /assets\/app\.js\?v=0123456789abcdef/);
     assert.match(about, /assets\/style\.css\?v=0123456789abcdef/);
     assert.match(about, /assets\/about\.js\?v=0123456789abcdef/);
@@ -187,6 +192,19 @@ test("the MSC descriptions shown to readers are readable", async () => {
   const broken = Object.entries(codes).filter(([, text]) => text.includes("?"));
   assert.deepEqual(broken, []);
   assert.equal(codes["52C10"], "Erdős problems and related topics of discrete geometry");
+});
+
+test("the arXiv category names shown to readers are readable", async () => {
+  // The other half of a Subjects row. Vendored from the same snapshot in
+  // PalomarSubmission, and held to the same standard: a code the reader cannot
+  // expand is a code, and math.MG does not announce itself as metric geometry.
+  const categories = JSON.parse(
+    await readFile(new URL("../assets/data/arxiv-categories.json", import.meta.url), "utf8"),
+  );
+  const broken = Object.entries(categories).filter(([, text]) => text.includes("?"));
+  assert.deepEqual(broken, []);
+  assert.equal(categories["math.MG"], "Metric Geometry");
+  assert.equal(categories["math.CO"], "Combinatorics");
 });
 
 test("the app graph writes down no data origin the database override cannot redirect", async () => {

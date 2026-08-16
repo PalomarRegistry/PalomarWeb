@@ -46,6 +46,65 @@ export function validateChallengeMetadata(entry, metadata) {
 }
 
 /**
+ * Mount one Verso rendering, sandboxed, and size it to what it reports.
+ *
+ * The rendering runs with scripts and without same-origin privilege, so it can
+ * neither read this document nor be read by it, and the one thing it is allowed
+ * to say arrives as a message: how tall it turned out. That message is checked
+ * to have come from this frame and to be a plausible height before it moves
+ * anything.
+ *
+ * `dispose` exists because that listener is on `window`, not on the frame. One
+ * frame kept for a page's lifetime can leave it; a surface that mounts a frame
+ * and throws it away again cannot, or every rendering a reader passed over
+ * stays subscribed for as long as the page is open.
+ */
+export function createRenderFrames({ document, window }) {
+  return function createRenderFrame({
+    src,
+    title,
+    lazy = false,
+    minHeight = 160,
+    maxHeight = 672,
+    onHeight = () => {},
+  }) {
+    const frame = document.createElement("iframe");
+    frame.className = "challenge-frame";
+    frame.src = safeDataUrl(src, window.location.href).href;
+    frame.title = title;
+    if (lazy) frame.loading = "lazy";
+    frame.referrerPolicy = "no-referrer";
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.setAttribute("scrolling", "auto");
+    const onMessage = (event) => {
+      if (
+        !frame.contentWindow ||
+        event.source !== frame.contentWindow ||
+        event.data?.type !== "palomar-render-height"
+      ) {
+        return;
+      }
+      const height = event.data.height;
+      if (!Number.isSafeInteger(height) || height <= 0) return;
+      frame.style.height = `${Math.max(minHeight, Math.min(maxHeight, height + 2))}px`;
+      frame.dataset.heightAdjusted = "true";
+      // The height arrives after the frame is in the document, so anything
+      // that positioned itself around the frame guessed. This is where it
+      // finds out. An entry page lays out in flow and ignores it.
+      onHeight();
+    };
+    window.addEventListener("message", onMessage);
+    return {
+      frame,
+      dispose() {
+        window.removeEventListener("message", onMessage);
+        frame.remove();
+      },
+    };
+  };
+}
+
+/**
  * Bind the named-declarations presentation to its browser and data adapters.
  *
  * Registry validation, source resolution, URL confinement, and inline policy
@@ -53,6 +112,8 @@ export function validateChallengeMetadata(entry, metadata) {
  * artifact's correspondence to an entry and the DOM states used to present it.
  */
 export function createChallengePresentation({ fetchJson, document, window, localPageUrl }) {
+  const createRenderFrame = createRenderFrames({ document, window });
+
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -83,30 +144,13 @@ export function createChallengePresentation({ fetchJson, document, window, local
   }
 
   function challengeFrame(entry, renderBase) {
-    const frame = el("iframe", "challenge-frame");
-    frame.src = safeDataUrl(
-      challengeArtifactUrl(entry, renderBase).href,
-      window.location.href,
-    ).href;
-    frame.title = `Named compared declarations for ${entry.id} version ${entry.version}`;
-    frame.loading = "lazy";
-    frame.referrerPolicy = "no-referrer";
-    frame.setAttribute("sandbox", "allow-scripts");
-    frame.setAttribute("scrolling", "auto");
-    window.addEventListener("message", (event) => {
-      if (
-        !frame.contentWindow ||
-        event.source !== frame.contentWindow ||
-        event.data?.type !== "palomar-render-height"
-      ) {
-        return;
-      }
-      const height = event.data.height;
-      if (!Number.isSafeInteger(height) || height <= 0) return;
-      frame.style.height = `${Math.max(160, Math.min(672, height + 2))}px`;
-      frame.dataset.heightAdjusted = "true";
-    });
-    return frame;
+    // An entry page mounts one of these and keeps it for the page's lifetime,
+    // so it never disposes. A surface that mounts and discards them has to.
+    return createRenderFrame({
+      src: challengeArtifactUrl(entry, renderBase).href,
+      title: `Named compared declarations for ${entry.id} version ${entry.version}`,
+      lazy: true,
+    }).frame;
   }
 
   function metadataPanel(metadata) {

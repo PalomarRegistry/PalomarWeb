@@ -3,7 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-export const htmlFiles = ["404.html", "about.html", "entry.html", "index.html", "render.html"];
+export const htmlFiles = [
+  "404.html",
+  "about.html",
+  "entry.html",
+  "index.html",
+  "privacy.html",
+  "render.html",
+  "subject.html",
+];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
 const browserModuleFiles = [
   "about.js",
@@ -18,6 +26,8 @@ const browserModuleFiles = [
   "searching.mjs",
   "security.mjs",
   "source-preservation.mjs",
+  "statement-preview.mjs",
+  "subject-pages.mjs",
 ];
 const browserModulePaths = new Set(browserModuleFiles.map((file) => `/assets/${file}`));
 const assetFiles = [
@@ -26,7 +36,7 @@ const assetFiles = [
 ];
 // Copied verbatim into assets/, keeping their subdirectory. Listed separately
 // because they are data rather than code: no version query, no rewriting.
-const assetDataFiles = ["data/msc2020-codes.json"];
+const assetDataFiles = ["data/arxiv-categories.json", "data/msc2020-codes.json"];
 /**
  * Every file the deployment carries, as paths from the repository root.
  *
@@ -142,8 +152,13 @@ export async function buildSite({ output, version }) {
   for (const file of htmlFiles) {
     const target = path.join(destination, file);
     const source = await readFile(target, "utf8");
+    // Both spellings, because 404.html addresses its assets from the root: it
+    // is served for every unresolved address, so a relative href would resolve
+    // against the directory the reader was aiming at. An asset that escaped
+    // versioning here would be the one asset served from a stale cache.
     const versioned = source
       .replaceAll('href="assets/style.css"', `href="assets/style.css?v=${version}"`)
+      .replaceAll('href="/assets/style.css"', `href="/assets/style.css?v=${version}"`)
       .replaceAll('src="assets/about.js"', `src="assets/about.js?v=${version}"`)
       .replaceAll('src="assets/app.js"', `src="assets/app.js?v=${version}"`);
     await writeFile(target, versioned);

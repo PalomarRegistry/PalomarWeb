@@ -6,10 +6,17 @@ import {
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
+  subjectHeadUrl,
   workflowRunId,
 } from "./security.mjs";
-import { createRegistrySearch, validateSearchQuery } from "./searching.mjs";
 import {
+  SEARCH_RESULT_LIMIT,
+  SEARCH_TERM_LIMIT,
+  createRegistrySearch,
+  validateSearchQuery,
+} from "./searching.mjs";
+import {
+  expandDetailsForTarget,
   renderChallengePage,
   renderEntryPage,
 } from "./entry-pages.mjs";
@@ -17,6 +24,8 @@ import { createChallengePresentation } from "./challenge-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
+import { createStatementPreview } from "./statement-preview.mjs";
+import { renderSubjectPage } from "./subject-pages.mjs";
 import {
   bindSourceControl,
   createSourceAvailabilityBinding,
@@ -31,6 +40,10 @@ const params = new URLSearchParams(window.location.search);
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const FILTER_UPDATE_DELAY_MS = 200;
+// Longer than the classification filter above, because each registry search
+// costs a stopword read, a head read per word, posting pages, and up to sixty
+// record reads. A pause is the signal; a keystroke is not.
+const SEARCH_UPDATE_DELAY_MS = 300;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -67,7 +80,11 @@ const {
   fetchJson,
   loadAvailabilityBounded,
   loadRecent,
+  loadRecentRenders,
   loadEntry,
+  loadSubjectHead,
+  loadSubjectYear,
+  loadSubjectPage,
 } = createRegistryLoader({
   fetch: (...args) => fetch(...args),
   location: window.location,
@@ -75,6 +92,14 @@ const {
 });
 
 const searchRegistry = createRegistrySearch(fetchJson);
+
+const statementPreview = createStatementPreview({
+  document,
+  window,
+  dataSource,
+  loadRecentRenders,
+  warn: (message) => console.warn(message),
+});
 
 function authorNames(entry) {
   return entry.authors.map((author) => author.name).join(", ");
@@ -91,11 +116,99 @@ function classification(entry) {
   };
 }
 
+// Written out rather than composed from the scheme name. The build asserts that
+// everything the site fetches from its own origin is in the artifact, and it can
+// only read the URLs that are spelled out where it looks.
+const TAXONOMY_SOURCES = Object.freeze({
+  arxiv: () => new URL("assets/data/arxiv-categories.json", document.baseURI),
+  msc: () => new URL("assets/data/msc2020-codes.json", document.baseURI),
+});
+
+const taxonomyLoads = new Map();
+
+/**
+ * A taxonomy's descriptions, fetched once and only where they are shown.
+ *
+ * A code is not a subject: nobody reads 52C10 and thinks "Erdős problems in
+ * discrete geometry", and math.MG does not announce itself as metric geometry.
+ * The MSC table is large enough that it is not worth loading for a page with no
+ * classification on it, and both are unimportant enough that a page whose fetch
+ * fails should still render.
+ */
+function taxonomy(kind) {
+  if (!taxonomyLoads.has(kind)) {
+    taxonomyLoads.set(kind, (async () => {
+      try {
+        const response = await fetch(TAXONOMY_SOURCES[kind]());
+        return response.ok ? await response.json() : {};
+      } catch {
+        return {};
+      }
+    })());
+  }
+  return taxonomyLoads.get(kind);
+}
+
+/**
+ * The descriptions, applied to every code on the page in one pass.
+ *
+ * Both taxonomies, because a Subjects row mixes them and glossing one a moment
+ * before the other would move the text under a reader twice instead of once.
+ * One pass, because cards are built in bulk and a callback per card would be a
+ * hundred of them rewriting a hundred rows. Deliberately not awaited: a
+ * description is a courtesy, and the row is correct without one.
+ */
+let pendingGlosses = null;
+
+function glossLater(pending) {
+  if (pendingGlosses !== null) {
+    pendingGlosses.push(pending);
+    return;
+  }
+  pendingGlosses = [pending];
+  Promise.all([taxonomy("arxiv"), taxonomy("msc")])
+    .then(([arxiv, msc]) => {
+      const queued = pendingGlosses;
+      pendingGlosses = null;
+      for (const { kind, code, link, spoken, suffix } of queued) {
+        const description = (kind === "arxiv" ? arxiv : msc)[code];
+        if (typeof description !== "string" || !description) continue;
+        // A hover, not a second column: the codes are a compact row, and the
+        // descriptions are long enough to swamp them. Given to assistive
+        // technology as text, since a title attribute alone reaches nobody
+        // who is not holding a mouse.
+        link.title = `${code} — ${description}`;
+        spoken.textContent = ` — ${description}. ${suffix}`;
+      }
+    });
+}
+
+/**
+ * One classification code, as the link to everything else carrying it.
+ *
+ * The subject page reads `subjects/<kind>/<code>.json` and the archive behind
+ * it, so it answers for the whole registry. The landing page's arXiv and MSC
+ * fields narrow the rows already on it, which is a different question and stays
+ * where it is.
+ */
+function classificationToken(kind, code, label, className = "category-token") {
+  const link = internalLink(label, subjectPageUrl(kind, code), className);
+  const suffix = `Other entries classified ${code}`;
+  const spoken = el("span", "visually-hidden", ` — ${suffix.toLowerCase()}`);
+  link.append(spoken);
+  glossLater({ kind, code, link, spoken, suffix });
+  return link;
+}
+
 function categoryTokens(entry) {
   const categories = classification(entry);
   const tokens = el("span", "category-tokens");
-  for (const code of categories.arxiv) tokens.append(el("code", "arxiv-category", code));
-  for (const code of categories.msc2020) tokens.append(el("code", "msc-category", `MSC ${code}`));
+  for (const code of categories.arxiv) {
+    tokens.append(classificationToken("arxiv", code, code));
+  }
+  for (const code of categories.msc2020) {
+    tokens.append(classificationToken("msc", code, `MSC ${code}`));
+  }
   if (!tokens.children.length) tokens.append(el("span", "unclassified", "Not recorded"));
   return tokens;
 }
@@ -155,16 +268,16 @@ const {
   trustBadge,
 } = createFormalizationPresentation({ document });
 
-function entryCard(
-  entry,
-  { versionCount = null, current = false, registeredAt = entry.registered_at } = {},
-) {
+/**
+ * Everything on a card that a reader might type at it, as one lowercase run.
+ *
+ * The instant matches shown while the registry answers are chosen from this,
+ * and so is the card's own index. Deriving both from here is what keeps the
+ * provisional set from disagreeing with the cards it is drawn from.
+ */
+function searchBlob(entry) {
   const categories = classification(entry);
-  const card = el("article", "entry-card");
-  card.dataset.trust = entry.trust.level;
-  card.dataset.arxiv = categories.arxiv.join(" ");
-  card.dataset.msc = categories.msc2020.join(" ");
-  card.dataset.search = [
+  return [
     entry.title,
     entry.abstract,
     authorNames(entry),
@@ -175,6 +288,19 @@ function entryCard(
     ...categories.arxiv,
     ...categories.msc2020,
   ].join(" ").toLowerCase();
+}
+
+function entryCard(
+  entry,
+  { versionCount = null, current = false, registeredAt = entry.registered_at } = {},
+) {
+  const categories = classification(entry);
+  const card = el("article", "entry-card");
+  card.dataset.id = entry.id;
+  card.dataset.trust = entry.trust.level;
+  card.dataset.arxiv = categories.arxiv.join(" ");
+  card.dataset.msc = categories.msc2020.join(" ");
+  card.dataset.search = searchBlob(entry);
 
   const top = el("div", "card-top");
   const identity = el("div", "card-identity");
@@ -184,7 +310,12 @@ function entryCard(
   );
   top.append(identity, trustBadge(entry));
   const title = el("h3");
-  title.append(internalLink(entry.title, localPageUrl("entry.html", entry)));
+  const titleLink = internalLink(entry.title, localPageUrl("entry.html", entry));
+  // The card is built from a landing row on one grid and from a whole
+  // validated record on the other. The preview is told which it has rather
+  // than left to work it out from what is missing.
+  statementPreview.register(titleLink, entry);
+  title.append(titleLink);
   const abstract = el("p", "card-abstract", entry.abstract);
   const meta = el("div", "card-meta");
   const authors = el("div");
@@ -245,6 +376,10 @@ function setLandingStatusHidden(hidden) {
 
 function setLandingSuppressed(suppressed) {
   landingSuppressed = suppressed;
+  // A panel outlives the card it was raised from unless something says so:
+  // it is over the page, not in the grid, and hiding the grid does not reach
+  // it. The same goes for the redraws below.
+  statementPreview.close();
   document.body.classList.toggle("registry-searching", suppressed);
   const toolbar = document.querySelector(".toolbar");
   const status = document.querySelector("#status");
@@ -269,6 +404,7 @@ async function renderIndex() {
     // therefore costs one summary read, not one record read per card.
     const recent = await loadRecent(databaseBase);
     const entries = recent.entries;
+    landingMatches = entries.map((entry) => ({ entry, blob: searchBlob(entry) }));
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
     // Metrics are presentation-only, so a removed metric must not abort the registry.
     setOptionalText("#metric-results", String(entries.length));
@@ -299,7 +435,6 @@ async function renderIndex() {
       console.warn(`Landing card source availability could not be applied: ${error.message}`);
     });
     let trust = "all";
-    const search = document.querySelector("#search");
     // The fallback selectors keep new JavaScript compatible with cached HTML
     // from the previous GitHub Pages deployment.
     const arxiv = document.querySelector("#arxiv-query, #arxiv-filter");
@@ -337,8 +472,18 @@ async function renderIndex() {
     };
     applyCategoryParameter(arxiv, "arxiv", 32);
     applyCategoryParameter(msc, "msc", 5);
+    // The subject inputs are always on the toolbar now. Cached HTML from a
+    // previous deployment still keeps them behind a disclosure, so a deep link
+    // that filters by subject opens it there rather than leaving the page
+    // filtered by controls the reader cannot see.
+    const advancedFilters = document.querySelector(".advanced-filters");
+    if (advancedFilters && (params.has("arxiv") || params.has("msc"))) {
+      advancedFilters.open = true;
+    }
+    // Words are the registry search's business now. What is left here narrows
+    // the landing selection by facts the cards already carry, which is why it
+    // can stay instant and local.
     const update = () => {
-      const query = search.value.trim().toLowerCase();
       const arxivValue = arxiv?.value.trim() || "";
       const mscValue = msc?.value.trim() || "";
       const arxivInvalid = Boolean(arxivValue && !ARXIV_FILTER_RE.test(arxivValue));
@@ -348,8 +493,7 @@ async function renderIndex() {
         const visible =
           (trust === "all" || card.dataset.trust === trust) &&
           (!arxivValue || (!arxivInvalid && card.dataset.arxiv.split(" ").includes(arxivValue))) &&
-          (!mscValue || (!mscInvalid && card.dataset.msc.split(" ").includes(mscValue))) &&
-          (!query || card.dataset.search.includes(query));
+          (!mscValue || (!mscInvalid && card.dataset.msc.split(" ").includes(mscValue)));
         card.hidden = !visible;
         if (visible) shown += 1;
       }
@@ -375,7 +519,6 @@ async function renderIndex() {
       window.clearTimeout(updateTimer);
       updateTimer = window.setTimeout(update, FILTER_UPDATE_DELAY_MS);
     };
-    search.addEventListener("input", scheduleUpdate);
     for (const control of [arxiv, msc]) {
       for (const eventName of ["input", "change", "search"]) {
         control?.addEventListener(eventName, scheduleUpdate);
@@ -401,6 +544,12 @@ async function renderIndex() {
     return false;
   }
 }
+
+// The landing selection with its text already flattened, kept so that a reader
+// who starts typing sees the entries the page holds without waiting for
+// anything. Matching happens on a keystroke pause, so the flattening is done
+// once here rather than two hundred times per pause.
+let landingMatches = [];
 
 let landingLoad = null;
 function ensureLanding() {
@@ -428,9 +577,81 @@ let searchGeneration = 0;
 let activeSearchController = null;
 
 function renderSearchCards(results, entries) {
+  statementPreview.close();
   const cards = entries.map((entry) => entryCard(entry));
   results.replaceChildren(...cards);
   return cards;
+}
+
+/**
+ * The loaded entries that carry what was typed, for the wait.
+ *
+ * This is not the question the registry index answers. It looks for the text
+ * anywhere inside the newest entries the page happens to hold; the index looks
+ * for whole words, requires all of them, and covers every published version.
+ * So this will show entries the search then removes, and miss ones it finds.
+ * That gap is why the result of this is drawn as provisional and thrown away
+ * the moment the registry answers.
+ */
+function previewEntries(query) {
+  // Every word must appear, as the index requires, but a word matches anywhere
+  // inside a longer one, because half a word is what a reader has typed so far.
+  // Bounded like the index bounds itself: the query is up to four thousand
+  // characters, and this runs between two keystrokes.
+  const wanted = [...new Set(query.trim().toLowerCase().split(/\s+/).filter(Boolean))]
+    .slice(0, SEARCH_TERM_LIMIT);
+  if (!wanted.length) return [];
+  const matches = [];
+  for (const { entry, blob } of landingMatches) {
+    if (!wanted.every((word) => blob.includes(word))) continue;
+    matches.push(entry);
+    if (matches.length === SEARCH_RESULT_LIMIT) break;
+  }
+  return matches;
+}
+
+function renderPreviewCards(results, entries) {
+  // Drawn like the search cards that will replace them, down to leaving out
+  // which version is current: the landing rows do carry that, but showing it
+  // here would mean every card quietly lost a claim when the results arrived.
+  const cards = entries.map((entry) =>
+    entryCard(entry, { registeredAt: entry.published_at }));
+  results.replaceChildren(...cards);
+  results.classList.add("preview");
+  return cards;
+}
+
+function setSearchBusy(results, busy) {
+  const spinner = document.querySelector("#search-spinner");
+  if (spinner) spinner.hidden = !busy;
+  // The results grid is a polite live region. Without this it reads out the
+  // provisional cards and then reads the whole verified set again, which is
+  // two announcements for one search and the first of them not yet true.
+  if (busy) results.setAttribute("aria-busy", "true");
+  else results.removeAttribute("aria-busy");
+}
+
+/** The result a reader is standing on, so that replacing the set can put them back. */
+function focusedEntryId(results) {
+  const active = document.activeElement;
+  if (!active || !results.contains(active)) return null;
+  return active.closest(".entry-card")?.dataset.id || null;
+}
+
+/**
+ * Put the reader back where they were once the provisional cards are replaced.
+ *
+ * Without this, confirming a result silently drops focus to the document body,
+ * because the node the reader was on is one of the ones thrown away.
+ */
+function restoreFocusAfterSwap(results, entryId) {
+  if (!entryId) return;
+  // Matched by walking the cards rather than by building a selector out of a
+  // value that came from data, which is the rule everywhere else here.
+  const card = [...results.children].find((node) => node.dataset.id === entryId);
+  const link = card?.querySelector("a");
+  if (link) link.focus();
+  else document.querySelector("#query")?.focus();
 }
 
 function clearSearchQueryWarning(input) {
@@ -446,7 +667,16 @@ function showSearchQueryWarning(input, status, error) {
   input?.setAttribute("aria-describedby", status.id);
 }
 
-async function renderSearch(query) {
+/**
+ * Show what this query looks like from here, and unless told otherwise, ask.
+ *
+ * `ask: false` is the keystroke half. A reader who has typed on has already
+ * left the answer on the page behind, so the request in flight for it is
+ * abandoned and the provisional set is repainted at once, without waiting out
+ * the pause first. Waiting would leave one query in the box and a different
+ * query's results, verified and undimmed, underneath it.
+ */
+async function renderSearch(query, { ask = true } = {}) {
   const generation = searchGeneration + 1;
   searchGeneration = generation;
   activeSearchController?.abort(new Error("superseded registry search"));
@@ -456,6 +686,8 @@ async function renderSearch(query) {
   const input = document.querySelector("#query");
   if (!status || !results) return;
   results.replaceChildren();
+  results.classList.remove("preview");
+  setSearchBusy(results, false);
   status.className = "status";
   let asked;
   try {
@@ -478,10 +710,23 @@ async function renderSearch(query) {
     ensureLanding();
     return;
   }
+  status.hidden = false;
+  // Something to read while the registry is asked. It is drawn from a smaller
+  // pool by a looser rule, so the status says so rather than letting it pass
+  // for an answer.
+  const preview = previewEntries(query);
+  if (preview.length) {
+    renderPreviewCards(results, preview);
+    status.textContent =
+      `Showing ${preview.length} match${preview.length === 1 ? "" : "es"} from the ` +
+      `newest ${landingMatches.length} entries while the registry search runs…`;
+  } else {
+    status.textContent = "Searching the registry…";
+  }
+  setSearchBusy(results, true);
+  if (!ask) return;
   const controller = new AbortController();
   activeSearchController = controller;
-  status.hidden = false;
-  status.textContent = "Searching the registry…";
   try {
     const { databaseBase, availabilityUrl } = dataSource();
     const found = await searchRegistry(query, databaseBase, { signal: controller.signal });
@@ -494,7 +739,11 @@ async function renderSearch(query) {
     }
     // Availability changes only where a source link points. It must never hold
     // verified registry results behind its own long timeout.
+    // Read immediately before the swap, not when the search began: the reader
+    // had the whole wait in which to go and stand on one of these cards.
+    const wasOn = focusedEntryId(results);
     const cards = renderSearchCards(results, found.entries);
+    restoreFocusAfterSwap(results, wasOn);
     if (found.entries.length) {
       void loadAvailabilityBounded(availabilityUrl).then((availability) => {
         if (availability !== null && generation === searchGeneration) {
@@ -542,13 +791,22 @@ async function renderSearch(query) {
     status.classList.toggle("warning", Boolean(degraded));
   } catch (error) {
     if (generation !== searchGeneration) return;
+    // A failed search shows nothing rather than leaving the provisional set
+    // standing under an error that does not describe it.
+    results.replaceChildren();
     if (error instanceof RangeError) showSearchQueryWarning(input, status, error);
     else {
       status.textContent = `The search could not be run: ${error.message}`;
       status.classList.add("error");
     }
   } finally {
-    if (generation === searchGeneration) activeSearchController = null;
+    // A superseded search owns none of this any more: the query that replaced
+    // it has already put up its own provisional set and its own spinner.
+    if (generation === searchGeneration) {
+      activeSearchController = null;
+      results.classList.remove("preview");
+      setSearchBusy(results, false);
+    }
   }
 }
 
@@ -558,10 +816,9 @@ function wireSearch() {
   if (!form || !input) return false;
   const initial = params.get("q") || "";
   input.value = initial;
-  form.addEventListener("submit", (event) => {
-    // The page's own content security policy forbids form submission, which is
-    // right: nothing here posts anywhere. The query is a link to this page.
-    event.preventDefault();
+  let queryTimer;
+  const runQuery = () => {
+    window.clearTimeout(queryTimer);
     const rawQuery = input.value;
     try {
       // Validate before trimming or constructing the shareable URL. This also
@@ -572,8 +829,27 @@ function wireSearch() {
       return;
     }
     const query = rawQuery.trim();
+    // replaceState, not pushState: typing a query is not a series of pages to
+    // walk back through, but the address stays worth copying at every pause.
     window.history.replaceState(null, "", searchPageUrlFor(query));
     renderSearch(query);
+  };
+  const scheduleQuery = () => {
+    window.clearTimeout(queryTimer);
+    // Repaint from what is already loaded now, and ask the registry once the
+    // typing stops. Only the request is worth waiting for: filtering entries
+    // the page is already holding costs nothing, and doing it on the same
+    // delay would leave the last query's answer sitting under the new one.
+    renderSearch(input.value, { ask: false });
+    queryTimer = window.setTimeout(runQuery, SEARCH_UPDATE_DELAY_MS);
+  };
+  input.addEventListener("input", scheduleQuery);
+  form.addEventListener("submit", (event) => {
+    // The page's own content security policy forbids form submission, which is
+    // right: nothing here posts anywhere. The query is a link to this page.
+    event.preventDefault();
+    // Enter means stop waiting for the pause, not run a second search.
+    runQuery();
   });
   if (initial) renderSearch(initial);
   return Boolean(initial);
@@ -648,17 +924,37 @@ function evidenceDataUrl(entry, databaseBase, filename) {
   return new URL(`${entry.verification.evidence_path}${filename}`, databaseBase);
 }
 
-function localPageUrl(page, entry) {
-  const target = new URL(page, window.location.href);
-  target.search = "";
-  target.searchParams.set("id", entry.id);
-  target.searchParams.set("version", String(entry.version));
+/**
+ * The local data overrides, carried across to the page being linked to.
+ *
+ * Honoured on loopback only, and only there because a test fixture is served
+ * from somewhere other than the registry. A link that dropped them would leave
+ * the next page reading the production database in the middle of a test run.
+ * Appended last, so an ordinary link's own parameters stay at the front of it.
+ */
+function carryLocalOverrides(target) {
   if (isLoopbackHostname(window.location.hostname)) {
     for (const name of ["database", "render-base"]) {
       if (params.has(name)) target.searchParams.set(name, params.get(name));
     }
   }
   return safeInternalUrl(target, window.location.href);
+}
+
+function localPageUrl(page, entry) {
+  const target = new URL(page, window.location.href);
+  target.search = "";
+  target.searchParams.set("id", entry.id);
+  target.searchParams.set("version", String(entry.version));
+  return carryLocalOverrides(target);
+}
+
+function subjectPageUrl(kind, code) {
+  const target = new URL("subject.html", window.location.href);
+  target.search = "";
+  target.searchParams.set("kind", kind);
+  target.searchParams.set("code", code);
+  return carryLocalOverrides(target);
 }
 
 const challengePresentation = createChallengePresentation({
@@ -760,34 +1056,6 @@ function acceptanceCallout(entry, databaseBase) {
   return callout;
 }
 
-/**
- * The MSC2020 descriptions, fetched once and only where they are shown.
- *
- * A code is not a subject: nobody reads 52C10 and thinks "Erdős problems in
- * discrete geometry". The table is large enough that it is not worth loading
- * for a page with no classification on it, and unimportant enough that a page
- * whose fetch fails should still render.
- */
-let mscDescriptions = null;
-
-async function mscGlossary() {
-  if (mscDescriptions) return mscDescriptions;
-  try {
-    const response = await fetch(new URL("assets/data/msc2020-codes.json", document.baseURI));
-    mscDescriptions = response.ok ? await response.json() : {};
-  } catch {
-    mscDescriptions = {};
-  }
-  return mscDescriptions;
-}
-
-/** Every other entry sharing a classification, which is what a code is for. */
-function classificationSearchUrl(scheme, code) {
-  const url = new URL("index.html", document.baseURI);
-  url.searchParams.set(scheme, code);
-  return url;
-}
-
 function classificationSection(entry) {
   const categories = classification(entry);
   const section = el("section", "entry-classification");
@@ -797,20 +1065,15 @@ function classificationSection(entry) {
   heading.append(title);
   section.append(heading);
   const details = el("dl", "details classification-details");
-  const glossed = [];
 
-  const categoryRow = (label, values, scheme) => {
+  const categoryRow = (label, values, kind) => {
     const row = el("div", "detail-row");
     row.append(el("dt", "", label));
     const value = el("dd", "category-list");
     for (const code of values) {
       // The code itself is the link: a reader who wants the other entries in
       // a subject clicks the subject, rather than a separate word beside it.
-      const link = internalLink(code, classificationSearchUrl(scheme, code), "category-link");
-      const spoken = el("span", "visually-hidden", ` — other entries classified ${code}`);
-      link.append(spoken);
-      if (scheme === "msc") glossed.push({ code, link, spoken });
-      value.append(link);
+      value.append(classificationToken(kind, code, code, "category-link"));
     }
     if (!values.length) value.append(el("span", "unclassified", "Not recorded for this older entry"));
     row.append(value);
@@ -822,34 +1085,29 @@ function classificationSection(entry) {
     categoryRow("MSC2020", categories.msc2020, "msc"),
   );
   section.append(details);
-
-  // Asynchronous, and deliberately not awaited: a description is a courtesy,
-  // and the section is correct without one.
-  if (glossed.length) {
-    mscGlossary().then((table) => {
-      for (const { code, link, spoken } of glossed) {
-        const description = table[code];
-        if (!description) continue;
-        // A hover, not a second column: the codes are a compact row, and the
-        // descriptions are long enough to swamp them. Given to assistive
-        // technology as text, since a title attribute alone reaches nobody
-        // who is not holding a mouse.
-        link.title = `${code} — ${description}`;
-        spoken.textContent = ` — ${description}. Other entries classified ${code}`;
-      }
-    });
-  }
   return section;
 }
 
 function provenanceSection(entry, sourceAvailability) {
   const provenance = entry.provenance;
   const section = el("section", "entry-provenance");
+  const disclosure = el("details", "section-collapse");
   const heading = el("div", "section-heading");
   const title = el("div");
-  title.append(el("div", "eyebrow", "Provenance"), el("h2", "", "Mathematical origin"));
+  // A heading inside a summary is exposed as a heading by Chromium, but the
+  // engines that flatten a summary's contents into its own accessible name
+  // would leave the section with no way to find it. Naming the section from
+  // the same text makes it a landmark, which is a second route to it that does
+  // not depend on how the disclosure treats what is inside the summary.
+  const sectionHeading = el("h2", "", "Mathematical origin");
+  sectionHeading.id = "provenance-heading";
+  section.setAttribute("aria-labelledby", sectionHeading.id);
+  title.append(el("div", "eyebrow", "Provenance"), sectionHeading);
   heading.append(title);
-  section.append(heading);
+  const summary = el("summary");
+  summary.append(heading);
+  disclosure.append(summary);
+  section.append(disclosure);
 
   const details = el("dl", "details provenance-details");
   // Where the mathematics actually lives comes first. For a thin wrapper it is
@@ -892,10 +1150,10 @@ function provenanceSection(entry, sourceAvailability) {
   if (entry.submission.authorization.evidence) {
     details.append(detailRow("Authorization evidence", entry.submission.authorization.evidence));
   }
-  section.append(details);
+  disclosure.append(details);
 
   if (provenance.mathematical_sources.length) {
-    section.append(el("h3", "", "Mathematical sources"));
+    disclosure.append(el("h3", "", "Mathematical sources"));
     const sources = el("ul", "plain-list provenance-sources");
     for (const source of provenance.mathematical_sources) {
       const item = el("li");
@@ -913,13 +1171,13 @@ function provenanceSection(entry, sourceAvailability) {
       }
       sources.append(item);
     }
-    section.append(sources);
+    disclosure.append(sources);
   } else {
-    section.append(el("p", "no-sources", "No prior mathematical source is recorded."));
+    disclosure.append(el("p", "no-sources", "No prior mathematical source is recorded."));
   }
 
   if (provenance.related_formalizations.length) {
-    section.append(el("h3", "", "Related formalizations"));
+    disclosure.append(el("h3", "", "Related formalizations"));
     const related = el("ul", "plain-list related-formalizations");
     for (const formalization of provenance.related_formalizations) {
       const item = el("li");
@@ -932,7 +1190,7 @@ function provenanceSection(entry, sourceAvailability) {
       if (formalization.note) item.append(`: ${formalization.note}`);
       related.append(item);
     }
-    section.append(related);
+    disclosure.append(related);
   }
   return section;
 }
@@ -962,7 +1220,9 @@ async function renderEntry(
   const titleBlock = el("div");
   titleBlock.append(el("div", "eyebrow", "Verification"), el("h2", "", "What was checked"));
   evidenceTitle.append(titleBlock);
-  evidence.append(evidenceTitle, acceptanceCallout(entry, databaseBase));
+  const evidenceDetails = el("details", "section-collapse evidence-collapse");
+  evidenceDetails.append(el("summary", "", "Verification details"));
+  evidence.append(evidenceTitle, acceptanceCallout(entry, databaseBase), evidenceDetails);
   const details = el("dl", "details");
   details.append(
     // One date, not two. Acceptance and Lean verification have always been the
@@ -1073,9 +1333,12 @@ async function renderEntry(
       licenceRow(entry, sourceAvailability),
     );
   }
-  evidence.append(details);
+  evidenceDetails.append(details);
   {
-    evidence.append(
+    // The sentence qualifies the licence row of the table above it, so it
+    // lives inside the same disclosure. Outside it, a collapsed page carries a
+    // caveat about licence evidence that is nowhere on the page.
+    evidenceDetails.append(
       el(
         "p",
         "licence-boundary",
@@ -1087,17 +1350,24 @@ async function renderEntry(
   const trust = statementDependencies(entry);
 
   const editorial = el("section", "entry-editorial");
+  const editorialDisclosure = el("details", "section-collapse");
   const editorialTitle = el("div", "section-heading");
   const editorialBlock = el("div");
-  editorialBlock.append(el("div", "eyebrow", "Editorial record"), el("h2", "", "Automated review"));
+  const editorialHeading = el("h2", "", "Automated review");
+  editorialHeading.id = "review-heading";
+  editorial.setAttribute("aria-labelledby", editorialHeading.id);
+  editorialBlock.append(el("div", "eyebrow", "Editorial record"), editorialHeading);
   editorialTitle.append(editorialBlock, el("span", "decision", "Accepted"));
-  editorial.append(editorialTitle);
+  const editorialSummary = el("summary");
+  editorialSummary.append(editorialTitle);
+  editorialDisclosure.append(editorialSummary);
+  editorial.append(editorialDisclosure);
   // No scores. They decide whether a submission is accepted and they are kept
   // beside the database, but they never reach here: the same repository at
   // the same commit has scored 5 and then 4 on the same axis across runs, and a
   // number that moves like that reads as a judgement it cannot support. What
   // it can support is the decision, which is above.
-  editorial.append(
+  editorialDisclosure.append(
     el(
       "p",
       "review-explanation",
@@ -1107,14 +1377,14 @@ async function renderEntry(
     ),
   );
   if (entry.review.warnings.length) {
-    editorial.append(el("h3", "", "AI review comments"));
+    editorialDisclosure.append(el("h3", "", "AI review comments"));
     const comments = el("ul", "review-comments");
     for (const comment of entry.review.warnings) comments.append(el("li", "", comment));
-    editorial.append(comments);
+    editorialDisclosure.append(comments);
   } else {
-    editorial.append(el("p", "no-warnings", "The review recorded no comments on this result."));
+    editorialDisclosure.append(el("p", "no-warnings", "The review recorded no comments on this result."));
   }
-  editorial.append(
+  editorialDisclosure.append(
     dataLink(
       "Read the archived review",
       evidenceDataUrl(entry, databaseBase, "review.json"),
@@ -1161,6 +1431,71 @@ async function renderEntry(
   });
 }
 
+const SUBJECT_SCHEME_LABELS = Object.freeze({ arxiv: "arXiv subject", msc: "MSC2020" });
+
+/**
+ * What one classification code is, above the results carrying it.
+ *
+ * The code is the heading because the code is what the URL is, and the
+ * description is beneath it in full: a page about one subject has room for the
+ * words, where the compact rows that link here do not.
+ */
+function renderSubjectHeading(kind, code, head, content) {
+  document.title = `${code} — Palomar`;
+  const heading = el("header", "subject-heading");
+  const eyebrow = el("div", "eyebrow", SUBJECT_SCHEME_LABELS[kind]);
+  const title = el("h1", "", code);
+  const gloss = el("p", "subject-gloss");
+  taxonomy(kind).then((table) => {
+    const description = table[code];
+    if (typeof description === "string" && description) gloss.textContent = description;
+  });
+  const counts = el("div", "subject-counts");
+  counts.append(
+    el(
+      "span",
+      "",
+      `${head.results} ${head.results === 1 ? "result" : "results"}, ` +
+        `${head.versions} current ${head.versions === 1 ? "version" : "versions"}`,
+    ),
+    dataLink(
+      "Machine-readable index",
+      subjectHeadUrl(kind, code, dataSource().databaseBase),
+      "data-link",
+    ),
+  );
+  heading.append(eyebrow, title, gloss, counts);
+  content.append(heading, el("div", "subject-list"));
+}
+
+/**
+ * The rows of a subject page, which are not registry cards.
+ *
+ * A subject document carries an index row plus the classification and the
+ * registration instant, and nothing else: no authors, no dependencies, no
+ * source. Rendering an entry card from it would mean reading fifty records to
+ * fill one listing, which is the cost this whole surface exists to avoid.
+ */
+function renderSubjectRows(rows, content) {
+  const list = content.querySelector(".subject-list");
+  for (const row of rows) {
+    const article = el("article", "subject-row");
+    const identity = el("div", "card-identity");
+    identity.append(
+      el("span", "entry-id", `${row.id} v${row.version}`),
+      el("span", "entry-date", `Registered ${displayDate(registrationDate(row.published_at))}`),
+    );
+    const title = el("h2");
+    title.append(internalLink(row.title, localPageUrl("entry.html", row)));
+    article.append(identity, title);
+    if (row.abstract) article.append(el("p", "card-abstract", row.abstract));
+    const subjects = el("div", "card-subjects");
+    subjects.append(el("small", "", "Subjects"), categoryTokens(row));
+    article.append(subjects);
+    list.append(article);
+  }
+}
+
 function renderExactTombstone(tombstone, content) {
   document.title = `${tombstone.id} v${tombstone.version} — Palomar`;
   document.body.classList.add("exact-tombstone");
@@ -1177,12 +1512,45 @@ function renderExactTombstone(tombstone, content) {
 }
 
 if (document.body.dataset.page === "index") {
+  // Bound to the containers, not to the cards, because both grids replace
+  // their children whenever a query or a filter changes.
+  statementPreview.watch(document.querySelector("#entry-grid"));
+  statementPreview.watch(document.querySelector("#search-results"));
   // A linked search is its own view. Avoid fetching and exposing a hidden
   // recent listing until the query is cleared; then load it exactly once.
   const hasInitialSearch = wireSearch();
   if (!hasInitialSearch) ensureLanding();
 }
 if (document.body.dataset.page === "entry") {
+  // A same-page anchor into a collapsed section must open that section first,
+  // or the fragment lands on a heading whose content is still hidden. The
+  // browser runs this before the default fragment navigation, so the target
+  // is already expanded by the time it scrolls.
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest?.('a[href*="#"]');
+    if (!link) return;
+    const href = link.getAttribute("href");
+    if (!href) return;
+    const fragmentIndex = href.indexOf("#");
+    if (fragmentIndex === -1) return;
+    const fragment = href.slice(fragmentIndex);
+    if (fragment === "#") return;
+    const target = document.getElementById(decodeURIComponent(fragment.slice(1)));
+    if (target) expandDetailsForTarget(target);
+  });
+  // The click above covers links on this page and the initial render covers a
+  // fragment the page was opened with. A hash that arrives any other way, from
+  // the address bar or from history navigation, gets the same treatment: the
+  // browser has already scrolled to a collapsed heading, so the section is
+  // opened and the target brought back into view.
+  window.addEventListener("hashchange", () => {
+    const fragment = window.location.hash.slice(1);
+    if (!fragment) return;
+    const target = document.getElementById(decodeURIComponent(fragment));
+    if (!target) return;
+    expandDetailsForTarget(target);
+    target.scrollIntoView();
+  });
   renderEntryPage({
     params,
     document,
@@ -1211,5 +1579,16 @@ if (document.body.dataset.page === "render") {
     renderExactTombstone,
     el,
     challengePresentation,
+  });
+}
+if (document.body.dataset.page === "subject") {
+  renderSubjectPage({
+    params,
+    document,
+    loadSubjectHead,
+    loadSubjectYear,
+    loadSubjectPage,
+    renderHeading: renderSubjectHeading,
+    renderRows: renderSubjectRows,
   });
 }

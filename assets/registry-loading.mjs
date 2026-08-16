@@ -2,14 +2,22 @@ import { loadSettledBounded } from "./loading.mjs";
 import {
   databaseBaseFor,
   entryRecordUrl,
+  recentRendersUrl,
   recentUrl,
   selectAvailabilityUrl,
   selectDatabaseUrl,
   selectRenderBase,
+  subjectHeadUrl,
+  subjectPageUrl,
+  subjectYearUrl,
   tombstoneUrl,
   validateAvailability,
   validateEntry,
   validateRecent,
+  validateRecentRenders,
+  validateSubjectHead,
+  validateSubjectPage,
+  validateSubjectYear,
   validateTombstone,
   validateVersions,
   versionsUrl,
@@ -91,6 +99,69 @@ export function createRegistryLoader({
     return validateRecent(await fetchJson(recentUrl(databaseBase)));
   }
 
+  /**
+   * One classification code's front page, and the archive behind it.
+   *
+   * Three reads rather than one, because no document here lists every page of
+   * a code: the head names years, a year names days and their page ranges, and
+   * the page a row is on is a pure function of its identifier. A directory of
+   * pages would be rewritten whenever the code changed, and a code can hold a
+   * sizeable fraction of the registry.
+   */
+  async function loadSubjectHead(kind, code, { signal } = {}) {
+    const { databaseBase } = dataSource();
+    return validateSubjectHead(
+      await fetchJson(subjectHeadUrl(kind, code, databaseBase), { signal }),
+      kind,
+      code,
+    );
+  }
+
+  async function loadSubjectYear(kind, code, expected, { signal } = {}) {
+    const { databaseBase } = dataSource();
+    return validateSubjectYear(
+      await fetchJson(subjectYearUrl(kind, code, expected.year, databaseBase), { signal }),
+      expected,
+      kind,
+      code,
+    );
+  }
+
+  async function loadSubjectPage(kind, code, day, page, { signal } = {}) {
+    const { databaseBase } = dataSource();
+    return validateSubjectPage(
+      await fetchJson(subjectPageUrl(kind, code, day, page, databaseBase), { signal }),
+      kind,
+      code,
+      day,
+      page,
+    );
+  }
+
+  // One read per page however many previews are asked for, and none at all if
+  // none is. The same bargain as the availability manifest: share a successful
+  // read, but never let one temporary failure become this page's answer for the
+  // rest of its lifetime. An absent document is a stable absence — a release
+  // that has not published one yet — and previews stay off until a reload.
+  const renderLoads = new Map();
+  function loadRecentRenders(databaseBase) {
+    const url = recentRendersUrl(databaseBase);
+    const key = url.href;
+    if (!renderLoads.has(key)) {
+      const loading = fetchJson(url)
+        .then((document) => validateRecentRenders(document))
+        .catch((error) => {
+          if (error?.status !== 404) {
+            renderLoads.delete(key);
+            warn(`Render previews are unavailable: ${error?.message || String(error)}`);
+          }
+          return null;
+        });
+      renderLoads.set(key, loading);
+    }
+    return renderLoads.get(key);
+  }
+
   async function loadEntry(id, requestedVersion) {
     const { databaseBase, renderBase, availabilityUrl } = dataSource();
     // The versions of this one result, not the whole registry. Reading a
@@ -142,5 +213,15 @@ export function createRegistryLoader({
     };
   }
 
-  return { dataSource, fetchJson, loadAvailabilityBounded, loadRecent, loadEntry };
+  return {
+    dataSource,
+    fetchJson,
+    loadAvailabilityBounded,
+    loadRecent,
+    loadRecentRenders,
+    loadEntry,
+    loadSubjectHead,
+    loadSubjectYear,
+    loadSubjectPage,
+  };
 }

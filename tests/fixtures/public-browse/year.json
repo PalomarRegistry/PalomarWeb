@@ -5,9 +5,10 @@
       "first_page": 1,
       "last_page": 1,
       "results": 1,
-      "versions": 1
+      "versions": 2
     }
   ],
+  "page_path": "browse/{day}/{page}.json",
   "schema_version": 1,
   "year": "2026"
 }

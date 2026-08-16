@@ -7,6 +7,13 @@
       "status": "accepted",
       "title": "kim-em/erdos-unit-distance-comparator",
       "version": 1
+    },
+    {
+      "id": "PALOMAR-2026-08-08-000001",
+      "path": "entries/PALOMAR-2026-08-08-000001-v2.json",
+      "status": "accepted",
+      "title": "kim-em/erdos-unit-distance-comparator",
+      "version": 2
     }
   ],
   "page": 1,

@@ -6,6 +6,7 @@ import {
   availabilityManifest,
   entry,
   recent,
+  recentRenders,
   secondVersion,
   summary,
 } from "./registry-fixture.mjs";
@@ -177,6 +178,54 @@ test("the recent projection is fetched from the selected database and validated"
   );
   assert.deepEqual(loaded, document);
   assert.deepEqual(calls.map(({ url }) => url.pathname), ["/recent.json"]);
+});
+
+test("the render companion is read once a page and caches only a stable absence", async () => {
+  const database = new URL("https://data.palomar-registry.org/");
+  const document = recentRenders();
+  const calls = [];
+  const shared = createRegistryLoader({
+    fetch: routedFetch(new Map([["/recent-renders.json", jsonResponse(document)]]), calls),
+    location: productionLocation("index.html"),
+  });
+
+  const [first, second] = await Promise.all([
+    shared.loadRecentRenders(database),
+    shared.loadRecentRenders(database),
+  ]);
+  assert.deepEqual(first, document);
+  assert.equal(second, first, "one read however many previews ask");
+  assert.deepEqual(await shared.loadRecentRenders(database), document);
+  assert.equal(calls.length, 1);
+
+  // A release that has not published one yet is this page's answer. A
+  // transport failure is not: previews resume when the next rest retries.
+  const absentCalls = [];
+  const absent = createRegistryLoader({
+    fetch: routedFetch(
+      new Map([["/recent-renders.json", jsonResponse(null, 404)]]),
+      absentCalls,
+    ),
+    location: productionLocation("index.html"),
+  });
+  assert.equal(await absent.loadRecentRenders(database), null);
+  assert.equal(await absent.loadRecentRenders(database), null);
+  assert.equal(absentCalls.length, 1);
+
+  const warnings = [];
+  const transientCalls = [];
+  const transient = createRegistryLoader({
+    fetch: routedFetch(
+      new Map([["/recent-renders.json", jsonResponse(null, 503, "Service Unavailable")]]),
+      transientCalls,
+    ),
+    location: productionLocation("index.html"),
+    warn: (message) => warnings.push(message),
+  });
+  assert.equal(await transient.loadRecentRenders(database), null);
+  assert.equal(await transient.loadRecentRenders(database), null);
+  assert.equal(transientCalls.length, 2);
+  assert.match(warnings.join("\n"), /Render previews are unavailable/);
 });
 
 test("an unversioned entry read resolves and validates the current immutable record", async () => {
@@ -359,4 +408,79 @@ test("an absent version index and tombstone produce the one public not-found err
   await assert.rejects(loader.loadEntry(ID, 9), /entry not found/);
   await assert.rejects(loader.loadEntry(ID, null), /entry not found/);
   assert.equal(calls.some(({ url }) => url.pathname === "/source-availability.json"), false);
+});
+
+function subjectHead(overrides = {}) {
+  return {
+    schema_version: 1,
+    kind: "arxiv",
+    code: "math.CO",
+    entries: [{
+      ...summary(),
+      published_at: "2026-07-29T09:14:07Z",
+      classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
+      abstract: "An abstract.",
+    }],
+    results: 1,
+    versions: 1,
+    year_path: "subjects/arxiv/math.CO/{year}.json",
+    years: [{ year: "2026", days: 1, results: 1, versions: 1 }],
+    ...overrides,
+  };
+}
+
+test("the subject reads resolve and validate all three levels of one code", async () => {
+  const calls = [];
+  const dayRow = { day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 };
+  const { abstract: _dropped, ...archived } = subjectHead().entries[0];
+  const loader = createRegistryLoader({
+    fetch: routedFetch(new Map([
+      ["/subjects/arxiv/math.CO.json", jsonResponse(subjectHead())],
+      ["/subjects/arxiv/math.CO/2026.json", jsonResponse({
+        schema_version: 1,
+        year: "2026",
+        page_path: "subjects/arxiv/math.CO/{day}/{page}.json",
+        days: [dayRow],
+      })],
+      ["/subjects/arxiv/math.CO/2026-07-29/1.json", jsonResponse({
+        schema_version: 1,
+        day: "2026-07-29",
+        page: 1,
+        entries: [archived],
+      })],
+    ]), calls),
+    location: productionLocation("subject.html"),
+  });
+
+  const head = await loader.loadSubjectHead("arxiv", "math.CO");
+  assert.equal(head.code, "math.CO");
+  assert.equal(head.entries.length, 1);
+  const year = await loader.loadSubjectYear("arxiv", "math.CO", head.years[0]);
+  assert.deepEqual(year.days, [dayRow]);
+  const page = await loader.loadSubjectPage("arxiv", "math.CO", dayRow.day, dayRow.first_page);
+  assert.deepEqual(page.entries.map((row) => row.id), [archived.id]);
+  assert.deepEqual(calls.map(({ url }) => url.pathname), [
+    "/subjects/arxiv/math.CO.json",
+    "/subjects/arxiv/math.CO/2026.json",
+    "/subjects/arxiv/math.CO/2026-07-29/1.json",
+  ]);
+});
+
+test("a subject read refuses a document about another code before the page sees it", async () => {
+  const loader = createRegistryLoader({
+    fetch: routedFetch(new Map([
+      ["/subjects/arxiv/math.CO.json", jsonResponse(subjectHead({ code: "math.MG" }))],
+      ["/subjects/arxiv/math.MG.json", jsonResponse({}, 404)],
+    ])),
+    location: productionLocation("subject.html"),
+  });
+
+  await assert.rejects(
+    loader.loadSubjectHead("arxiv", "math.CO"),
+    /different classification code/,
+  );
+  await assert.rejects(
+    loader.loadSubjectHead("arxiv", "math.MG"),
+    (error) => error.status === 404,
+  );
 });

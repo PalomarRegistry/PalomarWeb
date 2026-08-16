@@ -64,48 +64,71 @@ export function createFormalizationPresentation({ document }) {
   function statementDependencies(entry) {
     const section = el("section", "entry-trust");
     section.id = "statement-dependencies";
+    const disclosure = el("details", "section-collapse");
     const heading = el("div", "section-heading");
     const title = el("div");
-    title.append(
-      el("div", "eyebrow", "Statement dependencies"),
-      el(
-        "h2",
-        "",
-        entry.trust.level === "high"
-          ? "Depends only on Mathlib"
-          : "Depends on additional libraries",
-      ),
+    // Named from its own heading, so the section is a landmark even where a
+    // summary's contents are flattened into its accessible name and the
+    // heading inside it is not exposed as one.
+    const sectionHeading = el(
+      "h2",
+      "",
+      entry.trust.level === "high"
+        ? "Depends only on Mathlib"
+        : "Depends on additional libraries",
     );
-    heading.append(title, trustBadge(entry));
-    section.append(heading);
-    const imports = el("div", "token-list");
-    for (const item of entry.trust.challenge_imports) imports.append(el("code", "", item));
-    section.append(el("h3", "", "Libraries imported by the statement"), imports);
-    if (entry.trust.challenge_dependencies.length) {
-      section.append(el("h3", "", "Source repositories"));
-      const dependencies = el("ul", "plain-list");
-      for (const dependency of entry.trust.challenge_dependencies) {
-        dependencies.append(el("li", "", dependency.repository));
+    sectionHeading.id = "statement-dependencies-heading";
+    section.setAttribute("aria-labelledby", sectionHeading.id);
+    title.append(el("div", "eyebrow", "Statement dependencies"), sectionHeading);
+    heading.append(title);
+    const summary = el("summary");
+    summary.append(heading);
+    disclosure.append(summary);
+    section.append(disclosure);
+    const imports = entry.trust.challenge_imports;
+    const dependencies = entry.trust.challenge_dependencies;
+    disclosure.append(el("h3", "", "Imported libraries"));
+    if (imports.length === 1 && dependencies.length === 1) {
+      const line = el("p", "statement-import-line");
+      line.append(el("code", "", imports[0]), el("span", "", ` · ${dependencies[0].repository}`));
+      disclosure.append(line);
+    } else {
+      const importList = el("div", "token-list");
+      for (const item of imports) importList.append(el("code", "", item));
+      disclosure.append(importList);
+      if (dependencies.length) {
+        disclosure.append(el("h3", "", "Source repositories"));
+        const dependencyList = el("ul", "plain-list");
+        for (const dependency of dependencies) {
+          dependencyList.append(el("li", "", dependency.repository));
+        }
+        disclosure.append(dependencyList);
       }
-      section.append(dependencies);
     }
     if (entry.trust.reasons.length) {
-      section.append(el("h3", "", "Why additional libraries are needed"));
+      disclosure.append(el("h3", "", "Why additional libraries are needed"));
       const reasons = el("ul", "reason-list");
       for (const reason of entry.trust.reasons) reasons.append(el("li", "", reason));
-      section.append(reasons);
+      disclosure.append(reasons);
     }
     return section;
   }
 
   function solutionMetadata(entry, renderMetadata, sourceAvailability = null) {
     const section = el("section", "entry-solution");
+    const disclosure = el("details", "section-collapse");
     const heading = el("div", "section-heading");
     const title = el("div");
-    title.append(el("div", "eyebrow", "Accepted proof"), el("h2", "", "Verified proof"));
+    const sectionHeading = el("h2", "", "Verified proof");
+    sectionHeading.id = "proof-heading";
+    section.setAttribute("aria-labelledby", sectionHeading.id);
+    title.append(el("div", "eyebrow", "Accepted proof"), sectionHeading);
     heading.append(title, el("span", "decision accepted-decision", "Accepted"));
-    section.append(heading);
-    section.append(
+    const summary = el("summary");
+    summary.append(heading);
+    disclosure.append(summary);
+    section.append(disclosure);
+    disclosure.append(
       el(
         "p",
         "solution-summary",
@@ -141,7 +164,7 @@ export function createFormalizationPresentation({ document }) {
       row.append(value);
       details.append(row);
     }
-    section.append(details);
+    disclosure.append(details);
 
     const dependencies = entry.formalization.project_dependencies;
     const closure = el("details", "solution-dependencies");
@@ -208,7 +231,7 @@ export function createFormalizationPresentation({ document }) {
       list.append(item);
     }
     closure.append(list);
-    section.append(closure);
+    disclosure.append(closure);
     return section;
   }
 

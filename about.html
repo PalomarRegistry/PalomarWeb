@@ -182,7 +182,7 @@
           submission is verified and reviewed from scratch, and if it is accepted
           and you choose to register it, it becomes the next version of that same
           identifier. The repository, project directory, and Comparator
-          configuration must match the existing entry.
+          configuration path must match the existing entry.
         </p>
         <p>
           Every version stays permanently resolvable at
@@ -596,17 +596,20 @@
         </p>
         <h3 id="what-is-public">What is public, and what is not</h3>
         <p>
-          Public from the moment you submit: your repository, commit, declared
-          authorization relationship, and any approval evidence you provide.
-          Mechanical verification runs in a public GitHub Actions workflow, and
-          its logs are public. Whether you later register is inferable from the
-          registry.
+          Public from verification onward: your repository, your commit, the
+          submission identifier, the authorization relationship you declared,
+          any approval evidence you wrote, and the identifier of the record you
+          are correcting if you are correcting one. Mechanical verification runs
+          in a public GitHub Actions workflow, and the inputs it was dispatched
+          with are as public as its logs. Your notes are deliberately not among
+          them. Whether you later register is inferable from the registry.
         </p>
         <p>
-          Not public unless you register: the editorial review and the decision.
-          If a review goes badly, or you simply change your mind, withdrawing
-          leaves no public trace of either. The already-public verification run
-          remains.
+          Not public unless you register: the editorial review and the decision,
+          and the registry record itself. If a review goes badly, or you simply
+          change your mind, withdrawing leaves no public trace of either. The
+          already-public verification run remains, and so does everything its
+          inputs carried.
         </p>
         <p>
           Not published whichever you choose: your identity as submitter.
@@ -624,6 +627,12 @@
           readable by Palomar operators, by GitHub, and by the model provider,
           and are retained indefinitely so that any decision can be audited. Do
           not put anything sensitive in the notes field.
+        </p>
+        <p>
+          The <a href="privacy.html">privacy policy</a> completes this: which
+          field is kept where, how long each is retained, what withdrawing
+          before registration scrubs and what it leaves behind, and how to ask
+          for something to be corrected or taken down.
         </p>
         <h3 id="what-happens-next">What happens next</h3>
         <p>
@@ -651,11 +660,22 @@
         <p>
           Nothing is registered until you ask for it. If the review is an
           acceptance, your status page offers two choices: register, or withdraw.
-          Registration is permanent: the record, the review, and your repository
-          and commit enter Palomar's append-only canonical history. A named
-          Moderator may exceptionally retract one exact version from the active
-          public registry; that does not delete or rewrite the canonical record,
-          and the public service retains a minimal tombstone. Acceptance is not
+          Asking to register is how you authorise the record to be served, and
+          it is the last point at which the choice is yours alone. The
+          <a href="privacy.html#lawful-bases">privacy policy</a> explains that
+          serving the record afterwards rests on Palomar's legitimate interests
+          rather than on your consent, so withdrawing is not available once you
+          have registered, and what you have instead is a further version or a
+          request under the lawful-request process that policy describes.
+          Registration is meant to be permanent: the record, the review, and
+          your repository and commit enter Palomar's canonical history, which is
+          append-only in ordinary operation. A named Moderator may exceptionally
+          retract one exact version from the active public registry; that does
+          not delete or rewrite the canonical record, and the public service
+          retains a minimal tombstone. What that rule does not do is override a
+          legal obligation Palomar is under, and the
+          <a href="privacy.html#after-registration">privacy policy</a> describes
+          the process by which one reaches the ledger. Acceptance is not
           registration; an accepted submission appears in the registry once the
           corresponding database pull request is merged.
         </p>
@@ -749,7 +769,7 @@
 
     <footer>
       <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
-      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="https://data.palomar-registry.org/browse/index.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
+      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="privacy.html">Privacy</a><a href="https://data.palomar-registry.org/recent.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
     </footer>
     <script type="module" src="assets/about.js"></script>
   </body>

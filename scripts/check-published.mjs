@@ -16,11 +16,14 @@ import { readFile } from "node:fs/promises";
 import { shippedFiles } from "./build-site.mjs";
 import {
   entryRecordUrl,
+  subjectHeadUrl,
   validateBrowseHead,
   validateBrowsePage,
   validateBrowseYear,
   validateEntry,
   validateRecent,
+  validateRecentRenders,
+  validateSubjectHead,
   validateVersions,
   versionsUrl,
 } from "../assets/security.mjs";
@@ -62,7 +65,9 @@ export function publishState(html, expected) {
  * every row the producer advertises; they are not an independent proof that
  * the producer omitted nothing. `recent.json` is also checked against each
  * current history head and entry, because it is the landing page's separate
- * exact projection.
+ * exact projection, and `recent-renders.json` against both, because it and the
+ * page are one projection published as two documents and only a reader who
+ * hovers would otherwise discover they had drifted apart.
  */
 const PUBLIC_DATA_CONCURRENCY = 8;
 const PUBLIC_REQUEST_POLICY = Object.freeze({
@@ -134,6 +139,8 @@ const PUBLIC_VALIDATORS = {
   validateBrowseYear,
   validateEntry,
   validateRecent,
+  validateRecentRenders,
+  validateSubjectHead,
   validateVersions,
 };
 
@@ -148,6 +155,9 @@ export async function publicDataState(
   try {
     const recent = validators.validateRecent(
       await fetchJson(new URL("recent.json", base), fetcher, policy),
+    );
+    const recentRenders = validators.validateRecentRenders(
+      await fetchJson(new URL("recent-renders.json", base), fetcher, policy),
     );
     const browse = validators.validateBrowseHead(
       await fetchJson(new URL("browse/index.json", base), fetcher, policy),
@@ -223,6 +233,7 @@ export async function publicDataState(
     );
     const entriesByPath = new Map(fetchedEntries);
     const historiesById = new Map(histories.map((history) => [history.id, history.entries]));
+    const rendersById = new Map(recentRenders.renders.map((row) => [row.id, row]));
     for (const summary of recent.entries) {
       const history = historiesById.get(summary.id);
       const current = history?.at(-1);
@@ -235,11 +246,77 @@ export async function publicDataState(
       if (!entry || summary.published_at !== entry.registered_at) {
         throw new Error(`recent row for ${summary.id} does not match its entry registered_at`);
       }
+      // The two are one projection published as two documents, so a page row
+      // without its hash, or with the hash of another version or of a render
+      // the record does not claim, is drift between them. A reader who hovers
+      // is the one who finds out, which is exactly what this check exists to
+      // do first.
+      const render = rendersById.get(summary.id);
+      if (!render || render.version !== summary.version) {
+        throw new Error(`recent row for ${summary.id} has no render hash of its version`);
+      }
+      if (render.artifact_tree_sha256 !== entry.challenge_render.artifact_tree_sha256) {
+        throw new Error(`recent render hash for ${summary.id} is not its entry's`);
+      }
     }
+    if (recentRenders.renders.length !== recent.entries.length) {
+      throw new Error("recent renders names results the landing page does not");
+    }
+    // The subject pages the website now links every classification code to.
+    // Bounded by the classification vocabulary of the newest rows rather than
+    // by the registry, and checked against the records the traversal above
+    // already proved: a subject front page naming something that is not a
+    // current version, or carrying a code the record does not, would show a
+    // result under a heading it has nothing to do with.
+    const currentByPath = new Map();
+    for (const entries of historiesById.values()) {
+      const current = entries.at(-1);
+      currentByPath.set(current.path, current);
+    }
+    // Every code any current version carries, not only the codes of the newest
+    // two hundred. A result outside `recent.json` links to its subject page
+    // from its own entry page, and a health check that never asked for that
+    // document would not notice it had stopped being served.
+    const codes = new Map();
+    for (const path of currentByPath.keys()) {
+      const { arxiv, msc2020 } = entriesByPath.get(path).classification;
+      for (const code of arxiv) codes.set(`arxiv/${code}`, ["arxiv", code]);
+      for (const code of msc2020) codes.set(`msc/${code}`, ["msc", code]);
+    }
+    await mapBounded([...codes.values()], async ([kind, code]) => {
+      const head = validators.validateSubjectHead(
+        await fetchJson(subjectHeadUrl(kind, code, base), fetcher, policy),
+        kind,
+        code,
+      );
+      for (const row of head.entries) {
+        const current = currentByPath.get(row.path);
+        if (!current || current.version !== row.version || current.title !== row.title) {
+          throw new Error(`subject ${kind}/${code} names ${row.path}, which is not a current version`);
+        }
+        // Every field the subject page shows, against the record it claims to
+        // be showing. A row that reads correctly and says something its record
+        // does not is the failure this surface can still have: the abstract and
+        // the sibling codes are rendered, and the instant is what orders them.
+        const entry = entriesByPath.get(row.path);
+        const declared = entry.classification;
+        const carried = kind === "arxiv" ? declared.arxiv : declared.msc2020;
+        if (!carried.includes(code)) {
+          throw new Error(`subject ${kind}/${code} carries ${row.path}, whose record does not`);
+        }
+        if (row.published_at !== entry.registered_at || row.abstract !== entry.abstract ||
+            row.classification.arxiv.join(" ") !== declared.arxiv.join(" ") ||
+            row.classification.msc2020.join(" ") !== declared.msc2020.join(" ")) {
+          throw new Error(`subject ${kind}/${code} projects ${row.path} as something its record is not`);
+        }
+      }
+      return head;
+    });
+
     return {
       healthy: true,
       reason: `the website contract accepts all ${browse.versions} active entry versions ` +
-        `across ${browse.results} results`,
+        `across ${browse.results} results and ${codes.size} classification codes`,
     };
   } catch (error) {
     return { healthy: false, reason: `public registry data is incompatible: ${error.message}` };

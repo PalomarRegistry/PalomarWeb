@@ -13,12 +13,28 @@ const page = (version) =>
 
 const registryValidators = {
   validateRecent: (value) => value,
+  validateRecentRenders: (value) => value,
   validateBrowseHead: (value) => value,
   validateBrowseYear: (value) => value,
   validateBrowsePage: (value) => value,
+  validateSubjectHead: (value) => value,
   validateVersions: (value) => value,
   validateEntry() {},
 };
+
+const CLASSIFICATION = { arxiv: ["math.CO"], msc2020: ["05C10"] };
+
+function subjectHead(kind, code, rows, registeredAt = "2026-08-08T12:00:00Z") {
+  return {
+    kind,
+    code,
+    entries: rows.map((row) => ({
+      ...row,
+      published_at: registeredAt,
+      classification: CLASSIFICATION,
+    })),
+  };
+}
 
 function oneEntryRegistry() {
   const id = "PALOMAR-2026-08-08-000001";
@@ -30,7 +46,7 @@ function oneEntryRegistry() {
     path: `entries/${id}-v1.json`,
   };
   const registeredAt = "2026-08-08T12:00:00Z";
-  const recent = { ...row, versions: 1, published_at: registeredAt };
+  const recent = { ...row, versions: 1, published_at: registeredAt, classification: CLASSIFICATION };
   const head = {
     results: 1,
     versions: 1,
@@ -48,22 +64,33 @@ function oneEntryRegistry() {
   };
   const browsePage = { entries: [row] };
   const history = { id, entries: [row] };
-  const entry = { id, registered_at: registeredAt };
+  const digest = "a".repeat(64);
+  const entry = {
+    id,
+    registered_at: registeredAt,
+    classification: CLASSIFICATION,
+    challenge_render: { artifact_tree_sha256: digest },
+  };
+  const renders = { renders: [{ id, version: 1, artifact_tree_sha256: digest }] };
   return {
     entry,
     head,
     history,
     page: browsePage,
     recent,
+    renders,
     row,
     year,
     responses: new Map([
       ["https://data.example/recent.json", { entries: [recent] }],
+      ["https://data.example/recent-renders.json", renders],
       ["https://data.example/browse/index.json", head],
       ["https://data.example/browse/2026.json", year],
       ["https://data.example/browse/2026-08-08/1.json", browsePage],
       [`https://data.example/versions/${id}.json`, history],
       [`https://data.example/entries/${id}-v1.json`, entry],
+      ["https://data.example/subjects/arxiv/math.CO.json", subjectHead("arxiv", "math.CO", [row])],
+      ["https://data.example/subjects/msc/05C10.json", subjectHead("msc", "05C10", [row])],
     ]),
   };
 }
@@ -128,7 +155,12 @@ test("live-data health traverses browse and history to validate every public per
   };
   const responses = new Map([
     ["https://data.example/recent.json", {
-      entries: [{ ...second, versions: 2, published_at: registeredAt }],
+      entries: [{
+        ...second,
+        versions: 2,
+        published_at: registeredAt,
+        classification: CLASSIFICATION,
+      }],
     }],
     ["https://data.example/browse/index.json", {
       results: 1,
@@ -153,11 +185,20 @@ test("live-data health traverses browse and history to validate every public per
     ["https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json", {
       id: "one-v1",
       registered_at: "2026-08-08T11:00:00Z",
+      classification: CLASSIFICATION,
+      challenge_render: { artifact_tree_sha256: "b".repeat(64) },
     }],
     ["https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json", {
       id: "one-v2",
       registered_at: registeredAt,
+      classification: CLASSIFICATION,
+      challenge_render: { artifact_tree_sha256: "a".repeat(64) },
     }],
+    ["https://data.example/recent-renders.json", {
+      renders: [{ id: first.id, version: 2, artifact_tree_sha256: "a".repeat(64) }],
+    }],
+    ["https://data.example/subjects/arxiv/math.CO.json", subjectHead("arxiv", "math.CO", [second])],
+    ["https://data.example/subjects/msc/05C10.json", subjectHead("msc", "05C10", [second])],
   ]);
   const fetcher = async (url) => {
     calls.push(String(url));
@@ -170,6 +211,10 @@ test("live-data health traverses browse and history to validate every public per
   const state = await publicDataState("https://data.example", fetcher, {
     validateRecent(page) {
       validated.push("recent");
+      return page;
+    },
+    validateRecentRenders(page) {
+      validated.push("recent-renders");
       return page;
     },
     validateBrowseHead(page) {
@@ -191,28 +236,86 @@ test("live-data health traverses browse and history to validate every public per
     validateEntry(value, summary) {
       validated.push(`${value.id}:${summary.path}`);
     },
+    validateSubjectHead(page, kind, code) {
+      validated.push(`subject:${kind}/${code}`);
+      return page;
+    },
   });
 
   assert.equal(state.healthy, true);
   assert.deepEqual(calls, [
     "https://data.example/recent.json",
+    "https://data.example/recent-renders.json",
     "https://data.example/browse/index.json",
     "https://data.example/browse/2026.json",
     "https://data.example/browse/2026-08-08/1.json",
     "https://data.example/versions/PALOMAR-2026-08-08-000001.json",
     "https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json",
     "https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json",
+    "https://data.example/subjects/arxiv/math.CO.json",
+    "https://data.example/subjects/msc/05C10.json",
   ]);
   assert.deepEqual(validated, [
     "recent",
+    "recent-renders",
     "browse-head",
     "year:2026",
     "page:2026-08-08:1",
     `versions:${first.id}`,
     `one-v1:${first.path}`,
     `one-v2:${second.path}`,
+    "subject:arxiv/math.CO",
+    "subject:msc/05C10",
   ]);
-  assert.match(state.reason, /all 2 active entry versions across 1 results/);
+  assert.match(
+    state.reason,
+    /all 2 active entry versions across 1 results and 2 classification codes/,
+  );
+});
+
+test("live-data health refuses a subject page naming what is not a current version", async () => {
+  const fixture = oneEntryRegistry();
+  const superseded = { ...fixture.row, version: 2, path: `entries/${fixture.row.id}-v2.json` };
+  const responses = new Map(fixture.responses);
+  responses.set(
+    "https://data.example/subjects/arxiv/math.CO.json",
+    subjectHead("arxiv", "math.CO", [superseded]),
+  );
+  const state = await publicDataState(
+    "https://data.example",
+    responseFrom(responses),
+    registryValidators,
+  );
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /which is not a current version/);
+});
+
+test("live-data health refuses a subject row that is not the record it names", async () => {
+  // Every field the subject page draws is compared with the record behind it.
+  // A row that reads perfectly well and says something its record does not is
+  // the failure this surface can still have.
+  for (const [field, wrong] of [
+    ["published_at", "2026-08-08T23:59:59Z"],
+    ["abstract", "An abstract the record does not carry."],
+    ["classification", { arxiv: ["math.CO", "math.MG"], msc2020: ["05C10"] }],
+  ]) {
+    const fixture = oneEntryRegistry();
+    const responses = new Map(fixture.responses);
+    const head = subjectHead("arxiv", "math.CO", [fixture.row]);
+    responses.set("https://data.example/subjects/arxiv/math.CO.json", {
+      ...head,
+      entries: [{ ...head.entries[0], [field]: wrong }],
+    });
+    const state = await publicDataState(
+      "https://data.example",
+      responseFrom(responses),
+      registryValidators,
+    );
+
+    assert.equal(state.healthy, false, field);
+    assert.match(state.reason, /as something its record is not/);
+  }
 });
 
 test("live-data health fails closed when a version index omits or rewrites browse history", async () => {
@@ -226,6 +329,7 @@ test("live-data health fails closed when a version index omits or rewrites brows
   };
   const responses = new Map([
     ["https://data.example/recent.json", { entries: [] }],
+    ["https://data.example/recent-renders.json", { renders: [] }],
     ["https://data.example/browse/index.json", {
       results: 1,
       versions: 1,
@@ -249,6 +353,7 @@ test("live-data health fails closed when a version index omits or rewrites brows
   ]);
   const identityValidators = {
     validateRecent: (value) => value,
+    validateRecentRenders: (value) => value,
     validateBrowseHead: (value) => value,
     validateBrowseYear: (value) => value,
     validateBrowsePage: (value) => value,
@@ -388,6 +493,50 @@ test("live-data health rejects a recent row absent from advertised history", asy
   assert.match(state.reason, /recent row .* does not equal its current version history/);
 });
 
+test("live-data health rejects a render companion that has drifted from the page", async (t) => {
+  for (const [name, mutate, reason] of [
+    [
+      "naming no hash for a listed result",
+      (fixture) => { fixture.renders.renders = []; },
+      /has no render hash of its version/,
+    ],
+    [
+      "naming another version",
+      (fixture) => { fixture.renders.renders[0].version = 2; },
+      /has no render hash of its version/,
+    ],
+    [
+      "naming a render the record does not claim",
+      (fixture) => { fixture.renders.renders[0].artifact_tree_sha256 = "c".repeat(64); },
+      /is not its entry's/,
+    ],
+    [
+      "naming a result the page does not",
+      (fixture) => {
+        fixture.renders.renders.push({
+          id: "PALOMAR-2026-08-08-000002",
+          version: 1,
+          artifact_tree_sha256: "d".repeat(64),
+        });
+      },
+      /names results the landing page does not/,
+    ],
+  ]) {
+    await t.test(name, async () => {
+      const fixture = oneEntryRegistry();
+      mutate(fixture);
+      const state = await publicDataState(
+        "https://data.example",
+        responseFrom(fixture.responses),
+        registryValidators,
+      );
+
+      assert.equal(state.healthy, false);
+      assert.match(state.reason, reason);
+    });
+  }
+});
+
 test("live-data health checks recent publication time against the already fetched entry", async () => {
   const fixture = oneEntryRegistry();
   fixture.recent.published_at = "2026-08-08T13:00:00Z";
@@ -414,7 +563,11 @@ test("every monitored linked document is requested exactly once from its owner",
   } = await import("../scripts/check-published.mjs");
   const sources = await shippedSources();
   const documents = monitoredLinkedDocuments(sources);
-  for (const path of ["browse/index.json", "feed.xml", "recent.json", "source-availability.json"]) {
+  // The browse head is not here because no page links it: it names years and
+  // counts and no path, so a reader who followed it learned nothing and could
+  // not go on. `--data` fetches it as the root of the complete traversal, which
+  // is the only thing that ever read it.
+  for (const path of ["feed.xml", "recent.json", "source-availability.json"]) {
     assert.ok(
       documents.has(`https://data.palomar-registry.org/${path}`),
       `${path} is absent from the shipped document reconciliation`,

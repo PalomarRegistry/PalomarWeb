@@ -24,10 +24,28 @@
   the matching Web deployment. Do not add an old-shape or per-entry fallback;
   invalid projections are supposed to fail closed.
 
+- The subject surfaces—`subjects/<kind>/<code>.json`, its `<year>.json`, and its
+  `<day>/<page>.json`—are the same closed contract, and are the same document
+  family as browsing: PalomarDatabase writes both from
+  `day_pages.write_collection`, so `security.mjs` reads their year and page
+  levels with one shared validator and one shared schema constant. A subject row
+  carries the classification and the registration instant on top of the index
+  row, and both are checked: a row whose classification omits the code being
+  asked for is a result under a heading it has nothing to do with, which is the
+  one failure a well-formed row can still be. `check-published.mjs` validates
+  the front page of every code the newest rows carry, bounded by the
+  classification vocabulary rather than by the registry.
+
 - The three browse surfaces—`browse/index.json`, `browse/<year>.json`, and
   `browse/<day>/<page>.json`—are also exact closed producer/consumer contracts.
   PalomarDatabase owns their head, year, page, count, and summary-row shapes;
-  change those producer-first. CI downloads one live head/year/page chain into
+  change those producer-first. A head and a year each publish the path of the
+  level below as a template, `year_path` and `page_path`, for readers who have
+  the document and not the grammar; a subject's are its own code's, because
+  both collections derive them from the directory being written. This consumer
+  has the grammar and requires the templates to equal it exactly. It never
+  expands one to build a request: a template read as instructions is a path the
+  data origin chooses. CI downloads one live head/year/page chain into
   the named producer-contract fixture test, then the predeploy check traverses
   every row the producer advertises. The traversal reconciles those surfaces;
   it cannot independently prove that their common producer omitted nothing.
@@ -86,12 +104,29 @@
   `assets/entry-history-presentation.mjs` owns the entry page's canonical link,
   supersession notice, and immutable version-history section, while consuming
   validated records and the existing confined local-entry URL builder;
+  `assets/subject-pages.mjs` owns the subject route's parameter validation,
+  progressive visibility, route-level errors, and the archive walk's position,
+  while `app.js` composes the heading and the rows and `security.mjs` keeps
+  validation. The walk is bounded per click and holds no directory of pages:
+  nothing published names every page of a code, deliberately, because such a
+  document would be rewritten whenever the code changed;
   `assets/registry-loading.mjs` composes the selected endpoints, JSON
   transport, the one bounded page-scoped source-availability cache/retry
   policy, and exact recent/version/entry/tombstone reads without taking
   validation or route ownership. Entry and render content must consume that
   availability result progressively through `source-preservation.mjs`; an
   ancillary health request must never delay a verified record or render;
+  `assets/statement-preview.mjs` owns the listing grids' hover preview: pointer
+  intent and its delays, panel placement and lifetime, and resolving a card to
+  its rendering from either a whole record or the bounded companion document.
+  It consumes the confined artifact URL and the disposable sandboxed frame from
+  their owners and must not acquire its own; `challenge-presentation.mjs` still
+  owns the frame, and a surface that mounts and discards frames must dispose
+  them, because the height listener is on `window` rather than on the frame.
+  The preview is deliberately pointer-only and deliberately does not repeat the
+  entry page's render-metadata correspondence check; it is a preview of an
+  immutable artifact at a content address, and the entry page remains where a
+  rendering is tied to its accepted record.
   `assets/app.js` owns remaining page composition and controller wiring. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed
