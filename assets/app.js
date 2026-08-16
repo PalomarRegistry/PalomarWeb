@@ -26,6 +26,7 @@ import { createFormalizationPresentation } from "./formalization-presentation.mj
 import { createRegistryLoader } from "./registry-loading.mjs";
 import { createStatementPreview } from "./statement-preview.mjs";
 import { renderSubjectPage } from "./subject-pages.mjs";
+import { presentationAbstract } from "./presentation-text.mjs";
 import {
   bindSourceControl,
   createSourceAvailabilityBinding,
@@ -279,7 +280,7 @@ function searchBlob(entry) {
   const categories = classification(entry);
   return [
     entry.title,
-    entry.abstract,
+    presentationAbstract(entry),
     authorNames(entry),
     theoremNames(entry),
     entry.source.repository,
@@ -316,7 +317,7 @@ function entryCard(
   // than left to work it out from what is missing.
   statementPreview.register(titleLink, entry);
   title.append(titleLink);
-  const abstract = el("p", "card-abstract", entry.abstract);
+  const abstract = presentationAbstract(entry);
   const meta = el("div", "card-meta");
   const authors = el("div");
   authors.append(el("small", "", "Authors"), el("span", "", authorNames(entry)));
@@ -361,7 +362,9 @@ function entryCard(
     historyLink.setAttribute("aria-label", `${versionCount} versions of ${entry.id}`);
     footer.append(historyLink);
   }
-  card.append(top, title, abstract, meta, footer);
+  card.append(top, title);
+  if (abstract) card.append(el("p", "card-abstract", abstract));
+  card.append(meta, footer);
   return card;
 }
 
@@ -1211,7 +1214,9 @@ async function renderEntry(
   const heading = el("header", "entry-heading");
   const top = el("div", "card-top");
   top.append(el("span", "entry-id", `${entry.id} v${entry.version}`), trustBadge(entry));
-  heading.append(top, el("h1", "", entry.title), el("p", "lede", entry.abstract));
+  heading.append(top, el("h1", "", entry.title));
+  const abstract = presentationAbstract(entry);
+  if (abstract) heading.append(el("p", "lede", abstract));
   const byline = el("p", "byline", `By ${authorNames(entry)}`);
   heading.append(byline);
 
@@ -1488,7 +1493,8 @@ function renderSubjectRows(rows, content) {
     const title = el("h2");
     title.append(internalLink(row.title, localPageUrl("entry.html", row)));
     article.append(identity, title);
-    if (row.abstract) article.append(el("p", "card-abstract", row.abstract));
+    const abstract = presentationAbstract(row);
+    if (abstract) article.append(el("p", "card-abstract", abstract));
     const subjects = el("div", "card-subjects");
     subjects.append(el("small", "", "Subjects"), categoryTokens(row));
     article.append(subjects);
