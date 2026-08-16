@@ -270,6 +270,15 @@
             endorsement of the code for the purposes of uploading to a library of
             formal proofs, such as Mathlib.
           </li>
+          <li>
+            <strong>Palomar is a registry, not a repository.</strong> The
+            mathematics stays in the original GitHub repository that is not
+            Palomar’s and remains under its owner’s control; an entry records a
+            claim about one commit of it rather than hosting the development.
+            Palomar does keep a public preservation fork of every registered
+            source, solely as a backup for the registry in the event that the
+            original repository disappears.
+          </li>
         </ol>
       </section>
 
@@ -375,6 +384,24 @@
           definitions actually reached from those sources. Each registry entry
           displays the compared declarations, with their types available on
           hover, and links the exact statement file at the exact commit.
+        </p>
+      </section>
+
+      <section id="accepted-imports">
+        <h2>What external library imports are accepted?</h2>
+        <p>
+          The statement — conventionally <code>Challenge.lean</code> — may import
+          Lean core,
+          <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
+          and <a href="https://github.com/TauCetiProject/TauCeti">Tau Ceti</a>.
+          Importing Tau Ceti is accepted and marks the entry as having qualified
+          statement dependencies. A project Palomar has already registered is not
+          importable on that basis.
+        </p>
+        <p>
+          The proof is not restricted this way: dependencies used only by the
+          Solution may be arbitrary pinned Git repositories. The full rules are
+          under <a href="#comparator-requirements">what Comparator requires</a>.
         </p>
       </section>
 
