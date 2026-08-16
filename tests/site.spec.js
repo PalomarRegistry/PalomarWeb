@@ -310,9 +310,8 @@ test("an unavailable recent summary reports failure instead of emptiness", async
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
   await page.goto(`/?database=${database}`);
-  // The subject inputs sit behind the toolbar's disclosure until opened.
-  await page.locator(".advanced-filters summary").click();
-  await expect(page.locator('.advanced-filters')).toHaveAttribute("open", "");
+  await expect(page.locator("#arxiv-query")).toBeVisible();
+  await expect(page.locator("#msc-query")).toBeVisible();
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
   await expect(page.locator('#msc-options option[value="05C10"]')).toHaveCount(1);
 
@@ -332,8 +331,7 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
 
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
-  // A linked subject filter opens the disclosure that holds its inputs.
-  await expect(page.locator(".advanced-filters")).toHaveAttribute("open", "");
+  await expect(page.locator("#arxiv-query")).toBeVisible();
   await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
@@ -490,19 +488,24 @@ test("the licence caveat travels with the licence evidence it qualifies", async 
   await expect(collapse.locator("dl.details")).toContainText("Repository licence");
 });
 
-test("the subject filters make room in the toolbar instead of covering the list", async ({ page }) => {
+test("the subject filters share the toolbar's line, ending at its right edge", async ({ page }) => {
   await page.goto(`/?database=${database}`);
   const card = page.locator(".entry-card").first();
-  const top = await card.boundingBox();
 
-  await page.locator(".advanced-filters summary").click();
-  const inputs = await page.locator(".advanced-filters .category-filters").boundingBox();
-  const moved = await card.boundingBox();
+  const toolbar = await page.locator(".toolbar").boundingBox();
+  const trust = await page.locator(".filters").boundingBox();
+  const inputs = await page.locator(".category-filters").boundingBox();
+  const listed = await card.boundingBox();
 
-  // The opened panel pushes the list down; nothing it would otherwise float
-  // over, such as the first card's trust label, is hidden by it.
-  expect(inputs.y + inputs.height).toBeLessThanOrEqual(moved.y);
-  expect(moved.y).toBeGreaterThan(top.y);
+  // One line: the subject inputs start after the trust filters end, and their
+  // vertical centres agree.
+  expect(inputs.x).toBeGreaterThan(trust.x + trust.width);
+  expect(Math.abs((inputs.y + inputs.height / 2) - (trust.y + trust.height / 2)))
+    .toBeLessThan(4);
+  // Justified right, and still clear of the list below.
+  expect(Math.abs((inputs.x + inputs.width) - (toolbar.x + toolbar.width)))
+    .toBeLessThan(16);
+  expect(inputs.y + inputs.height).toBeLessThanOrEqual(listed.y);
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
@@ -762,7 +765,6 @@ test("a card says the original is unavailable exactly when the manifest says so"
   const card = page.locator(".entry-card").first();
   await expect(card).toHaveCount(1);
   await availabilityRequested;
-  await page.locator(".advanced-filters summary").click();
   await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await page.locator("#arxiv-query").evaluate((input) => input.focus());
@@ -2016,7 +2018,6 @@ test("a provisional match the index does not confirm is taken away", async ({ pa
 test("emptying the box gives the listing and its filters back", async ({ page }) => {
   await page.goto(`/?database=${database}`);
   // Set before searching, because a search takes the toolbar off the page.
-  await page.locator(".advanced-filters summary").click();
   await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 
@@ -2146,9 +2147,8 @@ for (const scheme of ["light", "dark"]) {
     await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
     await readableTextOnly(page, `${scheme} listing`, 40);
 
-    await page.locator(".advanced-filters summary").click();
     await expect(page.locator("#arxiv-query")).toBeVisible();
-    await readableTextOnly(page, `${scheme} listing with the subject filters open`, 40);
+    await readableTextOnly(page, `${scheme} listing with the subject filters`, 40);
 
     // The state this check exists for. The provisional cards are drawn on their
     // own ground, and the first attempt at setting them apart faded them.

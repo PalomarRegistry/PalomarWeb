@@ -323,46 +323,15 @@ button:focus-visible {
   gap: .35rem;
 }
 
-/* The opened inputs take a row of the toolbar rather than floating over the
-   rows below it: a panel that covers the first card hides part of the answer
-   a subject deep link was asking for. Its own row also keeps the toggle from
-   widening and squeezing the controls beside it. */
-.advanced-filters[open] {
-  flex-basis: 100%;
-}
-
-.advanced-filters summary {
-  width: fit-content;
-  min-height: 2rem;
-  padding: .25rem .5rem;
-  border: 1px solid var(--field);
-  border-radius: 0;
-  background: var(--control);
-  color: var(--ink);
-  cursor: pointer;
-  font: .8rem var(--sans);
-}
-
-.advanced-filters summary:hover {
-  background: var(--control-hover);
-}
-
-.advanced-filters[open] summary {
-  border-color: var(--ink);
-  background: var(--paper);
-  font-weight: bold;
-}
-
-.advanced-filters .category-filters {
-  margin-top: .35rem;
-  padding: .6rem .7rem;
-  border: 1px solid var(--line);
-  background: var(--paper);
-}
-
+/* The subject inputs are small enough to sit beside the trust filters, so they
+   stay on the toolbar's line rather than behind a disclosure. Aligning them to
+   the end keeps that line readable when the toolbar is wider than its
+   contents. */
 .category-filters {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: .45rem .75rem;
   font: .8rem var(--sans);
 }
@@ -1155,14 +1124,9 @@ pre {
     flex-wrap: wrap;
   }
 
-  .advanced-filters {
+  .category-filters {
+    justify-content: flex-start;
     width: 100%;
-  }
-
-  .advanced-filters .category-filters {
-    margin-top: .4rem;
-    padding: 0;
-    border: 0;
   }
 
   .card-top,
