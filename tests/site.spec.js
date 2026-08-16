@@ -1071,16 +1071,21 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   // one sent immediately after hover() has scrolled the frame into view can
   // still be aimed at where the page used to be and scroll the page instead:
   // the frame stays at 0 and never moves again, because nothing sends a
-  // second wheel. Re-aim and send until the frame's own document moves. What
-  // is being asserted is that a wheel over the frame scrolls the frame rather
-  // than the page around it, not how many events that takes. Chromium latches
-  // a wheel gesture to one scroller, so the frame absorbs the whole of the
-  // wheel that reaches it and stops at its own end.
+  // second wheel. Re-aim and send until the end of the frame's own document
+  // is visible. Waiting only for a nonzero scroll position can finish while
+  // Chromium is still applying the first wheel, before it has reached the
+  // theorem ending. What is being asserted is that a wheel over the frame
+  // scrolls the frame rather than the page around it, not how many events that
+  // takes. Chromium latches a wheel gesture to one scroller, so the frame
+  // absorbs the whole of the wheel that reaches it and stops at its own end.
   await expect.poll(async () => {
     await iframe.hover();
     await page.mouse.wheel(0, 2000);
-    return rendered.locator("html").evaluate((node) => node.scrollTop);
-  }).toBeGreaterThan(0);
+    return rendered.locator("#theorem-end").evaluate((node) => {
+      const bounds = node.getBoundingClientRect();
+      return bounds.top >= 0 && bounds.bottom <= window.innerHeight;
+    });
+  }).toBe(true);
   await expect(rendered.locator("#theorem-end")).toBeInViewport();
 });
 
