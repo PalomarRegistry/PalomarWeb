@@ -1,7 +1,6 @@
 import {
   challengeArtifactUrl,
   challengeMetadataUrl,
-  challengePlaygroundUrl,
   challengeSourceUrl,
   isInlineChallenge,
 } from "./rendering.js";
@@ -16,6 +15,34 @@ import {
   sourceFileUrl,
   topSourceLocation,
 } from "./source-preservation.mjs";
+
+/**
+ * Open a Mathlib-only Challenge in Lean Web from the same immutable source
+ * revision used by Palomar's statement link.
+ *
+ * Lean Web accepts a source URL in its `url` hash argument. Give it the raw
+ * GitHub URL directly: its convenience conversion for ordinary GitHub blob
+ * links treats the revision as a branch name, which does not work for the
+ * commit-pinned links Palomar publishes.
+ *
+ * This lives with the control that consumes it, rather than adding an export
+ * to rendering.js that the previous deployment's cached module cannot supply.
+ */
+export function challengePlaygroundUrl(entry, repositoryOverride = null) {
+  const source = new URL(challengeSourceUrl(entry, repositoryOverride));
+  const repository = repositoryOverride || entry.source.repository;
+  const blobPrefix = `/${repository}/blob/`;
+  if (source.hostname !== "github.com" || !source.pathname.startsWith(blobPrefix)) {
+    throw new Error("entry has invalid canonical Challenge playground metadata");
+  }
+  const rawSource = new URL(source);
+  rawSource.hostname = "raw.githubusercontent.com";
+  rawSource.pathname = `/${repository}/${source.pathname.slice(blobPrefix.length)}`;
+
+  const playground = new URL("https://live.lean-lang.org/");
+  playground.hash = new URLSearchParams({ url: rawSource.href }).toString();
+  return playground;
+}
 
 export function validateChallengeMetadata(entry, metadata) {
   const expectedDeclarations = [

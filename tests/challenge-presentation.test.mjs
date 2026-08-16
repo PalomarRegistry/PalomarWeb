@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  challengePlaygroundUrl,
   createChallengePresentation,
   validateChallengeMetadata,
 } from "../assets/challenge-presentation.mjs";
@@ -29,6 +30,19 @@ function renderMetadata(overrides = {}) {
     ...overrides,
   };
 }
+
+test("playground URL loads the immutable source through Lean Web", () => {
+  const record = acceptedEntry();
+  assert.equal(
+    challengePlaygroundUrl(record).href,
+    `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2Fexample%2Fchallenge%2F${record.source.commit}%2FChallenge.lean`,
+  );
+  record.formalization.challenge_path = "project/Comparator/Task.lean";
+  assert.equal(
+    challengePlaygroundUrl(record, "PalomarArchive/example--challenge--fixture").href,
+    `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2FPalomarArchive%2Fexample--challenge--fixture%2F${record.source.commit}%2Fproject%2FComparator%2FTask.lean`,
+  );
+});
 
 function fakeBrowser(href = "http://127.0.0.1:4173/entry.html") {
   const listeners = new Map();
