@@ -152,7 +152,9 @@ test("an inline presentation keeps links confined and accepts height only from i
   assert.equal(byClass(result.section, "challenge-no-module-doc").length, 1);
   assert.equal(byClass(result.section, "challenge-fallback").length, 0);
   const [frame] = byClass(result.section, "challenge-frame");
+  const [shell] = byClass(result.section, "challenge-frame-shell");
   assert.ok(frame);
+  assert.deepEqual(shell.children, [frame, byClass(result.section, "challenge-playground")[0]]);
   assert.equal(frame.getAttribute("sandbox"), "allow-scripts");
   assert.equal(frame.getAttribute("scrolling"), "auto");
   assert.equal(frame.referrerPolicy, "no-referrer");
@@ -166,6 +168,13 @@ test("an inline presentation keeps links confined and accepts height only from i
     `https://github.com/example/challenge/blob/${record.source.commit}/Challenge.lean`,
   );
   const [playground] = byClass(result.section, "challenge-playground");
+  assert.equal(byClass(result.section, "challenge-playground-button").length, 1);
+  assert.equal(byClass(byClass(result.section, "challenge-links")[0], "challenge-playground").length, 0);
+  assert.equal(playground.textContent, "Lean ↗");
+  assert.equal(playground.getAttribute("aria-label"), "Open in Lean Playground");
+  assert.equal(playground.getAttribute("title"), "Open in Lean Playground");
+  assert.equal(playground.getAttribute("target"), "_blank");
+  assert.equal(playground.getAttribute("rel"), "noopener");
   assert.equal(
     playground.href,
     `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2Fexample%2Fchallenge%2F${record.source.commit}%2FChallenge.lean`,
@@ -271,6 +280,10 @@ test("a missing large entry render keeps its source controls and uses the missin
   assert.match(fallback.textContent, /formatted statement is not available/);
   assert.deepEqual(pageCalls.map(([page]) => page), ["entry.html", "render.html"]);
   assert.ok(byClass(result.section, "challenge-source")[0].href.startsWith("https://github.com/"));
+  const [playground] = byClass(result.section, "challenge-playground");
+  assert.equal(playground.textContent, "Open in Lean Playground");
+  assert.equal(byClass(result.section, "challenge-playground-button").length, 0);
+  assert.equal(byClass(byClass(result.section, "challenge-links")[0], "challenge-playground").length, 1);
 });
 
 test("transport and correspondence failures remain fatal to the containing route", async (t) => {

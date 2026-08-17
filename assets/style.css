@@ -873,6 +873,50 @@ footer {
   background: var(--paper);
 }
 
+/* The playground control belongs to the trusted parent page, not to the
+   immutable sandboxed rendering. It sits over the frame like Zulip's code
+   playground affordance while remaining usable from the keyboard and on
+   devices without hover. */
+.challenge-frame-shell {
+  position: relative;
+}
+
+.challenge-playground-button {
+  position: absolute;
+  top: .5rem;
+  right: .5rem;
+  z-index: 1;
+  padding: .3rem .5rem;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+  color: var(--ink);
+  font: bold .75rem/1.2 var(--sans);
+  opacity: 0;
+  pointer-events: none;
+  text-decoration: none;
+}
+
+.challenge-playground-button:visited {
+  color: var(--ink);
+}
+
+.challenge-frame-shell:hover .challenge-playground-button,
+.challenge-frame-shell:focus-within .challenge-playground-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.challenge-playground-button:hover,
+.challenge-playground-button:focus-visible {
+  color: var(--link);
+}
+
+.challenge-playground-button:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
 /* Raised by resting on a card title, over the grid rather than in it, so the
    listing does not reflow under the pointer that asked for this. */
 .statement-preview {
@@ -900,6 +944,11 @@ footer {
      browser that answers the two differently. */
   .statement-preview {
     display: none;
+  }
+
+  .challenge-playground-button {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 
