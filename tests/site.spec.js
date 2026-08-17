@@ -983,14 +983,23 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Task.lean`,
   );
   await expect(source).toHaveText("View full pinned statement file (Task.lean)");
-  await expect(
-    page.getByRole("link", { name: "Open in Lean Playground" }),
-  ).toHaveAttribute(
+  const playground = page.getByRole("link", { name: "Open in Lean Playground" });
+  await expect(playground).toHaveAttribute(
     "href",
     `https://live.lean-lang.org/#url=https%3A%2F%2Fraw.githubusercontent.com%2Fexample%2Fchallenge%2F${
       "1".repeat(40)
     }%2Fproject%2FComparator%2FTask.lean`,
   );
+  await expect(playground).toHaveAttribute("target", "_blank");
+  await expect(playground).toHaveAttribute("rel", "noopener");
+  await expect(playground).toHaveText("Lean ↗");
+  await expect(playground).toHaveCSS("opacity", "0");
+  const frameShell = page.locator(".challenge-frame-shell");
+  await frameShell.hover({ position: { x: 4, y: 4 } });
+  await expect(playground).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await playground.focus();
+  await expect(playground).toHaveCSS("opacity", "1");
   await expect(
     page.getByRole("link", { name: "Inspect statement dependencies" }),
   ).toHaveAttribute("href", /#statement-dependencies$/);
@@ -1115,7 +1124,23 @@ test("a missing formatted Challenge leaves the accepted entry and pinned source 
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Task.lean`,
   );
+  const playground = page.getByRole("link", { name: "Open in Lean Playground" });
+  await expect(playground).toBeVisible();
+  await expect(playground).toHaveText("Open in Lean Playground");
+  await expect(playground).not.toHaveClass(/challenge-playground-button/);
   await expect(page.locator("#status")).toBeHidden();
+});
+
+test("the playground overlay remains visible without hover", async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true, isMobile: false });
+  const page = await context.newPage();
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+
+  const playground = page.getByRole("link", { name: "Open in Lean Playground" });
+  await expect(playground).toHaveClass(/challenge-playground-button/);
+  await expect(playground).toHaveCSS("opacity", "1");
+  await expect(playground).toHaveCSS("pointer-events", "auto");
+  await context.close();
 });
 
 test("larger Challenge falls back to the dedicated wrapper", async ({ page }) => {

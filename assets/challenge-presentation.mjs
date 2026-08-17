@@ -171,14 +171,24 @@ export function createChallengePresentation({ fetchJson, document, window, local
     );
   }
 
-  function challengeFrame(entry, renderBase) {
+  function challengeFrame(entry, renderBase, playgroundLink = null) {
     // An entry page mounts one of these and keeps it for the page's lifetime,
     // so it never disposes. A surface that mounts and discards them has to.
-    return createRenderFrame({
+    const frame = createRenderFrame({
       src: challengeArtifactUrl(entry, renderBase).href,
       title: `Named compared declarations for ${entry.id} version ${entry.version}`,
       lazy: true,
     }).frame;
+    const shell = el("div", "challenge-frame-shell");
+    shell.append(frame);
+    if (playgroundLink) {
+      playgroundLink.className += " challenge-playground-button";
+      playgroundLink.textContent = "Lean ↗";
+      playgroundLink.setAttribute("aria-label", "Open in Lean Playground");
+      playgroundLink.setAttribute("title", "Open in Lean Playground");
+      shell.append(playgroundLink);
+    }
+    return shell;
   }
 
   function metadataPanel(metadata) {
@@ -245,19 +255,20 @@ export function createChallengePresentation({ fetchJson, document, window, local
         "challenge-source",
       ),
     );
-    if (entry.trust.level === "high") {
-      links.append(
-        " · ",
-        sourceLink(
-          "Open in Lean Playground",
-          availability,
-          (manifest) => challengePlaygroundUrl(
-            entry,
-            topSourceLocation(entry, manifest).repository,
-          ),
-          "challenge-playground",
+    const playgroundLink = entry.trust.level === "high"
+      ? sourceLink(
+        "Open in Lean Playground",
+        availability,
+        (manifest) => challengePlaygroundUrl(
+          entry,
+          topSourceLocation(entry, manifest).repository,
         ),
-      );
+        "challenge-playground",
+      )
+      : null;
+    if (playgroundLink) {
+      playgroundLink.setAttribute("target", "_blank");
+      playgroundLink.setAttribute("rel", "noopener");
     }
     links.append(
       " · ",
@@ -271,6 +282,14 @@ export function createChallengePresentation({ fetchJson, document, window, local
       ),
     );
     const inline = isInlineChallenge(entry);
+    const showsFrame = forceFrame || inline;
+    let playgroundIsFallback = false;
+    const appendPlaygroundFallback = () => {
+      if (!playgroundLink || playgroundIsFallback) return;
+      links.append(" · ", playgroundLink);
+      playgroundIsFallback = true;
+    };
+    if (!showsFrame) appendPlaygroundFallback();
     if (!forceFrame && !inline) {
       links.append(
         " · ",
@@ -294,6 +313,7 @@ export function createChallengePresentation({ fetchJson, document, window, local
       );
     } catch (error) {
       if (error.status !== 404) throw error;
+      appendPlaygroundFallback();
       section.append(
         el(
           "p",
@@ -305,8 +325,8 @@ export function createChallengePresentation({ fetchJson, document, window, local
     }
     section.append(metadataPanel(metadata));
 
-    if (forceFrame || inline) {
-      section.append(challengeFrame(entry, renderBase));
+    if (showsFrame) {
+      section.append(challengeFrame(entry, renderBase, playgroundLink));
     } else {
       section.append(
         el(
