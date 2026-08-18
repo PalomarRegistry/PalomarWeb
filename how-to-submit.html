@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="How to prepare and submit Lean-verified mathematics to Palomar.">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://data.palomar-registry.org; frame-src 'self' https://data.palomar-registry.org; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+    <title>How to submit — Palomar</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="assets/style.css">
+  </head>
+  <body data-page="how-to-submit">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="./">Palomar</a>
+      <nav aria-label="Main navigation">
+        <a href="./">Registry</a>
+        <a href="statement.html">Statement</a>
+        <a href="about.html">About</a>
+        <a class="active" href="how-to-submit.html" aria-current="page">How to submit</a>
+      </nav>
+    </header>
+
+    <main id="content" class="about faq">
+      <h1>How to submit</h1>
+      <p class="subtitle">Prepare a fixed repository snapshot for the Palomar Registry</p>
+
+      <section id="getting-ready">
+        <h2>Getting ready to submit</h2>
+        <p>
+          Start with a public GitHub repository and choose the exact
+          <a href="https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits">commit</a>
+          you want Palomar to review. The commit must be identified by its full
+          40-character SHA (the unique hash Git assigns to it).
+        </p>
+        <p>
+          Using Git, commit and push every change you want included. In a
+          terminal in the repository folder, run <code>git rev-parse HEAD</code>
+          and copy the entire 40-character result. Uncommitted changes are
+          excluded.
+        </p>
+        <p>
+          Using GitHub, click the commits link above the repository’s file list.
+          Find the commit and click the clipboard icon beside its shortened hash
+          (“Copy the full SHA”). Palomar can fetch only commits pushed to the
+          public repository. It checks that immutable snapshot, not a branch or
+          tag that can change.
+        </p>
+        <p>
+          The <a href="https://github.com/PalomarRegistry/PalomarTemplate">Palomar starter repository</a>
+          provides this layout, pinned dependencies, documentation generation,
+          CI checks for Lean and Comparator, and a documented
+          <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a> starting point.
+        </p>
+        <p>
+          For a complete source-repository example, see
+          <a href="https://github.com/kim-em/erdos-unit-distance-comparator">Erdős
+          unit distance problem</a>. To inspect registered examples and their
+          exact recorded revisions, browse the
+          <a href="https://palomar-registry.org/">current registry</a>.
+        </p>
+        <p>
+          The repository root is the default project directory, so the usual
+          layout requires no path settings. If the Lean project lives in a
+          subdirectory, enter that repository-relative project path on the
+          submission form. You may also enter paths for a non-default Comparator
+          configuration or <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>; omitted fields keep
+          the conventional defaults inside the selected project.
+        </p>
+        <p>The selected project directory must contain:</p>
+        <ul>
+          <li>exactly one of <code>lakefile.toml</code> or <code>lakefile.lean</code>, with a committed <code>lake-manifest.json</code> required for <code>lakefile.lean</code> projects;</li>
+          <li><code>lean-toolchain</code>, pinned to a supported Lean release or release candidate (a repository-root file may be shared by a nested project, but a project-local file takes precedence);</li>
+          <li>a small, readable Challenge module a mathematician should audit, conventionally <code>Challenge.lean</code>;</li>
+          <li>a proved Solution module, conventionally <code>Solution.lean</code>;</li>
+          <li>a Comparator JSON configuration, conventionally <code>comparator.json</code>, naming every theorem and definition Comparator should compare.</li>
+        </ul>
+        <p>
+          The required <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>
+          describes the project, result, sources, authorship, automation, review,
+          and known limitations. An explicit repository-relative path may keep it
+          outside a selected nested Comparator project.
+        </p>
+        <p>
+          A committed manifest is strongly recommended. For a
+          <code>lakefile.toml</code> project without one, Palomar can construct
+          a trusted manifest only from contained path dependencies whose targets
+          have committed manifests and no further path dependencies; other
+          layouts must commit the selected
+          project's <code>lake-manifest.json</code>.
+        </p>
+        <p>
+          Comparator may name safe dotted Challenge and Solution modules, and
+          Palomar resolves their source files through the selected Lake project.
+          The one conventional licence file remains at repository root even for
+          a nested project, because the recorded licence covers the submitted
+          repository snapshot.
+        </p>
+
+        <h3 id="comparator-requirements">What does Comparator require?</h3>
+        <p>
+          The Challenge module states the result independently and may use
+          deliberate <code>sorry</code> holes; the Solution module supplies the
+          proved version. The proved Solution declarations must not depend on
+          <code>sorryAx</code>, <code>Lean.ofReduceBool</code>, a custom axiom, or
+          an unnamed missing definition. The compared declarations must have the
+          same names and types. Comparator rebuilds and compares them, checks the
+          permitted axioms, and verifies the proof. Palomar validates the submitted
+          configuration against Palomar’s current
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#23-comparator-configuration">mechanical
+          requirements</a> before verification.
+        </p>
+        <p>
+          Keep the Challenge source short and mathematically ordinary.
+          1,000 lines and 100 KiB are hard limits; 300 lines and 32 KiB is the
+          surface we would rather review. Its transitive imports must resolve
+          to Lean core or the pinned, allowlisted Mathlib or Tau Ceti closure,
+          and to nothing else. Importing Tau Ceti is accepted and marks the
+          entry as having qualified statement dependencies. A project Palomar
+          has already accepted is not importable on that basis: an entry fixes a
+          reviewable snapshot of its own statement, not a library for later
+          submissions.
+        </p>
+        <p>
+          Dependencies used only by the Solution may be arbitrary pinned Git
+          dependencies. Local/path dependencies are also accepted when their
+          targets remain within the same pinned repository checkout. Neither
+          kind relaxes the stricter transitive Challenge-import rule.
+        </p>
+
+        <h3 id="extra-axioms">My formalization needs axioms beyond the standard set. Can it still be registered?</h3>
+        <p>
+          Not as axioms. A proved Solution declaration may depend only on the
+          standard three Lean axioms: <code>propext</code>,
+          <code>Classical.choice</code>, and <code>Quot.sound</code>. In
+          particular, <code>sorryAx</code> and <code>Lean.ofReduceBool</code>,
+          which <code>sorry</code> and <code>native_decide</code> introduce, are
+          not permitted. Ordinary <code>decide</code> is fine. The Challenge
+          module, by contrast, is expected to contain <code>sorry</code>.
+        </p>
+        <p>
+          If a result is conditional, state its hypotheses instead of assuming
+          them, for instance writing
+          <code>theorem euler_product (h : RiemannHypothesis) : …</code> instead
+          of <code>axiom RiemannHypothesis : …</code>. With multiple hypotheses,
+          a bundled typeclass can reduce boilerplate at use sites. It is better
+          to write <code>[LiteratureHypotheses]</code> in each theorem signature
+          that needs it than to declare it with <code>variable</code>, which can
+          obscure which theorems use it.
+        </p>
+
+        <h3 id="formalization-yaml">What belongs in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>?</h3>
+        <p>
+          The structured metadata must include the project name, authors,
+          license, and responsible maintainers; say whether the result is
+          original or source-based and
+          whether the repository is the substantive development or a thin
+          Comparator wrapper; include one or two
+          classifications from the
+          <a href="https://arxiv.org/category_taxonomy">arXiv category taxonomy</a>
+          and one to eight codes from
+          <a href="https://msc2020.org/">MSC2020</a>; the automation methods used (including <code>manual</code>,
+          when appropriate); and the review status. For editorial review, also
+          give a plain-language account of every compared theorem, what is
+          original or adapted, the role of AI and human review, and any fidelity
+          gaps, extra assumptions, or scope limitations. That narrative may be
+          in <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>, Challenge module documentation or
+          declaration docstrings, or the selected project README. Keep precise
+          bibliographic references in the structured metadata. Follow the
+          <a href="https://github.com/mathlib-initiative/formalization.yaml">formalization.yaml standard</a>
+          and Palomar’s
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md">submission policy</a>.
+        </p>
+        <p>
+          A source may be a book, journal article, non-arXiv preprint, web
+          discussion, private communication, or folklore; give the most stable
+          reference available. A formalization that first presents a new result
+          may have no source at all. If sources exist, state whether the project
+          formalizes, adapts, independently proves, or merely uses each as
+          background. Record prior formalizations separately. A thin wrapper must
+          identify the substantive formalization repository at an immutable
+          commit.
+        </p>
+        <p>
+          Submit only if you are a responsible author or maintainer of the
+          substantive formalization, or have approval from one. For a thin
+          wrapper this means the people responsible for the underlying
+          formalization, not merely the wrapper repository. The submission form
+          asks which applies; a link or note documenting approval is optional.
+        </p>
+      </section>
+
+      <section id="how-to-submit">
+        <h2>How to submit</h2>
+        <ol>
+          <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
+          <li><a href="https://submit.palomar-registry.org/">Open the submission form</a>. Enter the repository and commit SHA. Leave the optional project, Comparator-config, and metadata paths blank for the normal root layout; fill them only for a nested or non-default layout. Record whether you maintain the substantive formalization or have approval from someone who does, and, for a correction to an existing entry, enter its Palomar ID.</li>
+          <li>Prove that you can write to the repository you are submitting. In a browser this is a GitHub sign-in: Palomar reads whether that account can push and then discards the token, keeping the account name in its private submission state.</li>
+          <li>Keep the status page you are given. Its link is the only way back to your submission: Palomar does not email, and there is no account to sign in to.</li>
+        </ol>
+        <p>
+          There are two ways to prove that write access, and they do not
+          establish the same thing. A sign-in answers for one account: GitHub
+          reports that this account can push, and the same account identified
+          itself to Palomar. An agent has no browser, so it instead pushes a tag
+          at the submitted commit and posts a gist carrying the same challenge.
+          That establishes that someone who can write to the repository submitted
+          it, and that an account named itself, which are not provably the same
+          account. It is deliberately the weaker of the two, and Palomar's
+          private submission record says which route a submission used; the
+          public registry entry does not carry it.
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/specification.md#submission-lifecycle-and-privacy">The
+          protocol specification</a> states the difference. Neither is proof of
+          authorship, which is why you are asked about your relationship to the
+          formalization separately.
+        </p>
+        <h3 id="what-is-public">What is public, and what is not</h3>
+        <p>
+          Public from verification onward: your repository, your commit, the
+          submission identifier, the authorization relationship you declared,
+          any approval evidence you wrote, and the identifier of the record you
+          are correcting if you are correcting one. Mechanical verification runs
+          in a public GitHub Actions workflow, and the inputs it was dispatched
+          with are as public as its logs. Your notes are deliberately not among
+          them. Whether you later register is inferable from the registry.
+        </p>
+        <p>
+          Not public unless you register: the editorial review and the decision,
+          and the registry record itself. If a review goes badly, or you simply
+          change your mind, withdrawing leaves no public trace of either. The
+          already-public verification run remains, and so does everything its
+          inputs carried.
+        </p>
+        <p>
+          Not published whichever you choose: your identity as submitter.
+          Palomar does not publish the GitHub account that proved push access,
+          and the registry record has no field for the person who sent a
+          submission. What a record carries about you is the authorization
+          relationship you declared and, if you wrote one, the approval evidence
+          you supplied, which is free text and is public. Your repository is
+          public too, so the account that owns it stays as visible as it was
+          before you submitted. What Palomar does not do is put your name in the
+          record.
+        </p>
+        <p>
+          “Private” here means not public, not confidential. Reviews are
+          readable by Palomar operators, by GitHub, and by the model provider,
+          and are retained indefinitely so that any decision can be audited. Do
+          not put anything sensitive in the notes field.
+        </p>
+        <p>
+          The <a href="privacy.html">privacy policy</a> completes this: which
+          field is kept where, how long each is retained, what withdrawing
+          before registration scrubs and what it leaves behind, and how to ask
+          for something to be corrected or taken down.
+        </p>
+        <h3 id="what-happens-next">What happens next</h3>
+        <p>
+          Your status page shows mechanical verification first, with a link to
+          the public run. If verification fails, the report explains what
+          failed. If it passes, the submission waits for editorial review; once
+          mechanical verification has passed we aim to complete that review
+          within one hour, though that is a target rather than a guarantee.
+        </p>
+        <p>
+          If an operator or tool failure prevents the automated review from
+          completing, the status page says <code>review-failed</code>. That is
+          an operational fault, not a decision about the submission; Palomar
+          can investigate and rerun it.
+        </p>
+        <p>
+          The review then appears on your status page, and nowhere else. It
+          gives the reasons, its comments, and any requested changes, not just a
+          decision. A request for changes means the work may be reconsidered
+          after specific correctable problems are addressed; a rejection means
+          the submission failed a fundamental semantic, provenance, or editorial
+          requirement. Because every review is tied to an immutable commit,
+          revised source is a new submission at a new full commit SHA.
+        </p>
+        <p>
+          Nothing is registered until you ask for it. If the review is an
+          acceptance, your status page offers two choices: register, or withdraw.
+          Asking to register is how you authorise the record to be served, and
+          it is the last point at which the choice is yours alone. The
+          <a href="privacy.html#lawful-bases">privacy policy</a> explains that
+          serving the record afterwards rests on Palomar's legitimate interests
+          rather than on your consent, so withdrawing is not available once you
+          have registered, and what you have instead is a further version or a
+          request under the lawful-request process that policy describes.
+          Registration is meant to be permanent: the record, the review, and
+          your repository and commit enter Palomar's canonical history, which is
+          append-only in ordinary operation. A named Moderator may exceptionally
+          retract one exact version from the active public registry; that does
+          not delete or rewrite the canonical record, and the public service
+          retains a minimal tombstone. What that rule does not do is override a
+          legal obligation Palomar is under, and the
+          <a href="privacy.html#after-registration">privacy policy</a> describes
+          the process by which one reaches the ledger. Acceptance is not
+          registration; an accepted submission appears in the registry once the
+          corresponding database pull request is merged.
+        </p>
+        <p>
+          Corrections and dependency updates may be registered as new versions
+          of the same Palomar ID, and every earlier version remains resolvable.
+          A new mathematical result receives a new ID. A Palomar ID on its own
+          resolves to the newest version of that record. For a stable citation,
+          name the version (e.g., PALOMAR-2026-07-29-000001 v1 instead of
+          PALOMAR-2026-07-29-000001). The entry page URL always names the version
+          you are viewing, so copying it from the address bar gives a citable
+          link.
+        </p>
+      </section>
+
+      <section id="ready-to-submit" class="cta">
+        <div><h2>Ready to submit?</h2><p>The form asks for a repository and one fixed commit.</p></div>
+        <a href="https://submit.palomar-registry.org/">Open the submission form</a>
+      </section>
+      <span id="anchor-status" class="visually-hidden" role="status"></span>
+    </main>
+
+    <footer>
+      <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
+      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="privacy.html">Privacy</a><a href="https://data.palomar-registry.org/recent.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
+    </footer>
+    <script type="module" src="assets/about.js"></script>
+  </body>
+</html>

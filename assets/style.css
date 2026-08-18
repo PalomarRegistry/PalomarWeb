@@ -544,6 +544,47 @@ footer {
   padding: 2.5rem 0 4rem;
 }
 
+/* The founding statement follows the restrained, document-like typography of
+   its original PDF while remaining fluid on small screens. */
+.statement-page {
+  max-width: 52rem;
+  padding: 3.5rem 0 5rem;
+  font-family: var(--sans);
+  font-size: 1.05rem;
+  line-height: 1.48;
+}
+
+.statement-page h1 {
+  margin-bottom: 1.5rem;
+  font-size: 1.2rem;
+  line-height: 1.35;
+}
+
+.statement-page p {
+  margin-bottom: 1.4rem;
+}
+
+.statement-opening {
+  max-width: 47rem;
+  font-size: 1.12rem;
+  font-style: italic;
+}
+
+.statement-technologies {
+  margin: -.25rem 0 1.6rem;
+  padding-left: 2rem;
+}
+
+.statement-technologies li + li {
+  margin-top: .45rem;
+}
+
+.statement-signatories {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
 .faq > section {
   margin-top: 2.5rem;
   padding-top: 1.5rem;

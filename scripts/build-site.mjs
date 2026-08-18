@@ -7,9 +7,11 @@ export const htmlFiles = [
   "404.html",
   "about.html",
   "entry.html",
+  "how-to-submit.html",
   "index.html",
   "privacy.html",
   "render.html",
+  "statement.html",
   "subject.html",
 ];
 const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];

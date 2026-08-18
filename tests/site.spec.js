@@ -104,12 +104,12 @@ test("the render frame lands on the same paper as the page around it", async ({ 
   }
 });
 
-test("about headings expose hoverable links that copy their section URL", async ({ context, page }) => {
+test("submission-guide headings expose hoverable links that copy their section URL", async ({ context, page }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("/about.html");
+  await page.goto("/how-to-submit.html");
 
-  const sectionHeading = page.locator("#what-is-palomar h2");
-  const sectionAnchor = sectionHeading.getByRole("link", { name: "Copy link to What is Palomar?" });
+  const sectionHeading = page.locator("#getting-ready h2");
+  const sectionAnchor = sectionHeading.getByRole("link", { name: "Copy link to Getting ready to submit" });
   await expect(sectionAnchor).toHaveCSS("opacity", "0");
   await sectionAnchor.focus();
   await expect(sectionAnchor).toHaveCSS("opacity", "1");
@@ -119,11 +119,11 @@ test("about headings expose hoverable links that copy their section URL", async 
   await expect(sectionAnchor).toHaveCSS("opacity", "1");
 
   await sectionAnchor.click();
-  await expect(page).toHaveURL(/about\.html#what-is-palomar$/);
+  await expect(page).toHaveURL(/how-to-submit\.html#getting-ready$/);
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toMatch(
-    /about\.html#what-is-palomar$/,
+    /how-to-submit\.html#getting-ready$/,
   );
-  await expect(page.getByRole("status")).toHaveText("Copied link to What is Palomar?");
+  await expect(page.getByRole("status")).toHaveText("Copied link to Getting ready to submit");
   await expect(sectionAnchor).toHaveClass(/copied/);
   await expect(sectionAnchor.locator("path")).toHaveCSS("fill", "rgb(23, 111, 44)");
 
@@ -140,8 +140,8 @@ test("about headings expose hoverable links that copy their section URL", async 
   );
 });
 
-test("every formalization.yaml mention on the About page links to its standard", async ({ page }) => {
-  await page.goto("/about.html");
+test("every formalization.yaml mention in the submission guide links to its standard", async ({ page }) => {
+  await page.goto("/how-to-submit.html");
   const standard = "https://github.com/mathlib-initiative/formalization.yaml";
   const result = await page.locator("main").evaluate((main, expected) => {
     const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
