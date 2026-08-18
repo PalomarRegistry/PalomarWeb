@@ -1,4 +1,4 @@
-// Accepted entry records are immutable. This one record was registered before
+// Registered entry records are immutable. This one record was registered before
 // Palomar stopped using an AI review synthesis as an abstract fallback, so its
 // canonical bytes must remain available while reader-facing surfaces suppress
 // the text that was never supplied or endorsed by the submitter.

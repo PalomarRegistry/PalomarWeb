@@ -1035,27 +1035,27 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(iframe).toHaveAttribute("data-height-adjusted", "true");
   const box = await iframe.boundingBox();
   expect(box.height).toBe(672);
-  await expect(page.locator(".acceptance-callout")).toContainText("Registered on");
-  await expect(page.locator(".acceptance-callout")).toContainText("29 July 2026");
-  await expect(page.locator(".acceptance-callout")).toContainText("Mechanical assurance");
-  await expect(page.locator(".acceptance-callout")).toContainText(
-    "Editorial assurance",
+  await expect(page.locator(".registration-callout")).toContainText("Registered on");
+  await expect(page.locator(".registration-callout")).toContainText("29 July 2026");
+  await expect(page.locator(".registration-callout")).toContainText("Mechanical assurance");
+  await expect(page.locator(".registration-callout")).toContainText(
+    "Automated review",
   );
-  await expect(page.locator(".acceptance-callout")).toContainText("AI-mediated review");
-  const mechanicalAssurance = page.locator(".acceptance-callout p", {
+  await expect(page.locator(".registration-callout")).toContainText("AI-mediated review");
+  const mechanicalAssurance = page.locator(".registration-callout p", {
     hasText: "Mechanical assurance",
   });
   await expect(mechanicalAssurance.locator("code")).toHaveText([
     "Solution.lean",
     "Challenge.lean",
   ]);
-  const editorialAssurance = page.locator(".acceptance-callout p", {
-    hasText: "Editorial assurance",
+  const automatedReview = page.locator(".registration-callout p", {
+    hasText: "Automated review",
   });
-  await expect(editorialAssurance.locator("code")).toHaveText("Challenge.lean");
+  await expect(automatedReview.locator("code")).toHaveText("Challenge.lean");
   await expect(page.getByRole("link", { name: "Archived mechanical report" })).toBeVisible();
   await expect(page.locator(".entry-evidence")).toContainText("Verification workflow commit");
-  await expect(page.getByRole("link", { name: "Archived editorial review" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Archived automated review" })).toBeVisible();
   await expect(page.getByRole("link", { name: "project/Comparator/Answer.lean", includeHidden: true }).first()).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/project/Comparator/Answer.lean`,
@@ -1108,7 +1108,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   // coupling this assertion to how many lines of controls precede the frame.
 });
 
-test("a missing formatted Challenge leaves the accepted entry and pinned source usable", async ({ page }) => {
+test("a missing formatted Challenge leaves the registered entry and pinned source usable", async ({ page }) => {
   await page.route("**/challenge-metadata.json", (route) =>
     route.fulfill({ status: 404, body: "not published" }));
 
@@ -1369,7 +1369,7 @@ test("a code with nothing current under it answers, and one never used does not"
   await page.route(/\/database\/subjects\/msc\/05C10\.json$/, (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       kind: "msc",
       code: "05C10",
       entries: [],
@@ -1400,7 +1400,7 @@ test("an entry shows the decision and the comments, never the scores", async ({ 
   const editorial = page.locator(".entry-editorial");
   await expect(editorial).toBeVisible();
 
-  // The scores decide acceptance and stay beside the database. Not shown, and
+  // The scores inform the filter outcome and stay beside the database. Not shown, and
   // as of the record-is-the-committed-file change, not served at all:
   // the same repository at the same commit scored 5 and then 4 on the same
   // axis across two runs, and a number that moves like that reads as a
@@ -1426,14 +1426,14 @@ test("what was checked is compressed without losing what it said", async ({ page
 
   // Both kinds of assurance are named, and the names stand out from the prose.
   await expect(evidence.locator("strong", { hasText: "Mechanical assurance" })).toBeVisible();
-  await expect(evidence.locator("strong", { hasText: "Editorial assurance" })).toBeVisible();
+  await expect(evidence.locator("strong", { hasText: "Automated review" })).toBeVisible();
 
   const labels = await evidence.locator(".details .detail-row dt").allTextContents();
 
-  // One date, to the minute. Acceptance and Lean verification were always the
-  // same day, so the second row said nothing the first did not.
-  expect(labels).toContain("Verified and accepted");
-  expect(labels).not.toContain("Acceptance date");
+  // The mechanical verification instant is shown once, to the minute; the
+  // registration date is already prominent in the callout above.
+  expect(labels).toContain("Mechanically verified");
+  expect(labels).not.toContain("Registration date");
   expect(labels).not.toContain("Lean verification date");
   await expect(evidence).toContainText("UTC");
 
@@ -1711,7 +1711,7 @@ test("transient and invalid availability responses are both retried", async ({ p
       return;
     }
     if (availabilityRequests === 2) {
-      await route.fulfill({ status: 200, json: { schema_version: 1 } });
+      await route.fulfill({ status: 200, json: { schema_version: 2 } });
       return;
     }
     await route.continue();

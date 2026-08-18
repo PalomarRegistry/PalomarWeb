@@ -265,7 +265,7 @@ test("validation's one receipt traversal serves every later source lookup", () =
   assert.equal(JSON.stringify(record), serialized, "the private index does not alter serialized data");
 });
 
-test("post-validation receipt-row mutation cannot change the accepted mapping", () => {
+test("post-validation receipt-row mutation cannot change the validated mapping", () => {
   const record = acceptedEntry();
   const acceptedFork = record.preservation.repositories[0].fork_repository;
   record.preservation.repositories[0].source_repository = "example/changed";

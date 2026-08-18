@@ -231,7 +231,7 @@ test("the render companion is read once a page and caches only a stable absence"
 test("an unversioned entry read resolves and validates the current immutable record", async () => {
   const record = secondVersion();
   const versions = {
-    schema_version: 1,
+    schema_version: 2,
     id: ID,
     entries: [
       summary(),
@@ -288,7 +288,7 @@ test("verified entry loading does not await a never-settling availability read",
   });
   const routes = new Map([
     [`/versions/${ID}.json`, jsonResponse({
-      schema_version: 1,
+      schema_version: 2,
       id: ID,
       entries: [summary()],
     })],
@@ -315,7 +315,7 @@ test("verified entry loading does not await a never-settling availability read",
 });
 
 test("an inactive exact version resolves only through its validated tombstone", async () => {
-  const versions = { schema_version: 1, id: ID, entries: [summary()] };
+  const versions = { schema_version: 2, id: ID, entries: [summary()] };
   const tombstone = { id: ID, version: 2, taken_down_on: "2026-08-08" };
   const calls = [];
   const routes = new Map([
@@ -337,7 +337,7 @@ test("an inactive exact version resolves only through its validated tombstone", 
 test("an active exact version resolves through its immutable record", async () => {
   const record = secondVersion();
   const versions = {
-    schema_version: 1,
+    schema_version: 2,
     id: ID,
     entries: [
       summary(),
@@ -377,7 +377,7 @@ test("non-absence failures from version indexes and tombstones propagate", async
   const tombstoneFailure = createRegistryLoader({
     fetch: routedFetch(new Map([
       [`/versions/${ID}.json`, jsonResponse({
-        schema_version: 1,
+        schema_version: 2,
         id: ID,
         entries: [summary()],
       })],
@@ -412,7 +412,7 @@ test("an absent version index and tombstone produce the one public not-found err
 
 function subjectHead(overrides = {}) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     kind: "arxiv",
     code: "math.CO",
     entries: [{
@@ -437,13 +437,13 @@ test("the subject reads resolve and validate all three levels of one code", asyn
     fetch: routedFetch(new Map([
       ["/subjects/arxiv/math.CO.json", jsonResponse(subjectHead())],
       ["/subjects/arxiv/math.CO/2026.json", jsonResponse({
-        schema_version: 1,
+        schema_version: 2,
         year: "2026",
         page_path: "subjects/arxiv/math.CO/{day}/{page}.json",
         days: [dayRow],
       })],
       ["/subjects/arxiv/math.CO/2026-07-29/1.json", jsonResponse({
-        schema_version: 1,
+        schema_version: 2,
         day: "2026-07-29",
         page: 1,
         entries: [archived],

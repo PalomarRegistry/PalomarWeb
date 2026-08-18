@@ -15,7 +15,7 @@ import {
  * Entry validation, source preservation, URL confinement, artifact metadata,
  * and page composition remain in their existing modules. This boundary owns
  * only the trust label and the statement/proof dependency DOM presented from
- * those accepted inputs.
+ * those validated inputs.
  */
 export function createFormalizationPresentation({ document }) {
   function el(tag, className, text) {
@@ -122,8 +122,8 @@ export function createFormalizationPresentation({ document }) {
     const sectionHeading = el("h2", "", "Verified proof");
     sectionHeading.id = "proof-heading";
     section.setAttribute("aria-labelledby", sectionHeading.id);
-    title.append(el("div", "eyebrow", "Accepted proof"), sectionHeading);
-    heading.append(title, el("span", "decision accepted-decision", "Accepted"));
+    title.append(el("div", "eyebrow", "Verified proof"), sectionHeading);
+    heading.append(title, el("span", "decision verification-status", "Verified"));
     const summary = el("summary");
     summary.append(heading);
     disclosure.append(summary);
@@ -132,7 +132,7 @@ export function createFormalizationPresentation({ document }) {
       el(
         "p",
         "solution-summary",
-        "Lean checked the accepted proof using the exact versions of the source files and libraries listed below.",
+        "Lean checked this proof using the exact versions of the source files and libraries listed below.",
       ),
     );
 

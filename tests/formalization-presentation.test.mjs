@@ -78,7 +78,7 @@ function texts(root, tagName) {
   return byTag(root, tagName).map((node) => node.textContent);
 }
 
-test("the trust badge and statement dependency section present the accepted trust record", () => {
+test("the trust badge and statement dependency section present the registered trust record", () => {
   const presentation = createFormalizationPresentation({ document: fakeDocument() });
   const high = entry();
   assert.equal(

@@ -118,15 +118,15 @@
           1,000 lines and 100 KiB are hard limits; 300 lines and 32 KiB is the
           surface we would rather review. Its transitive imports must resolve
           to Lean core or the pinned, allowlisted Mathlib or Tau Ceti closure,
-          and to nothing else. Importing Tau Ceti is accepted and marks the
+          and to nothing else. Importing Tau Ceti is permitted and marks the
           entry as having qualified statement dependencies. A project Palomar
-          has already accepted is not importable on that basis: an entry fixes a
+          has already registered is not importable on that basis: an entry fixes a
           reviewable snapshot of its own statement, not a library for later
           submissions.
         </p>
         <p>
           Dependencies used only by the Solution may be arbitrary pinned Git
-          dependencies. Local/path dependencies are also accepted when their
+          dependencies. Local/path dependencies are also permitted when their
           targets remain within the same pinned repository checkout. Neither
           kind relaxes the stricter transitive Challenge-import rule.
         </p>
@@ -228,7 +228,7 @@
           them. Whether you later register is inferable from the registry.
         </p>
         <p>
-          Not public unless you register: the editorial review and the decision,
+          Not public unless you register: the automated review and its findings,
           and the registry record itself. If a review goes badly, or you simply
           change your mind, withdrawing leaves no public trace of either. The
           already-public verification run remains, and so does everything its
@@ -248,7 +248,7 @@
         <p>
           “Private” here means not public, not confidential. Reviews are
           readable by Palomar operators, by GitHub, and by the model provider,
-          and are retained indefinitely so that any decision can be audited. Do
+          and are retained indefinitely so that the review outcome can be audited. Do
           not put anything sensitive in the notes field.
         </p>
         <p>
@@ -273,16 +273,18 @@
         </p>
         <p>
           The review then appears on your status page, and nowhere else. It
-          gives the reasons, its comments, and any requested changes, not just a
-          decision. A request for changes means the work may be reconsidered
+          gives the reasons, its comments, and any requested changes, not just an
+          outcome. A request for changes means the work may be reconsidered
           after specific correctable problems are addressed; a rejection means
           the submission failed a fundamental semantic, provenance, or editorial
           requirement. Because every review is tied to an immutable commit,
           revised source is a new submission at a new full commit SHA.
         </p>
         <p>
-          Nothing is registered until you ask for it. If the review is an
-          acceptance, your status page offers two choices: register, or withdraw.
+          Nothing is registered until you ask for it. If the automated review
+          identifies no blocking problem, your status page offers two choices:
+          register, or withdraw. The automated review does not accept, approve,
+          or endorse a result.
           Asking to register is how you authorise the record to be served, and
           it is the last point at which the choice is yours alone. The
           <a href="/privacy#lawful-bases">privacy policy</a> explains that
@@ -298,9 +300,9 @@
           retains a minimal tombstone. What that rule does not do is override a
           legal obligation Palomar is under, and the
           <a href="/privacy#after-registration">privacy policy</a> describes
-          the process by which one reaches the ledger. Acceptance is not
-          registration; an accepted submission appears in the registry once the
-          corresponding database pull request is merged.
+          the process by which one reaches the ledger. Identifying no blocking
+          problem is not registration; a submission appears in the registry only
+          after the corresponding database pull request is merged.
         </p>
         <p>
           Corrections and dependency updates may be registered as new versions

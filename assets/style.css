@@ -814,7 +814,7 @@ footer {
 /* Dense sections open on demand. The section heading is the summary, so the
    collapsed page reads as a list of section titles and the disclosure marker
    is the affordance; the verification table's toggle is the small text below
-   the acceptance callout instead. */
+   the registration callout instead. */
 .section-collapse > summary {
   display: flex;
   align-items: baseline;
@@ -993,7 +993,7 @@ footer {
   }
 }
 
-.acceptance-callout {
+.registration-callout {
   display: flex;
   gap: .8rem;
   margin-bottom: 1rem;
@@ -1002,7 +1002,7 @@ footer {
   background: var(--success-paper);
 }
 
-.acceptance-check {
+.registration-check {
   display: grid;
   flex: 0 0 2rem;
   width: 2rem;
@@ -1014,12 +1014,12 @@ footer {
   font: bold 1.25rem/1 var(--sans);
 }
 
-.acceptance-callout strong {
+.registration-callout strong {
   color: var(--success);
   font: bold 1rem/1.3 var(--sans);
 }
 
-.acceptance-callout p,
+.registration-callout p,
 .solution-summary {
   margin: .2rem 0 0;
 }
@@ -1034,7 +1034,7 @@ footer {
   font: .75rem/1.3 var(--sans);
 }
 
-.accepted-decision {
+.verification-status {
   color: var(--success);
 }
 

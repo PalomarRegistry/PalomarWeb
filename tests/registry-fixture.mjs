@@ -6,7 +6,7 @@ export function summary(overrides = {}) {
     id: "PALOMAR-2026-07-29-000123",
     version: 1,
     title: "Fixture theorem",
-    status: "accepted",
+    status: "registered",
     path: "entries/PALOMAR-2026-07-29-000123-v1.json",
     ...overrides,
   };
@@ -60,7 +60,7 @@ export function recentRow(overrides = {}) {
 }
 
 export function recent(entries = [recentRow()], overrides = {}) {
-  return { schema_version: 1, entries, ...overrides };
+  return { schema_version: 2, entries, ...overrides };
 }
 
 export function renderRow(overrides = {}) {
@@ -74,7 +74,7 @@ export function renderRow(overrides = {}) {
 }
 
 export function recentRenders(renders = [renderRow()], overrides = {}) {
-  return { schema_version: 1, renders, ...overrides };
+  return { schema_version: 2, renders, ...overrides };
 }
 
 export function availabilityEndpoint(overrides = {}) {
@@ -114,12 +114,12 @@ export function availabilityRow(overrides = {}) {
 export function entry(overrides = {}) {
   const evidenceTree = "c".repeat(64);
   const value = {
-    schema_version: 2,
+    schema_version: 3,
     id: "PALOMAR-2026-07-29-000123",
-    accepted_at: "2026-07-29",
+    first_registered_on: "2026-07-29",
     registered_at: "2026-07-29T09:14:07Z",
     version: 1,
-    status: "accepted",
+    status: "registered",
     title: "Fixture theorem",
     abstract: "A security fixture.",
     authors: [{ name: "Example" }],
@@ -209,7 +209,7 @@ export function entry(overrides = {}) {
     review: {
       reviewed_at: "2026-07-29T08:53:02Z",
       policy_commit: "5".repeat(40),
-      verdict: "accept",
+      outcome: "neutral",
       report: { sha256: "e".repeat(64) },
       reviewer_models: ["fixture:model"],
       warnings: [],
