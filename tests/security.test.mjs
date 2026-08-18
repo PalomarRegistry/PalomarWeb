@@ -771,6 +771,38 @@ test("entry schema, registration state, verdict, and selected identity fail clos
   );
 });
 
+test("source contributor credits require names and bounded roles", () => {
+  const record = entry();
+  record.provenance.mathematical_sources = [{
+    title: "Kourovka Notebook",
+    authors: [],
+    contributors: [
+      { name: "Wilhelm Magnus", role: "problem-proposer" },
+      { name: "Evgenii Khukhro", role: "editor" },
+    ],
+    relationship: "background",
+  }];
+  assert.equal(validateEntry(record, summary()), record);
+
+  for (const contributor of [
+    { name: "", role: "editor" },
+    { name: "Evgenii Khukhro", role: "" },
+    { name: "Evgenii Khukhro", role: "x".repeat(201) },
+  ]) {
+    const invalid = entry();
+    invalid.provenance.mathematical_sources = [{
+      title: "Kourovka Notebook",
+      authors: [],
+      contributors: [contributor],
+      relationship: "background",
+    }];
+    assert.throws(
+      () => validateEntry(invalid, summary()),
+      /contributors|must not be empty|too long/,
+    );
+  }
+});
+
 test("a record carrying review scores is refused, not rendered", () => {
   // A record is served exactly as it was committed, and a committed record
   // has no scores. While the release tooling stripped them on the way out,

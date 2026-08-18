@@ -536,6 +536,35 @@ test("a thin wrapper says where the mathematics is before anything else", async 
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
+test("mathematical sources show non-author contributor roles", async ({ page }) => {
+  await page.route(
+    "**/database/entries/PALOMAR-2026-07-29-000123-v2.json",
+    async (route) => {
+      const response = await route.fetch();
+      const entry = await response.json();
+      entry.provenance.result_origin = "source-based";
+      entry.provenance.mathematical_sources = [{
+        title: "Kourovka Notebook",
+        authors: [{ name: "Solution Author" }],
+        contributors: [
+          { name: "Wilhelm Magnus", role: "problem-proposer" },
+          { name: "Evgenii Khukhro", role: "editor" },
+        ],
+        relationship: "formalizes",
+      }];
+      await route.fulfill({ response, json: entry });
+    },
+  );
+
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator(".provenance-sources li")).toContainText(
+    "Solution Author: Kourovka Notebook",
+  );
+  await expect(page.locator(".source-contributors")).toHaveText(
+    " — Wilhelm Magnus (problem-proposer); Evgenii Khukhro (editor)",
+  );
+});
+
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
   const pending = [];
   await page.route("**/database/source-availability.json", async (route) => {
