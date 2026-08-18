@@ -900,32 +900,46 @@ test("every page sends submitters to the submission server", async () => {
     const html = await readFile(new URL(`../${name}`, import.meta.url), "utf8");
     assert.doesNotMatch(html, /PalomarSubmission\/issues/, `${name} links to the deleted issue form`);
   }
-  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
-  assert.match(about, /https:\/\/submit\.palomar-registry\.org\//);
-  assert.match(about, /Not public unless you register/);
-  assert.match(about, /Nothing is registered until you ask for it/);
-  assert.doesNotMatch(about, /GitHub issue/i);
+  const guide = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
+  assert.match(guide, /https:\/\/submit\.palomar-registry\.org\//);
+  assert.match(guide, /Not public unless you register/);
+  assert.match(guide, /Nothing is registered until you ask for it/);
+  assert.doesNotMatch(guide, /GitHub issue/i);
 });
 
-test("About describes the current review and version contracts", async () => {
+test("About, How to submit, and Statement remain distinct public pages", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const guide = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
+  const statement = await readFile(new URL("../statement.html", import.meta.url), "utf8");
+
+  assert.doesNotMatch(about, /<section id="(?:getting-ready|how-to-submit)">/);
+  assert.match(guide, /<section id="getting-ready">/);
+  assert.match(guide, /<section id="how-to-submit">/);
+  assert.match(statement, /Palomar: a registry of Lean-verified mathematics\./);
+  assert.match(statement, /Since the start of 2026/);
+  assert.match(statement, /Jeremy Avigad, Matthew Ballard, Jaume De Dios/);
+});
+
+test("the public documentation describes the current review and version contracts", async () => {
+  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const guide = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
   assert.match(about, /Palomar addresses only limited\s+aspects\s+of these criteria/);
   assert.match(about, /This is not a substitute for\s+expert review/);
-  assert.match(about, /Corrections and dependency updates may be registered as new versions/);
-  assert.match(about, /A new mathematical result receives a new ID/);
-  assert.match(about, /Acceptance is not\s+registration/);
-  assert.doesNotMatch(about, /durable-evidence schema \(version 5\)/);
-  assert.match(about, /review-failed/);
-  assert.match(about, /operational fault, not a decision/);
-  assert.match(about, /canonical history, which is\s+append-only in ordinary operation/);
-  assert.match(about, /Moderator may exceptionally\s+retract one exact version/);
-  assert.doesNotMatch(about, /registered record is never removed/);
+  assert.match(guide, /Corrections and dependency updates may be registered as new versions/);
+  assert.match(guide, /A new mathematical result receives a new ID/);
+  assert.match(guide, /Acceptance is not\s+registration/);
+  assert.doesNotMatch(guide, /durable-evidence schema \(version 5\)/);
+  assert.match(guide, /review-failed/);
+  assert.match(guide, /operational fault, not a decision/);
+  assert.match(guide, /canonical history, which is\s+append-only in ordinary operation/);
+  assert.match(guide, /Moderator may exceptionally\s+retract one exact version/);
+  assert.doesNotMatch(guide, /registered record is never removed/);
   // The append-only rule is Palomar's own, and About may not state it as
   // though it outranked the law: an unqualified "permanent" would promise a
   // submitter something the lawful-request process can override.
-  assert.match(about, /does not do is override a\s+legal obligation/);
-  assert.match(about, /href="privacy\.html#after-registration"/);
-  assert.doesNotMatch(about, /Registration is permanent/);
+  assert.match(guide, /does not do is override a\s+legal obligation/);
+  assert.match(guide, /href="privacy\.html#after-registration"/);
+  assert.doesNotMatch(guide, /Registration is permanent/);
 });
 
 test("About publishes the three distinct governance rosters", async () => {
@@ -956,12 +970,13 @@ test("About publishes the three distinct governance rosters", async () => {
 
 test("user documentation names current examples and iframe height units", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const guide = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
   assert.match(about, /https:\/\/github\.com\/robsimmons\/nanoda_lib/);
   assert.doesNotMatch(about, /github\.com\/ammkrn\/nanoda_lib/);
-  assert.match(about, /href="https:\/\/palomar-registry\.org\/"/);
-  assert.match(about, /current registry/);
-  assert.doesNotMatch(about, /first registered result/);
-  assert.doesNotMatch(about, /entry\.html\?id=PALOMAR-2026-07-29-000001/);
+  assert.match(guide, /href="https:\/\/palomar-registry\.org\/"/);
+  assert.match(guide, /current registry/);
+  assert.doesNotMatch(guide, /first registered result/);
+  assert.doesNotMatch(guide, /entry\.html\?id=PALOMAR-2026-07-29-000001/);
 
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   const presentation = await readFile(
@@ -989,7 +1004,7 @@ test("user documentation names current examples and iframe height units", async 
 });
 
 test("the extra-axioms FAQ names the standard three Lean axioms", async () => {
-  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const about = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
   const section = /<h3 id="extra-axioms">[\s\S]*?<h3 id="formalization-yaml">/.exec(
     about,
   );
@@ -1001,23 +1016,19 @@ test("the extra-axioms FAQ names the standard three Lean axioms", async () => {
   assert.doesNotMatch(section[0], /comparator-configuration|current/i);
 });
 
-test("About says what registration publishes, and what it does not", async () => {
+test("the public documentation says what registration publishes, and what it does not", async () => {
   // About said the submitter's identity becomes public on registration. It
   // does not, the schema has no field for it, and that is the direction of
   // error nobody reports. It also promised the "full review", which is not
   // what is published either.
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
-  assert.match(about, /the registry record has no field for the person who sent a\s+submission/);
+  const guide = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
+  assert.match(guide, /the registry record has no field for the person who sent a\s+submission/);
   assert.doesNotMatch(about, /full review are\s+publicly visible/);
   assert.match(about, /The published review is redacted/);
   assert.match(about, /scored 5 and then 4 on one axis/);
-  for (const anchor of ["#editorial-review", "#submission-lifecycle-and-privacy"]) {
-    assert.match(
-      about,
-      new RegExp(`PalomarPolicy/blob/main/docs/specification\\.md${anchor}`),
-      `About should link the specification at ${anchor} rather than restate it`,
-    );
-  }
+  assert.match(about, /PalomarPolicy\/blob\/main\/docs\/specification\.md#editorial-review/);
+  assert.match(guide, /PalomarPolicy\/blob\/main\/docs\/specification\.md#submission-lifecycle-and-privacy/);
 });
 
 test("both pages say the authorization evidence is public from verification", async () => {
@@ -1030,12 +1041,12 @@ test("both pages say the authorization evidence is public from verification", as
   // about it precisely because writing a name there publishes the name. The
   // notes field is the one that really is withheld, so the two must not drift
   // into each other.
-  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const about = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
   const privacy = await readFile(new URL("../privacy.html", import.meta.url), "utf8");
   assert.match(about, /Public from verification onward:[\s\S]{0,220}approval evidence you wrote/);
   assert.match(privacy, /public early, not on registration/);
   assert.match(privacy, /authorization\s+evidence if you wrote any/);
-  for (const [name, html] of [["about.html", about], ["privacy.html", privacy]]) {
+  for (const [name, html] of [["how-to-submit.html", about], ["privacy.html", privacy]]) {
     assert.doesNotMatch(
       html,
       /evidence[^.]{0,80}(?:not (?:sent|public)|stays private|is private)[^.]{0,60}until you register/i,
@@ -1176,21 +1187,22 @@ test("the balancing account weighs each kind of published personal data", async 
   );
 });
 
-test("About describes both ways push access is proved", async () => {
+test("How to submit describes both ways push access is proved", async () => {
   // A sign-in and the agent's tag-and-gist do not establish the same thing,
   // and step 3 used to name only the first.
-  const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const about = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
   assert.match(about, /There are two ways to prove that write access/);
   assert.match(about, /not provably the same\s+account/);
   assert.match(about, /Neither is proof of\s+authorship/);
 });
 
-test("About states the repository licence boundary", async () => {
+test("the public documentation states the repository licence boundary", async () => {
   const about = await readFile(new URL("../about.html", import.meta.url), "utf8");
+  const guide = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
   assert.match(about, /root licence file, SPDX identifier, and checksum/);
   assert.match(about, /reused formalizations, and\s+dependencies retain their own licences/);
-  assert.match(about, /repository root is the default project directory/);
-  assert.match(about, /licence file remains at repository root/);
+  assert.match(guide, /repository root is the default project directory/);
+  assert.match(guide, /licence file remains at repository root/);
 });
 
 test("every provenance value the schema allows has an explicit label", async () => {
