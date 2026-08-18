@@ -158,9 +158,10 @@
           authors, each with a name and optionally a GitHub handle and an ORCID;
           a list of responsible maintainers in the same shape; and, for each
           mathematical source the work builds on, that source’s title, its
-          authors, and a field recording whether those authors participated in,
-          endorsed, declined, did not respond to, or were never contacted about
-          the formalization. Notes about related formalizations are free text
+          authors, named contributors and their roles, and a field recording
+          whether those authors participated in, endorsed, declined, did not
+          respond to, or were never contacted about the formalization. Notes
+          about related formalizations are free text
           and routinely name people and describe what they did. A record also
           names the repository and the account that owns it, which for a
           personal repository is a person’s login. The editorial review’s
@@ -358,9 +359,10 @@
         </p>
         <p>
           The first kind is repository metadata and preserved history: the
-          authors, maintainers and cited-source authors a project declares, with
-          their handles and ORCIDs, the account that owns the repository, and
-          the name and email address in every commit of the preserved fork. The
+          authors, maintainers, cited-source authors and named source
+          contributors a project declares, with contributor roles and, where
+          supported, handles and ORCIDs; the account that owns the repository;
+          and the name and email address in every commit of the preserved fork. The
           declared part really is what a paper or a bibliography carries about
           the same people, from a public repository, and Palomar does not
           enrich, index, profile or contact anyone from it. The commit history
@@ -394,8 +396,9 @@
           A submitter arrives at registration having been told that it is meant
           to be permanent, with withdrawal available up to the moment they ask.
           The people whose position is weakest are the ones who never submitted
-          anything: co-authors, the authors of cited sources, responsible
-          maintainers, whoever a submitter named in their evidence, and everyone
+          anything: co-authors, the authors and other named contributors of
+          cited sources, responsible maintainers, whoever a submitter named in
+          their evidence, and everyone
           whose name and address sits in a preserved commit history. They chose
           none of this, so for them the counterweight is not a choice they made
           but the objection right below, and suppression of the public

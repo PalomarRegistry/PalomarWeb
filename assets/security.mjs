@@ -1469,6 +1469,20 @@ export function validateEntry(entry, summary) {
       const item = object(sourceRecord, `entry.provenance.mathematical_sources[${position}]`);
       string(item.title, `entry.provenance.mathematical_sources[${position}].title`);
       array(item.authors, `entry.provenance.mathematical_sources[${position}].authors`);
+      if (item.contributors !== undefined) {
+        const contributors = array(
+          item.contributors,
+          `entry.provenance.mathematical_sources[${position}].contributors`,
+        );
+        for (const [creditPosition, contributorRecord] of contributors.entries()) {
+          const field =
+            `entry.provenance.mathematical_sources[${position}].contributors[${creditPosition}]`;
+          const contributor = object(contributorRecord, field);
+          string(contributor.name, `${field}.name`);
+          const role = string(contributor.role, `${field}.role`);
+          if (role.length > 200) fail(`${field}.role is too long`);
+        }
+      }
       if (![...substantiveRelationships, "background", "other"].includes(item.relationship)) {
         fail(`entry.provenance.mathematical_sources[${position}].relationship is not recognized`);
       }

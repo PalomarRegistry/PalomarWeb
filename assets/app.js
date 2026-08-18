@@ -1168,6 +1168,15 @@ function provenanceSection(entry, sourceAvailability) {
       } else {
         item.append(el("span", "", label));
       }
+      if (source.contributors?.length) {
+        item.append(el(
+          "span",
+          "source-contributors",
+          ` — ${source.contributors
+            .map((contributor) => `${contributor.name} (${contributor.role})`)
+            .join("; ")}`,
+        ));
+      }
       item.append(el("span", "source-relationship", ` — ${source.relationship}`));
       if (source.identifier && !source.identifier.startsWith("https://")) {
         item.append(el("code", "", source.identifier));
