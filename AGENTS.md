@@ -10,7 +10,7 @@
     'export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$(command -v chromium); npm run test:browser'
   ```
 
-- `npm test` reads `schema-v2.json` and `tests/fixtures/recent.json` out of a
+- `npm test` reads `schema-v3.json` and `tests/fixtures/recent.json` out of a
   PalomarDatabase checkout, from
   `PALOMAR_DATABASE_CHECKOUT` or a sibling `../PalomarDatabase/`. An
   unavailable contract is a failure rather than a skip, deliberately: the point
@@ -50,22 +50,18 @@
   every row the producer advertises. The traversal reconciles those surfaces;
   it cannot independently prove that their common producer omitted nothing.
 
-- Entry records have one contract: `schema_version: 2` in `schema-v2.json`.
-  Version 1 was an unused pre-launch draft; do not restore its validator,
-  preservation fallback, public schema download, or legacy presentation.
-  Deploy this consumer cleanup before the matching Database deletion: the live
-  data already contains only v2 entries and preservation-backed recent rows,
-  while the previous Web workflows still fetch `schema-v1.json` and would fail
-  as soon as Database publication removed it. This consumer-first ordering is
-  specific to deleting an artifact an old consumer still requests; shape
-  changes to documents the browser reads remain producer-first as above.
-  The consumer-first claim must be proved by `check-published.mjs --data`, which
+- Entry records have one contract: `schema_version: 3` in `schema-v3.json`.
+  Superseded drafts have no validator, preservation fallback, public schema
+  download, or legacy presentation. The schema-v3 review-language cutover was
+  deployed producer-first with its rewritten public data; do not infer an
+  endorsement from a legacy positive review value. The consumer contract must
+  be proved by `check-published.mjs --data`, which
   traverses every advertised browse page and per-ID version index and validates
   every advertised active entry before Pages artifact upload. A recent-only
   sample is not enough.
-  `recent.json`, versions, browse/search, source availability, and independent
-  render/evidence metadata intentionally retain their schema-v1 protocols;
-  entry-schema cleanup must not rewrite them.
+  `recent.json`, versions, and browse/search/subject projections use their
+  schema-v2 protocols. Source availability and independent render/evidence
+  metadata retain their own versioned contracts.
 
 - `source-availability.json` is normalized by PalomarDatabase's executable
   source-availability contract and consumed under the same per-endpoint

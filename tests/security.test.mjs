@@ -474,7 +474,7 @@ test("active-content and insecure data-derived links are never allowed", () => {
   );
 });
 
-test("a canonical accepted record validates", () => {
+test("a canonical registered record validates", () => {
   assert.equal(validateEntry(entry(), summary()).id, "PALOMAR-2026-07-29-000123");
 });
 
@@ -536,11 +536,11 @@ test("validated availability uses one private index for every later lookup", () 
     );
   }
 
-  assert.equal(rowReads, 0, "accepted availability rows are never traversed by lookup");
+  assert.equal(rowReads, 0, "validated availability rows are never traversed by lookup");
   assert.equal(JSON.stringify(manifest), serialized, "the private index does not alter JSON");
 });
 
-test("availability lookup uses the accepted snapshot rather than later row mutation", () => {
+test("availability lookup uses the validated snapshot rather than later row mutation", () => {
   const now = Date.parse("2026-08-08T12:00:00Z");
   const manifest = validateAvailability(availabilityManifest([
     availabilityRow({
@@ -744,7 +744,7 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
   );
 });
 
-test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
+test("entry schema, registration state, verdict, and selected identity fail closed", () => {
   const unsupportedSchemas = [
     entry({ schema_version: 2 }),
     entry({ schema_version: 4 }),

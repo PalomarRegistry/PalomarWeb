@@ -393,7 +393,7 @@ test("without a pointer that can rest, nothing is registered or bound", async ()
 test("a lookup refuses a companion document that was never validated", () => {
   const raw = recentRenders();
   assert.throws(() => recentRenderRow(raw, raw.renders[0].id), /was not validated/);
-  const accepted = validateRecentRenders(recentRenders());
-  assert.equal(recentRenderRow(accepted, "PALOMAR-2026-07-29-000123").version, 1);
-  assert.equal(recentRenderRow(accepted, "PALOMAR-2026-07-29-000999"), null);
+  const validated = validateRecentRenders(recentRenders());
+  assert.equal(recentRenderRow(validated, "PALOMAR-2026-07-29-000123").version, 1);
+  assert.equal(recentRenderRow(validated, "PALOMAR-2026-07-29-000999"), null);
 });
