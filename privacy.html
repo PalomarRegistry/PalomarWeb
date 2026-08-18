@@ -269,8 +269,8 @@
           <li>
             <strong>Keeping the private submission state for audit,</strong>
             which is what remains once a submission has stopped moving, rests on
-            legitimate interests: a decision nobody can reconstruct is a
-            decision nobody can challenge, including the submitter who wants to
+            legitimate interests: a review outcome nobody can reconstruct is an
+            outcome nobody can challenge, including the submitter who wants to
             challenge it. This is the basis the record’s retained history has
             had from the start, not one Palomar reaches for when a consent ends.
           </li>
@@ -334,9 +334,10 @@
         <p>
           <strong>The interest, named.</strong> It is the permanence of a
           certification record, and through that the integrity of every other
-          entry. What Palomar asserts about a registered entry is that an
-          accepted result was accepted under a stated contract, by a review
-          recorded at an exact policy commit, on an exact source commit. A
+          entry. What Palomar asserts about a registered entry is that its exact
+          source passed mechanical verification and its automated review
+          identified no blocking problem under a stated contract recorded at an
+          exact policy commit. A
           registry that can quietly lose an entry cannot support that claim
           about the entries it still has, because nothing distinguishes a record
           that was never made from one that was removed. That is why the
@@ -409,7 +410,7 @@
           data concerning them, on grounds relating to their particular
           situation. Two limits matter. It is a right over
           your own personal data, not over a record: a mathematical result, a
-          repository, a commit and a verdict are not personal data about you,
+          repository, a commit and an automated review finding are not personal data about you,
           and objecting does not give you a veto over what a record says about
           mathematics. And it belongs to whoever the data is about, which for
           most of a record is not the submitter: since a record names no
@@ -480,8 +481,8 @@
           registered is inferable from the registry.
         </p>
         <p>
-          Public only if you register: the registry record and the editorial
-          review with its verdict. The record also carries the authorization
+          Public only if you register: the registry record and the automated
+          review with its outcome and findings. The record also carries the authorization
           relationship and the evidence, but those were already public from
           dispatch; what registration adds is permanence. Withdraw instead and
           no record and no review are published. The verification run that
@@ -537,7 +538,7 @@
         </p>
         <p>
           The submission state records themselves are kept indefinitely, so that
-          any decision can still be audited. Because that state lives in git,
+          any review outcome can still be audited. Because that state lives in git,
           its history keeps earlier values of the fields as well as the current
           ones: a value that has been changed or scrubbed is still in the
           history.
@@ -728,8 +729,8 @@
           runs on is kept as a workflow artifact for 90 days, and it is the
           review’s whole working directory: the private state record, the fully
           rendered prompts with the submitted material inlined, the raw model
-          event streams and final messages, the normalized per-pass results, the
-          spend record, the review as delivered, and, on a pass that goes on to
+          event streams and final messages, the normalized per-check results, the
+          spend record, the review as delivered, and, on a run that goes on to
           register, a sparse clone of the private database. It also holds a
           checkout of the submitted repository, which is not part of the
           exposure: a repository has to be public before it can be submitted. A

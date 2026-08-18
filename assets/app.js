@@ -217,12 +217,12 @@ function categoryTokens(entry) {
 /**
  * The day this version was registered.
  *
- * Not `accepted_at`, which is the *result's* date: the identifier carries it,
+ * Not `first_registered_on`, which is the *result's* date: the identifier carries it,
  * every later version inherits it, and it is already on the card beside this.
  * So a v2 labelled by it named a day years before that version existed, and on
  * a page ordered by registration the visible dates ran out of order.
  *
- * There is no fallback to the review's date any more. A review's verdict and
+ * There is no fallback to the review's date any more. A review's outcome and
  * the registration it leads to are different moments, and the record carries
  * `registered_at` for exactly this.
  */
@@ -418,7 +418,7 @@ async function renderIndex() {
     if (!entries.length) {
       setLandingStatusHidden(false);
       status.textContent =
-        "The telescope is ready. No entries have been published yet; the first accepted database PR will appear here automatically.";
+        "The telescope is ready. No entries have been registered yet; the first registered result will appear here automatically.";
       status.classList.add("empty");
       return true;
     }
@@ -1013,9 +1013,9 @@ function licenceRow(entry, sourceAvailability) {
   return row;
 }
 
-function acceptanceCallout(entry, databaseBase) {
-  const callout = el("div", "acceptance-callout");
-  const check = el("span", "acceptance-check", "✓");
+function registrationCallout(entry, databaseBase) {
+  const callout = el("div", "registration-callout");
+  const check = el("span", "registration-check", "✓");
   check.setAttribute("aria-hidden", "true");
   const copy = el("div");
   const evidenceLinks = el("p", "certificate-evidence-links");
@@ -1026,7 +1026,7 @@ function acceptanceCallout(entry, databaseBase) {
     ),
     " · ",
     dataLink(
-      "Archived editorial review",
+      "Archived automated review",
       evidenceDataUrl(entry, databaseBase, "review.json"),
     ),
   );
@@ -1045,11 +1045,11 @@ function acceptanceCallout(entry, databaseBase) {
       el("code", "", "Solution.lean"),
       " proves the recorded formal ",
       el("code", "", "Challenge.lean"),
-      " under the listed axiom and dependency rules, and both Lean's kernel and NanoDa accepted the exported proof.",
+      " under the listed axiom and dependency rules, and both Lean's kernel and NanoDa checked the exported proof successfully.",
     ),
     assurance(
-      "Editorial assurance",
-      "an AI-mediated review judged whether that formal ",
+      "Automated review",
+      "an AI-mediated review checked whether that formal ",
       el("code", "", "Challenge.lean"),
       " matches the informal mathematical claim under the recorded policy. This is not human peer review or a novelty certificate.",
     ),
@@ -1227,13 +1227,10 @@ async function renderEntry(
   evidenceTitle.append(titleBlock);
   const evidenceDetails = el("details", "section-collapse evidence-collapse");
   evidenceDetails.append(el("summary", "", "Verification details"));
-  evidence.append(evidenceTitle, acceptanceCallout(entry, databaseBase), evidenceDetails);
+  evidence.append(evidenceTitle, registrationCallout(entry, databaseBase), evidenceDetails);
   const details = el("dl", "details");
   details.append(
-    // One date, not two. Acceptance and Lean verification have always been the
-    // same day, so the second row said nothing the first did not; what it cost
-    // was the time of day, which is now here.
-    detailRow("Verified and accepted", displayTimestamp(entry.verification.verified_at)),
+    detailRow("Mechanically verified", displayTimestamp(entry.verification.verified_at)),
     sourceDetailRow(
       "Fixed source version",
       `${entry.source.repository}@${entry.source.commit.slice(0, 12)}`,
@@ -1362,16 +1359,25 @@ async function renderEntry(
   editorialHeading.id = "review-heading";
   editorial.setAttribute("aria-labelledby", editorialHeading.id);
   editorialBlock.append(el("div", "eyebrow", "Editorial record"), editorialHeading);
-  editorialTitle.append(editorialBlock, el("span", "decision", "Accepted"));
+  editorialTitle.append(
+    editorialBlock,
+    el(
+      "span",
+      "decision",
+      entry.review.warnings.length
+        ? "No blocking problems identified"
+        : "No problems identified",
+    ),
+  );
   const editorialSummary = el("summary");
   editorialSummary.append(editorialTitle);
   editorialDisclosure.append(editorialSummary);
   editorial.append(editorialDisclosure);
-  // No scores. They decide whether a submission is accepted and they are kept
+  // No scores. They contribute to the filter outcome and are kept
   // beside the database, but they never reach here: the same repository at
   // the same commit has scored 5 and then 4 on the same axis across runs, and a
   // number that moves like that reads as a judgement it cannot support. What
-  // it can support is the decision, which is above.
+  // it can support is the plain-language outcome above.
   editorialDisclosure.append(
     el(
       "p",

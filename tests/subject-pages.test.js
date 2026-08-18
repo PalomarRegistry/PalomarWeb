@@ -58,7 +58,7 @@ const ROW = (day, serial) => ({
   id: `PALOMAR-${day}-${String(serial).padStart(6, "0")}`,
   version: 1,
   title: `Result ${serial}`,
-  status: "accepted",
+  status: "registered",
   path: `entries/PALOMAR-${day}-${String(serial).padStart(6, "0")}-v1.json`,
   published_at: `${day}T09:00:${String(serial).padStart(2, "0")}Z`,
   classification: { arxiv: ["math.AG"], msc2020: ["14A10"] },
@@ -75,7 +75,7 @@ function archive({ versions = 4 } = {}) {
   const older = [ROW("2026-06-01", 1), ROW("2026-06-01", 2)];
   return {
     head: {
-      schema_version: 1,
+      schema_version: 2,
       kind: "arxiv",
       code: "math.AG",
       entries: [newer[1], newer[0]],
@@ -84,7 +84,7 @@ function archive({ versions = 4 } = {}) {
       years: [{ year: "2026", days: 2, results: 4, versions: 4 }],
     },
     year: {
-      schema_version: 1,
+      schema_version: 2,
       year: "2026",
       days: [
         { day: "2026-06-01", first_page: 1, last_page: 1, results: 2, versions: 2 },
@@ -92,8 +92,8 @@ function archive({ versions = 4 } = {}) {
       ],
     },
     pages: new Map([
-      ["2026-06-01:1", { schema_version: 1, day: "2026-06-01", page: 1, entries: older }],
-      ["2026-06-02:1", { schema_version: 1, day: "2026-06-02", page: 1, entries: newer }],
+      ["2026-06-01:1", { schema_version: 2, day: "2026-06-01", page: 1, entries: older }],
+      ["2026-06-02:1", { schema_version: 2, day: "2026-06-02", page: 1, entries: newer }],
     ]),
   };
 }
@@ -158,7 +158,7 @@ test("a code never used is absent, and a code with nothing current is empty", as
   // the one a reader can act on.
   const empty = subjectPage({
     loadSubjectHead: async () => ({
-      schema_version: 1,
+      schema_version: 2,
       kind: "arxiv",
       code: "math.AG",
       entries: [],

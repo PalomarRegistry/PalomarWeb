@@ -71,9 +71,9 @@ for (const [mode, colours] of [["light", light], ["dark", dark]]) {
     }
   });
 
-  test(`${mode} acceptance mark meets text contrast`, () => {
+  test(`${mode} registration mark meets text contrast`, () => {
     const ratio = contrast(colours["--paper"], colours["--success-mark"]);
-    assert.ok(ratio >= 4.5, `${mode} acceptance mark is ${ratio.toFixed(2)}:1, needs 4.5`);
+    assert.ok(ratio >= 4.5, `${mode} registration mark is ${ratio.toFixed(2)}:1, needs 4.5`);
   });
 
   test(`${mode} filter states retain text contrast`, () => {

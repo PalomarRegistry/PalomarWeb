@@ -98,7 +98,7 @@ function byClass(root, className) {
     String(node.className).split(" ").includes(className));
 }
 
-test("render metadata must correspond exactly to the accepted entry", async (t) => {
+test("render metadata must correspond exactly to the registered entry", async (t) => {
   const record = acceptedEntry();
   const current = renderMetadata();
   assert.equal(validateChallengeMetadata(record, current), current);

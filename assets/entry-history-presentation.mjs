@@ -78,7 +78,7 @@ export function createEntryHistoryPresentation({ document, localPageUrl, window 
       el(
         "p",
         "version-history-intro",
-        "Every version is an immutable accepted snapshot. The authorship, statement, proof, review comments, and dependency information on this page belong to the selected version only.",
+        "Every version is an immutable registered snapshot. The authorship, statement, proof, review comments, and dependency information on this page belong to the selected version only.",
       ),
     );
 

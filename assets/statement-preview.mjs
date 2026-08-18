@@ -25,7 +25,7 @@ const MARGIN = 8;
  *
  * It is a preview and not the record. The entry page remains where a rendering
  * is presented with the pinned source, the dependency surface, and the checks
- * tying it to the accepted entry; this frames the same immutable artifact from
+ * tying it to the registered entry; this frames the same immutable artifact from
  * the same content address and says nothing further about it.
  *
  * Hover is the only trigger, which is a decision with consequences worth

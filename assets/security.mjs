@@ -1,11 +1,11 @@
-export const VERSIONS_SCHEMA_VERSION = 1;
-export const RECENT_SCHEMA_VERSION = 1;
-export const BROWSE_SCHEMA_VERSION = 1;
+export const VERSIONS_SCHEMA_VERSION = 2;
+export const RECENT_SCHEMA_VERSION = 2;
+export const BROWSE_SCHEMA_VERSION = 2;
 // A result with five hundred registered versions is a bug, not a history, and
 // this is the one read surface whose size is not bounded by anything else.
 const MAX_VERSIONS_PER_ID = 500;
 // The publisher's cap on `recent.json`, and the reason to have it here too: the
-// document this replaced was the whole registry, and a reader that accepted an
+// document this replaced was the whole registry, and a reader that admitted an
 // unbounded one would let it come back without anything saying so.
 const RECENT_ITEMS = 200;
 const BROWSE_PAGE_SERIALS = 200;
@@ -26,7 +26,7 @@ const BROWSE_MAX_PAGE = Math.ceil(999_999 / BROWSE_PAGE_SERIALS);
 const yearTemplate = (directory) => `${directory}/{year}.json`;
 const pageTemplate = (directory) => `${directory}/{day}/{page}.json`;
 const BROWSE_DIRECTORY = "browse";
-export const ENTRY_SCHEMA_VERSION = 2;
+export const ENTRY_SCHEMA_VERSION = 3;
 // The endpoint, not a document. There is no whole-registry document to name
 // any more: every surface is derived from this prefix by the function that
 // knows which one it wants.
@@ -334,7 +334,7 @@ export function validateRecent(value) {
     const version = integer(summary.version, `${field}.version`);
     boundedString(summary.title, `${field}.title`, 300);
     boundedString(summary.abstract, `${field}.abstract`, 10_000);
-    if (summary.status !== "accepted") fail(`recent.entries[${position}].status is not accepted`);
+    if (summary.status !== "registered") fail(`recent.entries[${position}].status is not registered`);
     const expectedPath = `entries/${id}-v${version}.json`;
     if (summary.path !== expectedPath) {
       fail(`recent.entries[${position}].path must be ${expectedPath}`);
@@ -343,7 +343,7 @@ export function validateRecent(value) {
     const publishedAt = string(summary.published_at, `${field}.published_at`);
     // An instant, and only an instant. This is the record's `registered_at`,
     // which the schema requires of every version. A date was tolerated while a
-    // row could fall back to `accepted_at`, and a date read as an instant is
+    // row could fall back to `first_registered_on`, and a date read as an instant is
     // midnight, so such a row would sort ahead of everything registered that
     // day with nothing to say why.
     if (!TIMESTAMP_RE.test(publishedAt)) {
@@ -484,7 +484,7 @@ export function validateRecentRenders(value) {
     if (!SHA256_RE.test(treeHash)) fail(`${field}.artifact_tree_sha256 is malformed`);
     index.set(id, Object.freeze({ id, version, artifact_tree_sha256: treeHash }));
   }
-  // Captured by value while the document is accepted, so a lookup answers from
+  // Captured by value while the document is validated, so a lookup answers from
   // what was checked rather than from a public row that has since been written
   // over. Set only after the whole projection succeeds: a reference to an early
   // row of a later-rejected document must not become presentation data.
@@ -591,7 +591,7 @@ export function validateAvailability(manifest) {
     const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
     if (seen.has(key)) fail(`availability.repositories[${position}] is duplicated`);
     seen.add(key);
-    const accepted = {
+    const validated = {
       ...row,
       original: availabilityEndpoint(
         row.original,
@@ -602,20 +602,20 @@ export function validateAvailability(manifest) {
         `availability.repositories[${position}].archive`,
       ),
     };
-    repositories.push(accepted);
+    repositories.push(validated);
     // The private consequence of validation must not point back at mutable
     // public rows. Capture exactly the fields lookup can later return/use.
     index.set(key, Object.freeze({
-      source_repository: accepted.source_repository,
-      commit: accepted.commit,
-      fork_repository: accepted.fork_repository,
-      original: Object.freeze({ ...accepted.original }),
-      archive: Object.freeze({ ...accepted.archive }),
+      source_repository: validated.source_repository,
+      commit: validated.commit,
+      fork_repository: validated.fork_repository,
+      original: Object.freeze({ ...validated.original }),
+      archive: Object.freeze({ ...validated.archive }),
     }));
   }
-  const accepted = { ...document, repositories };
-  availabilityIndexes.set(accepted, { generatedAt, index });
-  return accepted;
+  const validated = { ...document, repositories };
+  availabilityIndexes.set(validated, { generatedAt, index });
+  return validated;
 }
 
 export function availabilityRecord(manifest, repository, revision, now = Date.now()) {
@@ -665,7 +665,7 @@ function validateEntrySummary(value, field) {
   if (!ID_RE.test(id)) fail(`${field}.id is malformed`);
   const version = integer(summary.version, `${field}.version`);
   boundedString(summary.title, `${field}.title`, 300);
-  if (summary.status !== "accepted") fail(`${field}.status is not accepted`);
+  if (summary.status !== "registered") fail(`${field}.status is not registered`);
   const expectedPath = `entries/${id}-v${version}.json`;
   if (summary.path !== expectedPath) fail(`${field}.path must be ${expectedPath}`);
   return summary;
@@ -1075,7 +1075,7 @@ export function validateSubjectPage(value, kind, code, day, page) {
   return { ...document, entries: rows };
 }
 
-export const SEARCH_SCHEMA_VERSION = 1;
+export const SEARCH_SCHEMA_VERSION = 2;
 // A word is lowercase, alphanumeric and short, and anything a word cannot be
 // was dropped by the indexer rather than escaped. That is what lets this
 // request be built straight from what somebody typed: there is no term
@@ -1320,19 +1320,19 @@ function safeDependencyPath(value, field) {
 
 function validateCanonicalRecordLinks(entry) {
   const identifier = ID_RE.exec(entry.id);
-  if (identifier[1] !== entry.accepted_at) fail("entry ID date does not match accepted_at");
+  if (identifier[1] !== entry.first_registered_on) fail("entry ID date does not match first_registered_on");
 
-  // `accepted_at` is the result's date, inherited by every later version, and
+  // `first_registered_on` is the result's date, inherited by every later version, and
   // `registered_at` is the version's own instant. They meet at version 1, and
   // there they must: one is in the identifier and decides which browse page
   // the result is on, the other decides where it appears among what is new. A
   // record where they have come apart renders perfectly well while being
   // browsed under one day and ordered under another.
   const registeredOn = entry.registered_at.slice(0, 10);
-  if (entry.version === 1 && registeredOn !== entry.accepted_at) {
-    fail("entry.accepted_at is not the day version 1 was registered");
+  if (entry.version === 1 && registeredOn !== entry.first_registered_on) {
+    fail("entry.first_registered_on is not the day version 1 was registered");
   }
-  if (registeredOn < entry.accepted_at) {
+  if (registeredOn < entry.first_registered_on) {
     fail("entry.registered_at is before the result entered the registry");
   }
 
@@ -1376,7 +1376,7 @@ export function validateEntry(entry, summary) {
   if (entry.schema_version !== ENTRY_SCHEMA_VERSION) {
     fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
   }
-  if (entry.status !== "accepted") fail("entry status is not accepted");
+  if (entry.status !== "registered") fail("entry status is not registered");
   const id = string(entry.id, "entry.id");
   if (!ID_RE.test(id)) fail("entry.id is malformed");
   const version = integer(entry.version, "entry.version");
@@ -1388,11 +1388,11 @@ export function validateEntry(entry, summary) {
   }
   string(entry.title, "entry.title");
   string(entry.abstract, "entry.abstract");
-  const acceptedAt = string(entry.accepted_at, "entry.accepted_at");
-  if (!DATE_RE.test(acceptedAt)) fail("entry.accepted_at is malformed");
+  const firstRegisteredOn = string(entry.first_registered_on, "entry.first_registered_on");
+  if (!DATE_RE.test(firstRegisteredOn)) fail("entry.first_registered_on is malformed");
   // The version's own registration instant, which is what every ordering
   // surface reads and what the card is dated by. How it has to agree with
-  // `accepted_at` is in `validateCanonicalRecordLinks`, beside the rest of what
+  // `first_registered_on` is in `validateCanonicalRecordLinks`, beside the rest of what
   // a record derives from itself.
   const registeredAt = string(entry.registered_at, "entry.registered_at");
   if (!TIMESTAMP_RE.test(registeredAt) || Number.isNaN(Date.parse(registeredAt))) {
@@ -1707,7 +1707,7 @@ export function validateEntry(entry, summary) {
   const review = object(entry.review, "entry.review");
   string(review.reviewed_at, "entry.review.reviewed_at");
   commit(review.policy_commit, "entry.review.policy_commit");
-  if (review.verdict !== "accept") fail("entry.review.verdict is not accept");
+  if (review.outcome !== "neutral") fail("entry.review.outcome does not permit registration");
   digest(object(review.report, "entry.review.report").sha256, "entry.review.report.sha256");
   if (review.report.source_url !== undefined) {
     safeExternalUrl(string(review.report.source_url, "entry.review.report.source_url"));
