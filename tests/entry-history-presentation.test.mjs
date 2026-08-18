@@ -69,7 +69,7 @@ function localPageUrl(page, entry) {
   return url;
 }
 
-const window = { location: { href: "https://fixture.invalid/entry.html" } };
+const window = { location: { href: "https://fixture.invalid/entry" } };
 
 test("canonical entry links are inserted once and updated for the selected immutable version", () => {
   const document = fakeDocument();
@@ -86,7 +86,7 @@ test("canonical entry links are inserted once and updated for the selected immut
   assert.equal(document.head.children[0].rel, "canonical");
   assert.equal(
     document.head.children[0].href,
-    "https://palomar-registry.org/entry.html?id=PALOMAR-2026-08-08-000001&version=2",
+    "https://palomar-registry.org/entry?id=PALOMAR-2026-08-08-000001&version=2",
   );
 });
 
@@ -104,7 +104,7 @@ test("only a superseded version presents a labelled link to the current version"
   assert.equal(byTag(notice, "a")[0].textContent, "View current version 3");
   assert.equal(
     byTag(notice, "a")[0].href,
-    "https://fixture.invalid/entry.html?id=PALOMAR-2026-08-08-000001&version=3",
+    "https://fixture.invalid/entry?id=PALOMAR-2026-08-08-000001&version=3",
   );
 });
 
@@ -151,8 +151,8 @@ test("history is newest-first, identifies the selected snapshot, and leaves inpu
   assert.equal(byClass(list, "viewing-version").length, 1);
   assert.equal(byClass(list, "selected-version")[0].attributes.get("aria-current"), "true");
   assert.deepEqual(byTag(list, "a").map((node) => node.href), [
-    `https://fixture.invalid/entry.html?id=${id}&version=3`,
-    `https://fixture.invalid/entry.html?id=${id}&version=1`,
+    `https://fixture.invalid/entry?id=${id}&version=3`,
+    `https://fixture.invalid/entry?id=${id}&version=1`,
   ]);
   assert.deepEqual(versions, original);
 });

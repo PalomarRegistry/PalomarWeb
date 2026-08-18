@@ -110,8 +110,42 @@ test("every shipped page carries a footer link to the privacy policy", async () 
     assert.ok(footer, `${file} has no footer to carry the privacy link`);
     assert.match(
       footer,
-      /<a href="\/?privacy\.html">Privacy<\/a>/,
+      /<a href="\/privacy">Privacy<\/a>/,
       `${file} does not link the privacy policy from its footer`,
+    );
+  }
+});
+
+test("shipped navigation exposes routes rather than HTML filenames", async () => {
+  for (const file of htmlFiles) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((match) => match[1]);
+    const implementationLinks = hrefs.filter((href) => {
+      const target = new URL(href, "https://palomar-registry.org/");
+      return target.origin === "https://palomar-registry.org" &&
+        /\.html$/.test(target.pathname);
+    });
+    assert.deepEqual(
+      implementationLinks,
+      [],
+      `${file} exposes HTML filenames in public links`,
+    );
+  }
+});
+
+test("fixed public pages declare extensionless canonical URLs", async () => {
+  const routes = new Map([
+    ["index.html", "/"],
+    ["about.html", "/about"],
+    ["how-to-submit.html", "/how-to-submit"],
+    ["privacy.html", "/privacy"],
+    ["statement.html", "/statement"],
+  ]);
+  for (const [file, route] of routes) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.match(
+      html,
+      new RegExp(`<link rel="canonical" href="https://palomar-registry\\.org${route}">`),
     );
   }
 });
@@ -180,5 +214,5 @@ test("404.html addresses everything from the site root", async () => {
   );
   assert.match(html, /href="\/assets\/style\.css"/);
   assert.match(html, /<a href="\/">Return to the registry<\/a>/);
-  assert.match(html, /<a href="\/privacy\.html">Privacy<\/a>/);
+  assert.match(html, /<a href="\/privacy">Privacy<\/a>/);
 });

@@ -71,7 +71,7 @@ function entryDependencies(overrides = {}) {
       location: { hash: "" },
       history: { replaceState() {} },
       loadEntry: async () => ({ tombstone: {} }),
-      localPageUrl: () => new URL("https://palomar-registry.org/entry.html"),
+      localPageUrl: () => new URL("https://palomar-registry.org/entry"),
       renderEntry: async () => {},
       renderExactTombstone: () => {},
       ...overrides,
@@ -132,9 +132,9 @@ test("unversioned entry routes expose content progressively then preserve and sc
       return loaded;
     },
     localPageUrl: (page, selected) => {
-      assert.equal(page, "entry.html");
+      assert.equal(page, "/entry");
       assert.equal(selected, entry);
-      return new URL(`https://palomar-registry.org/entry.html?id=${entry.id}&version=3`);
+      return new URL(`https://palomar-registry.org/entry?id=${entry.id}&version=3`);
     },
     renderEntry: async (...args) => {
       renderedArguments = args;
@@ -155,7 +155,7 @@ test("unversioned entry routes expose content progressively then preserve and sc
   assert.deepEqual(renderedArguments, [loaded, view.content]);
   assert.equal(replaced.state, null);
   assert.equal(replaced.title, "");
-  assert.equal(replaced.url.href, `https://palomar-registry.org/entry.html?id=${entry.id}&version=3#version-history`);
+  assert.equal(replaced.url.href, `https://palomar-registry.org/entry?id=${entry.id}&version=3#version-history`);
   assert.equal(scrolled, 1);
 });
 

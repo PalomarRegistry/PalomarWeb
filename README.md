@@ -32,7 +32,7 @@ Registry cards display the identifier, registration date, title, abstract,
 authors, theorems, arXiv and MSC2020 classifications, and source links, all
 without opening anything: a title here is a repository name, so the authors and
 the theorem are what identify a row while scanning. Every classification code is
-a link to `subject.html?kind=<arxiv|msc>&code=<code>`, glossed with its
+a link to `/subject?kind=<arxiv|msc>&code=<code>`, glossed with its
 description on hover and in the accessibility tree: a code is not a subject, and
 neither `52C10` nor `math.MG` says what it is. The two taxonomy tables are
 vendored under `assets/data/` from the snapshot PalomarSubmission validates
@@ -245,7 +245,7 @@ active history when older snapshots exist.
 An entry URL with both `id` and `version` identifies one immutable snapshot:
 
 ```text
-https://palomar-registry.org/entry.html?id={permanent-ID}&version={integer-version}
+https://palomar-registry.org/entry?id={permanent-ID}&version={integer-version}
 ```
 
 Its HTML canonical link points to that same official, explicit version,

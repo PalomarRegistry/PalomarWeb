@@ -92,7 +92,7 @@ test("the render frame lands on the same paper as the page around it", async ({ 
   // agree, which is what is asserted on both sides of the boundary here.
   const paper = { dark: "rgb(16, 18, 22)", light: "rgb(255, 255, 255)" };
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto(`/render.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+  await page.goto(`/render?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
   const frame = page.locator(".challenge-presentation iframe");
   for (const scheme of ["dark", "light"]) {
     await page.emulateMedia({ colorScheme: scheme });
@@ -106,7 +106,7 @@ test("the render frame lands on the same paper as the page around it", async ({ 
 
 test("submission-guide headings expose hoverable links that copy their section URL", async ({ context, page }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("/how-to-submit.html");
+  await page.goto("/how-to-submit");
 
   const sectionHeading = page.locator("#getting-ready h2");
   const sectionAnchor = sectionHeading.getByRole("link", { name: "Copy link to Getting ready to submit" });
@@ -119,9 +119,9 @@ test("submission-guide headings expose hoverable links that copy their section U
   await expect(sectionAnchor).toHaveCSS("opacity", "1");
 
   await sectionAnchor.click();
-  await expect(page).toHaveURL(/how-to-submit\.html#getting-ready$/);
+  await expect(page).toHaveURL(/how-to-submit#getting-ready$/);
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toMatch(
-    /how-to-submit\.html#getting-ready$/,
+    /how-to-submit#getting-ready$/,
   );
   await expect(page.getByRole("status")).toHaveText("Copied link to Getting ready to submit");
   await expect(sectionAnchor).toHaveClass(/copied/);
@@ -141,7 +141,7 @@ test("submission-guide headings expose hoverable links that copy their section U
 });
 
 test("every formalization.yaml mention in the submission guide links to its standard", async ({ page }) => {
-  await page.goto("/how-to-submit.html");
+  await page.goto("/how-to-submit");
   const standard = "https://github.com/mathlib-initiative/formalization.yaml";
   const result = await page.locator("main").evaluate((main, expected) => {
     const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
@@ -180,7 +180,7 @@ test("landing cards show the registration date and dated identifier", async ({ p
   await expect(first.locator(".trust-badge")).toHaveText("Statement dependencies: Mathlib only");
   await expect(first.getByRole("link", { name: "2 versions" })).toHaveAttribute(
     "href",
-    /entry\.html\?.*version=2.*#version-history$/,
+    /\/entry\?.*version=2.*#version-history$/,
   );
   await expect(first.locator(".version-history-link")).toHaveAttribute(
     "aria-label",
@@ -387,22 +387,22 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   // feeds it used to link to were never published, so every one was a 404.
   await expect(page.locator(".entry-classification").getByRole("link", { name: "RSS" })).toHaveCount(0);
   const mscLink = page.locator(".entry-classification .category-link", { hasText: "05C10" });
-  await expect(mscLink).toHaveAttribute("href", /subject\.html\?kind=msc&code=05C10/);
+  await expect(mscLink).toHaveAttribute("href", /\/subject\?kind=msc&code=05C10/);
   await expect(
     page.locator(".entry-classification .category-link", { hasText: "math.CO" }),
-  ).toHaveAttribute("href", /subject\.html\?kind=arxiv&code=math\.CO/);
+  ).toHaveAttribute("href", /\/subject\?kind=arxiv&code=math\.CO/);
   // And a code nobody can read is glossed with what it means, in both
   // taxonomies: math.MG does not announce itself as metric geometry either.
   await expect(mscLink).toHaveAttribute("title", /05C10 — .+/);
   await expect(
     page.locator(".entry-classification .category-link", { hasText: "math.CO" }),
   ).toHaveAttribute("title", "math.CO — Combinatorics");
-  await expect(page).toHaveURL(/entry\.html\?id=PALOMAR-2026-07-29-000123&version=2&database=/);
+  await expect(page).toHaveURL(/\/entry\?id=PALOMAR-2026-07-29-000123&version=2&database=/);
   await expect(page).toHaveURL(/#version-history$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
-    "https://palomar-registry.org/entry.html?id=PALOMAR-2026-07-29-000123&version=2",
+    "https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=2",
   );
 });
 
@@ -830,7 +830,7 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
   await expect(notice).toContainText("Version 2 is the current version");
   await expect(notice.getByRole("link", { name: "View current version 2" })).toHaveAttribute(
     "href",
-    /entry\.html\?.*version=2/,
+    /\/entry\?.*version=2/,
   );
 
   const history = page.locator("#version-history");
@@ -853,7 +853,7 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
   );
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     "href",
-    "https://palomar-registry.org/entry.html?id=PALOMAR-2026-07-29-000123&version=1",
+    "https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1",
   );
 });
 
@@ -1158,7 +1158,7 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
     "This statement is too large to display here",
   );
   await page.getByRole("link", { name: "Open formatted statement" }).click();
-  await expect(page).toHaveURL(/render\.html\?id=PALOMAR-2026-07-29-000124/);
+  await expect(page).toHaveURL(/\/render\?id=PALOMAR-2026-07-29-000124/);
   await expect(page.locator(".challenge-presentation iframe")).toHaveAttribute(
     "sandbox",
     "allow-scripts",
@@ -1168,7 +1168,7 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
   await page.getByRole("link", { name: "Inspect statement dependencies" }).click();
-  await expect(page).toHaveURL(/entry\.html\?.*#statement-dependencies$/);
+  await expect(page).toHaveURL(/\/entry\?.*#statement-dependencies$/);
   await expect(page.locator("#statement-dependencies")).toBeInViewport();
 });
 
@@ -1298,8 +1298,8 @@ test("a card's classifications are muted links, glossed on hover", async ({ page
 
   // The whole registry under that code, not the two hundred rows this page
   // happens to hold. Both taxonomies are glossed, so a row is not half live.
-  await expect(arxiv).toHaveAttribute("href", /subject\.html\?kind=arxiv&code=math\.CO/);
-  await expect(msc).toHaveAttribute("href", /subject\.html\?kind=msc&code=05C10/);
+  await expect(arxiv).toHaveAttribute("href", /\/subject\?kind=arxiv&code=math\.CO/);
+  await expect(msc).toHaveAttribute("href", /\/subject\?kind=msc&code=05C10/);
   await expect(arxiv).toHaveAttribute("title", "math.CO — Combinatorics");
   await expect(msc).toHaveAttribute("title", /^05C10 — Planar graphs/);
   // The description is a hover, not a second line: a card has no room for it
@@ -1347,7 +1347,7 @@ test("a subject page lists every current version under one code, newest first", 
   await expect(rows.first()).toContainText("PALOMAR-2026-06-03-000020");
   await expect(rows.first().locator("h2 a")).toHaveAttribute(
     "href",
-    /entry\.html\?id=PALOMAR-2026-06-03-000020&version=1/,
+    /\/entry\?id=PALOMAR-2026-06-03-000020&version=1/,
   );
   await expect(rows.last()).toContainText("PALOMAR-2026-06-01-000011");
 
