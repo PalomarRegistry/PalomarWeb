@@ -56,13 +56,13 @@
         </p>
       </section>
 
-      <section id="what-acceptance-means">
-        <h2>What does acceptance by Palomar mean?</h2>
+      <section id="what-registration-requires">
+        <h2>What does Palomar require for registration?</h2>
         <p>
-          In order for a repository version to be accepted by Palomar, three
-          checks must pass. One is mechanical and requires both
-          Lean’s kernel and the independent NanoDa kernel; the other two are
-          performed by a language model.
+          A repository version is registrable only after mechanical verification
+          succeeds and an automated review identifies no blocking problem. The
+          mechanical check uses both Lean’s kernel and the independent NanoDa
+          kernel; the other checks are performed by a language model.
         </p>
         <ol class="assertions">
           <li>
@@ -108,16 +108,17 @@
           </li>
         </ol>
         <p>
-          The passes the language model runs, the prompts it is given, and the
+          The checks the language model runs, the prompts it is given, and the
           report it must produce are published in
           <a href="https://github.com/PalomarRegistry/PalomarPolicy">PalomarPolicy</a>.
         </p>
         <p>
-          All three checks run automatically, and a submission that passes them
-          is accepted without further judgment. Palomar adds no human editorial
-          step: no one here reads the mathematics the way a referee would. The
-          submitter then sees the private review and chooses whether to register
-          the accepted result or withdraw it.
+          All three checks run automatically. The review is a filter: it may
+          identify a blocking problem, or it may find no blocking problem. It
+          does not accept, approve, or endorse a result. Palomar adds no human
+          editorial step: no one here reads the mathematics the way a referee
+          would. When no blocking problem is identified, the submitter sees the
+          private review and chooses whether to register or withdraw the result.
         </p>
         <p>
           Palomar asserts nothing beyond these three checks.
@@ -126,7 +127,8 @@
           For a registered result, the source and the review's comments are
           publicly visible, so that a reader can reach their own judgment on the
           work and verify it independently. The published review is redacted: it
-          carries the accepted outcome and every comment, but not the scores
+          records that no blocking problem was identified and carries every
+          comment, but not the scores
           behind them or how severe the review considered each one.
           <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/specification.md#editorial-review">The
           protocol specification</a> defines what is published.
@@ -134,16 +136,18 @@
         <p>
           The scores behind that outcome are withheld deliberately. The same
           repository at the same commit has scored 5 and then 4 on one axis
-          across two runs of the same policy, with the same verdict both times,
+          across two runs of the same policy, with the same registerability
+          outcome both times,
           and a number that moves like that reads as a judgement it cannot
-          carry. The verdict is what a reader is shown instead.
+          carry. Readers are instead told whether the automated review
+          identified any blocking problem.
         </p>
       </section>
 
       <section id="disagreeing-with-the-review">
         <h2>I disagree with the review’s assessment of my result. What can I do?</h2>
         <p>
-          There is no appeal for an individual result: reopening a few decisions
+          There is no appeal for an individual result: reopening a few outcomes
           for whoever writes in would make the outcome depend on who complained.
           A rejected submission leaves no public record, and it can be revised
           and resubmitted after a waiting period. Repeated submissions lengthen
@@ -181,8 +185,9 @@
         <p>
           To record a result against newer versions, submit the updated commit
           and give the existing Palomar ID on the submission form. The new
-          submission is verified and reviewed from scratch, and if it is accepted
-          and you choose to register it, it becomes the next version of that same
+          submission is verified and reviewed from scratch. If the automated
+          review identifies no blocking problem and you choose to register it,
+          it becomes the next version of that same
           identifier. The repository, project directory, and Comparator
           configuration path must match the existing entry.
         </p>
@@ -247,9 +252,10 @@
             grade, or otherwise assess how significant a result is.
           </li>
           <li>
-            <strong>Palomar does not perform peer review.</strong> Acceptance is
-            decided by the automated checks above, and no expert reviews the
-            content of the repository itself.
+            <strong>Palomar does not perform peer review.</strong> The automated
+            checks above can block registration or identify no blocking problem;
+            they do not accept a result, and no expert reviews the content of the
+            repository itself.
           </li>
           <li>
             <strong>Palomar is not a journal.</strong> Registration of a
@@ -389,14 +395,14 @@
         </p>
       </section>
 
-      <section id="accepted-imports">
-        <h2>What external library imports are accepted?</h2>
+      <section id="permitted-imports">
+        <h2>What external library imports are permitted?</h2>
         <p>
           The statement — conventionally <code>Challenge.lean</code> — may import
           Lean core,
           <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
           and <a href="https://github.com/TauCetiProject/TauCeti">Tau Ceti</a>.
-          Importing Tau Ceti is accepted and marks the entry as having qualified
+          Importing Tau Ceti is permitted and marks the entry as having qualified
           statement dependencies. A project Palomar has already registered is not
           importable on that basis.
         </p>

@@ -9,6 +9,6 @@
     }
   ],
   "page_path": "browse/{day}/{page}.json",
-  "schema_version": 1,
+  "schema_version": 2,
   "year": "2026"
 }

@@ -34,9 +34,9 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         else {"arxiv": ["math.NT"], "msc2020": ["11N13"]}
     )
     record = {
-        "schema_version": 2,
+        "schema_version": 3,
         "id": identifier,
-        "accepted_at": "2026-07-29",
+        "first_registered_on": "2026-07-29",
         # The result's date is the day its version 1 was registered, and a
         # later version brings its own instant: a v2 is a new registration and
         # is news, where the result's date would file it beside its v1.
@@ -44,7 +44,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "2026-07-29T09:14:07Z" if version == 1 else f"2026-08-{version:02d}T09:14:07Z"
         ),
         "version": version,
-        "status": "accepted",
+        "status": "registered",
         "title": f"Fixture {identifier} version {version}",
         "abstract": "A browser confinement fixture for the registry, about the quasicoherent behaviour of a synthetic result.",
         "authors": [{"name": "Example"}],
@@ -119,7 +119,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "review": {
             "reviewed_at": "2026-07-29T08:53:02Z",
             "policy_commit": "5" * 40,
-            "verdict": "accept",
+            "outcome": "neutral",
             "reviewer_models": ["fixture:model"],
             "warnings": [],
             "report": {"sha256": "e" * 64},
@@ -262,7 +262,7 @@ def subject_row(record: dict) -> dict:
         "id": record["id"],
         "version": record["version"],
         "title": record["title"],
-        "status": "accepted",
+        "status": "registered",
         "path": f"entries/{record['id']}-v{record['version']}.json",
         "published_at": record["registered_at"],
         "classification": record["classification"],
@@ -340,7 +340,7 @@ def subject_documents() -> dict[str, dict]:
         for (year, day, page), page_rows in sorted(pages.items()):
             ordered = sorted(page_rows, key=lambda row: (row["id"], row["version"]))
             documents[f"{directory}/{day}/{page}.json"] = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "day": day,
                 "page": page,
                 "entries": ordered,
@@ -360,7 +360,7 @@ def subject_documents() -> dict[str, dict]:
                     "versions": len(flat),
                 })
             documents[f"{directory}/{year}.json"] = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "year": year,
                 "page_path": f"{directory}/{{day}}/{{page}}.json",
                 "days": day_rows,
@@ -372,7 +372,7 @@ def subject_documents() -> dict[str, dict]:
                 "versions": sum(row["versions"] for row in day_rows),
             })
         documents[f"{directory}.json"] = {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": kind,
             "code": code,
             "entries": rows[:SUBJECT_PAGE_ITEMS],
@@ -527,7 +527,7 @@ class Handler(SimpleHTTPRequestHandler):
             # `selection.latest_entries` orders them in the publisher.
             rows.sort(key=lambda row: (row["published_at"], row["id"]), reverse=True)
             self.send_bytes(
-                json.dumps({"schema_version": 1, "entries": rows}).encode(),
+                json.dumps({"schema_version": 2, "entries": rows}).encode(),
                 "application/json",
             )
             return
@@ -562,7 +562,7 @@ class Handler(SimpleHTTPRequestHandler):
             ]
             rows.sort(key=lambda row: row["id"])
             self.send_bytes(
-                json.dumps({"schema_version": 1, "renders": rows}).encode(),
+                json.dumps({"schema_version": 2, "renders": rows}).encode(),
                 "application/json",
             )
             return
@@ -579,7 +579,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "id": item["id"],
                     "version": item["version"],
                     "title": item["title"],
-                    "status": "accepted",
+                    "status": "registered",
                     "path": f"entries/{item['id']}-v{item['version']}.json",
                 }
                 for item in ENTRIES.values()
@@ -590,7 +590,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self.send_bytes(
                 json.dumps({
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "id": identifier,
                     "entries": sorted(rows, key=lambda row: row["version"]),
                 }).encode(),
@@ -603,7 +603,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/database/search/stopwords.json":
             self.send_bytes(
                 json.dumps(
-                    {"schema_version": 1, "stopwords": sorted(SEARCH_STOPWORDS)}
+                    {"schema_version": 2, "stopwords": sorted(SEARCH_STOPWORDS)}
                 ).encode(),
                 "application/json",
             )
@@ -624,7 +624,7 @@ class Handler(SimpleHTTPRequestHandler):
             ]
             if leaf == "head":
                 payload = {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "term": term,
                     "page_size": SEARCH_PAGE_SIZE,
                     "pages": len(pages),
@@ -632,7 +632,7 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             elif int(leaf) < len(pages):
                 payload = {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "term": term,
                     "page": int(leaf),
                     "postings": pages[int(leaf)],

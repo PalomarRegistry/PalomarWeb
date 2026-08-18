@@ -108,19 +108,19 @@ in-flight/settled read. Each attempt has one 30-second deadline. A 404 is a
 stable page-scoped absence, while a timeout, transport failure, or invalid
 document is evicted so a later explicit consumer attempt can issue one retry.
 Validation builds a private lookup for the `R` availability rows, and source
-presentation builds one private lookup for each accepted record's preservation
+presentation builds one private lookup for each registered record's preservation
 rows—`D` rows in total across the page. Decorating its source controls therefore
 takes `O(R + D)` work for the page, with constant-time repository/revision
 lookups afterward, rather than rescanning both arrays for every dependency.
 These lookups and the exact fields they consume are captured in private
 `WeakMap` receipts at successful validation, so later mutation cannot change
-accepted presentation data. They do not alter the public JSON and are available
+validated presentation data. They do not alter the public JSON and are available
 only to documents that passed the current validators.
 
 The browser code keeps the data boundary separate from presentation:
 `security.mjs` validates registry and availability documents, owns endpoint
-freshness, and privately indexes accepted availability rows;
-`source-preservation.mjs` privately indexes each accepted preservation receipt,
+freshness, and privately indexes validated availability rows;
+`source-preservation.mjs` privately indexes each validated preservation receipt,
 matches its manifest observations, resolves repository locations, publishes the
 progressive entry result, and decorates existing source controls,
 `entry-pages.mjs` owns entry-route input and page-state
@@ -187,7 +187,7 @@ and 420 pixels, so the formal statement can be read without leaving the list.
 The preview is pointer-only: it is not raised by a keyboard or on a touch
 screen, where the card's own links remain the way to the statement. It frames
 the immutable artifact at its published content address and does not repeat the
-entry page's check that the render's declarations match the accepted record, so
+entry page's check that the render's declarations match the registered record, so
 the entry page remains the place a rendering is tied to its entry.
 
 A record that arrives carrying review scores is refused rather than rendered.
@@ -195,13 +195,12 @@ The scores are not published and are not in the record; a served record that had
 them would mean something upstream had gone wrong, and displaying it would be
 the worst moment to find out.
 
-The site accepts the sole current entry contract, `schema_version: 2`, and
-requires its source-preservation receipt. The unused pre-launch v1 draft has no
+The site accepts the sole current entry contract, `schema_version: 3`, and
+requires its source-preservation receipt. Superseded pre-launch drafts have no
 browser fallback; an obsolete or malformed record fails closed.
-The deployed data already contains only v2 entries and preservation-backed
-recent projections. The pre-launch removal therefore deploys this Web cleanup
-first, so its workflows stop fetching `schema-v1.json`; Database can then stop
-publishing and serving that obsolete document without breaking Web deployment.
+The review-language cutover deploys this strict consumer together with the
+schema-v3 producer and rewritten public data; it does not infer an endorsement
+from a legacy positive review value.
 That ordering is gated by a complete traversal of what the producer advertises:
 CI and Pages deployment walk the browse hierarchy, reconcile every advertised
 row with its per-result version index, and run the Web entry validator over each
@@ -214,10 +213,10 @@ It uses at most eight concurrent reads; each read gets at most three five-second
 attempts with short backoff. The hourly job has a fifteen-minute ceiling, and a
 new observation supersedes an older queued or stuck one.
 
-This cleanup does not renumber unrelated documents. `recent.json`, per-result
-version indexes, browse/search projections, and source availability remain
-their existing `schema_version: 1` protocols, as do independent render and
-evidence metadata formats. Only the accepted-entry contract is v2-only.
+The review-language cutover also moves `recent.json`, per-result version
+indexes, and browse, subject, and search projections to schema version 2.
+Source availability and independent render and evidence metadata keep their
+own versioned contracts. Only the registered-entry contract is v3-only.
 
 The website is a presentation layer only. Public data and schemas live at the
 machine-readable data origin. A permanent ID paired with an explicit integer
@@ -258,7 +257,7 @@ Entry pages list all active versions. Older pages display a prominent link
 to the current version. Each page renders the selected version's own authorship,
 statement, proof, trust information, and review comments; information is never
 borrowed from a newer record. The site provides links, not computed diffs.
-The statement and the acceptance callout come first; the verification table,
+The statement and the registration callout come first; the verification table,
 statement dependencies, proof, provenance, and review comments sit behind
 section disclosures that open when their heading is selected, and a fragment
 link into one (such as `#statement-dependencies`) opens it before scrolling,

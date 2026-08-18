@@ -355,7 +355,7 @@ test("an absent or unusable companion document leaves the listing alone", async 
     ["absent", null, null],
     ["naming no such result", recentRenders([renderRow({ id: "PALOMAR-2026-07-29-000999" })]), null],
     ["naming another version", recentRenders([renderRow({ version: 7 })]), null],
-    ["malformed", { schema_version: 1, renders: [{ id: "nope" }] }, /invalid registry data/],
+    ["malformed", { schema_version: 2, renders: [{ id: "nope" }] }, /invalid registry data/],
   ]) {
     await t.test(name, async () => {
       const browser = fakeBrowser();

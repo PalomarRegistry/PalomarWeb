@@ -42,7 +42,7 @@ function oneEntryRegistry() {
     id,
     version: 1,
     title: "One",
-    status: "accepted",
+    status: "registered",
     path: `entries/${id}-v1.json`,
   };
   const registeredAt = "2026-08-08T12:00:00Z";
@@ -144,7 +144,7 @@ test("live-data health traverses browse and history to validate every public per
     id: "PALOMAR-2026-08-08-000001",
     version: 1,
     title: "One",
-    status: "accepted",
+    status: "registered",
     path: "entries/PALOMAR-2026-08-08-000001-v1.json",
   };
   const second = {
@@ -324,7 +324,7 @@ test("live-data health fails closed when a version index omits or rewrites brows
     id,
     version: 1,
     title: "Browse title",
-    status: "accepted",
+    status: "registered",
     path: `entries/${id}-v1.json`,
   };
   const responses = new Map([

@@ -190,10 +190,10 @@ test("what is new is read from the database prefix and nowhere else", () => {
 });
 
 test("recent validation rejects unsupported, rejected, and malformed rows", () => {
-  assert.throws(() => validateRecent(recent([], { schema_version: 2 })), /unsupported recent/);
+  assert.throws(() => validateRecent(recent([], { schema_version: 3 })), /unsupported recent/);
   assert.throws(
     () => validateRecent(recent([recentRow({ status: "draft" })])),
-    /status is not accepted/,
+    /status is not registered/,
   );
   assert.throws(
     () => validateRecent(recent([recentRow({ published_at: "yesterday" })])),
@@ -231,7 +231,7 @@ test("the render companion is one exact closed shape", () => {
 
   for (const mutate of [
     (document) => { document.entries = []; },
-    (document) => { document.schema_version = 2; },
+    (document) => { document.schema_version = 3; },
     (document) => { delete document.renders[0].version; },
     (document) => { document.renders[0].artifact_path = "renders/"; },
     (document) => { document.renders[0].id = "PALOMAR-2026-07-29-00012"; },
@@ -270,7 +270,7 @@ test("a rejected render companion leaves no row usable", () => {
 
 test("recent is one exact complete projection, not a legacy summary shape", () => {
   assert.throws(
-    () => validateRecent({ schema_version: 1, entries: [summary()] }),
+    () => validateRecent({ schema_version: 2, entries: [summary()] }),
     /invalid shape/,
   );
 
@@ -332,7 +332,7 @@ test("recent applies the canonical producer's cheap presentation bounds", () => 
 });
 
 test("a record must say when the version was registered, and agree with its result date", () => {
-  // The two are one fact written twice, in two repositories. `accepted_at` is
+  // The two are one fact written twice, in two repositories. `first_registered_on` is
   // the result's date: the identifier carries it, browsing pages by it, and
   // every later version inherits it. `registered_at` is the version's own
   // instant and is what the landing page, the feeds and the subject pages
@@ -348,11 +348,11 @@ test("a record must say when the version was registered, and agree with its resu
   );
   assert.throws(
     () => validateEntry(entry({ registered_at: "2026-07-30T09:14:07Z" }), summary()),
-    /accepted_at is not the day version 1 was registered/,
+    /first_registered_on is not the day version 1 was registered/,
   );
   assert.throws(
     () => validateEntry(entry({ registered_at: "2026-07-28T09:14:07Z" }), summary()),
-    /accepted_at is not the day version 1 was registered/,
+    /first_registered_on is not the day version 1 was registered/,
   );
 
   // A later version brings its own instant and inherits its result's date,
@@ -746,8 +746,8 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 
 test("entry schema, acceptance state, verdict, and selected identity fail closed", () => {
   const unsupportedSchemas = [
-    entry({ schema_version: 1 }),
-    entry({ schema_version: 3 }),
+    entry({ schema_version: 2 }),
+    entry({ schema_version: 4 }),
     entry({ schema_version: true }),
     entry({ schema_version: "2" }),
   ];
@@ -757,10 +757,10 @@ test("entry schema, acceptance state, verdict, and selected identity fail closed
   for (const record of unsupportedSchemas) {
     assert.throws(() => validateEntry(record, summary()), /unsupported entry schema_version/);
   }
-  assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not accepted/);
+  assert.throws(() => validateEntry(entry({ status: "draft" }), summary()), /not registered/);
   const rejected = entry();
-  rejected.review.verdict = "reject";
-  assert.throws(() => validateEntry(rejected, summary()), /verdict is not accept/);
+  rejected.review.outcome = "rejected";
+  assert.throws(() => validateEntry(rejected, summary()), /outcome does not permit registration/);
   assert.throws(
     () => validateEntry(entry(), summary({ id: "PALOMAR-2026-07-29-000124", path: "entries/PALOMAR-2026-07-29-000124-v1.json" })),
     /identity does not match/,
@@ -787,7 +787,7 @@ test("a record carrying review scores is refused, not rendered", () => {
 });
 
 test("record evidence links must agree with their canonical values", () => {
-  const wrongDate = entry({ accepted_at: "2026-07-30" });
+  const wrongDate = entry({ first_registered_on: "2026-07-30" });
   assert.throws(() => validateEntry(wrongDate, summary()), /ID date does not match/);
 
   const wrongSubmissionId = entry();
@@ -927,7 +927,7 @@ test("the public documentation describes the current review and version contract
   assert.match(about, /This is not a substitute for\s+expert review/);
   assert.match(guide, /Corrections and dependency updates may be registered as new versions/);
   assert.match(guide, /A new mathematical result receives a new ID/);
-  assert.match(guide, /Acceptance is not\s+registration/);
+  assert.match(guide, /does not accept, approve,\s+or endorse a result/);
   assert.doesNotMatch(guide, /durable-evidence schema \(version 5\)/);
   assert.match(guide, /review-failed/);
   assert.match(guide, /operational fault, not a decision/);
@@ -1123,7 +1123,7 @@ test("consent is scoped to the submitter's own live submission", async () => {
   assert.match(bases, /It is never on consent, at any\s+stage/);
   assert.match(bases, /Keeping the public verification run public afterwards<\/strong>\s+rests on legitimate interests, and did from the moment it was\s+dispatched/);
   assert.match(bases, /Palomar does not delete runs/);
-  assert.match(bases, /rests on\s+legitimate interests: a decision nobody can reconstruct/);
+  assert.match(bases, /rests on\s+legitimate interests: a review outcome nobody can reconstruct/);
   assert.match(bases, /not one Palomar reaches for when a consent ends/);
 });
 
@@ -1215,7 +1215,7 @@ test("every provenance value the schema allows has an explicit label", async () 
   // registry down, so an unavailable schema is a failure, not a skip.
   const checkout = databaseCheckout();
   const schema = JSON.parse(
-    await readFile(join(checkout, "schema-v2.json"), "utf8"),
+    await readFile(join(checkout, "schema-v3.json"), "utf8"),
   );
   const provenance = schema.properties.provenance.properties;
   for (const [field, labels] of [
@@ -1233,7 +1233,7 @@ test("every provenance value the schema allows has an explicit label", async () 
 test("the site requires the Database entry version and exact preservation shape", async () => {
   const checkout = databaseCheckout();
   const schema = JSON.parse(
-    await readFile(join(checkout, "schema-v2.json"), "utf8"),
+    await readFile(join(checkout, "schema-v3.json"), "utf8"),
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
   assert.ok(schema.required.includes("preservation"));
@@ -1290,10 +1290,10 @@ test("a version index must be every version of the result it names", () => {
     id,
     version,
     title: "A result",
-    status: "accepted",
+    status: "registered",
     path: `entries/${id}-v${version}.json`,
   });
-  const document = { schema_version: 1, id, entries: [row(1), row(2)] };
+  const document = { schema_version: 2, id, entries: [row(1), row(2)] };
   assert.equal(validateVersions(structuredClone(document), id).entries.length, 2);
 
   assert.throws(() => validateVersions({ ...document, id: "PALOMAR-2026-07-29-000999" }, id),
@@ -1305,9 +1305,9 @@ test("a version index must be every version of the result it names", () => {
     /increasing version order/,
   );
   assert.throws(() => validateVersions({ ...document, entries: [] }, id), /carries no versions/);
-  assert.throws(() => validateVersions({ ...document, schema_version: 2 }, id), /schema_version/);
+  assert.throws(() => validateVersions({ ...document, schema_version: 3 }, id), /schema_version/);
 
-  const foreign = { id: "PALOMAR-2026-07-29-000999", version: 3, title: "t", status: "accepted",
+  const foreign = { id: "PALOMAR-2026-07-29-000999", version: 3, title: "t", status: "registered",
     path: "entries/PALOMAR-2026-07-29-000999-v3.json" };
   assert.throws(() => validateVersions({ ...document, entries: [row(1), foreign] }, id),
     /is a different result/);
@@ -1321,20 +1321,20 @@ test("a version index URL cannot leave the database origin", () => {
   assert.throws(() => versionsUrl("PALOMAR-2026-07-29-00012", base), /malformed/);
 });
 
-test("browse enumerates every schema-v1 history row without becoming an entry schema", () => {
-  assert.equal(RECENT_SCHEMA_VERSION, 1);
-  assert.equal(VERSIONS_SCHEMA_VERSION, 1);
-  assert.equal(BROWSE_SCHEMA_VERSION, 1);
+test("browse enumerates every schema-v2 history row without becoming an entry schema", () => {
+  assert.equal(RECENT_SCHEMA_VERSION, 2);
+  assert.equal(VERSIONS_SCHEMA_VERSION, 2);
+  assert.equal(BROWSE_SCHEMA_VERSION, 2);
   const row = {
     id: "PALOMAR-2026-07-29-000123",
     version: 1,
     title: "A result",
-    status: "accepted",
+    status: "registered",
     path: "entries/PALOMAR-2026-07-29-000123-v1.json",
   };
   const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
   const head = {
-    schema_version: 1,
+    schema_version: 2,
     results: 1,
     versions: 1,
     year_path: "browse/{year}.json",
@@ -1348,12 +1348,12 @@ test("browse enumerates every schema-v1 history row without becoming an entry sc
     versions: 1,
   };
   const year = {
-    schema_version: 1,
+    schema_version: 2,
     year: "2026",
     page_path: "browse/{day}/{page}.json",
     days: [dayRow],
   };
-  const page = { schema_version: 1, day: dayRow.day, page: 1, entries: [row] };
+  const page = { schema_version: 2, day: dayRow.day, page: 1, entries: [row] };
   assert.equal(validateBrowseHead(head), head);
   assert.equal(validateBrowseYear(year, yearRow), year);
   assert.equal(validateBrowsePage(page, dayRow.day, 1), page);
@@ -1371,7 +1371,7 @@ test("browse enumerates every schema-v1 history row without becoming an entry sc
     /identity does not match/,
   );
   assert.throws(
-    () => validateBrowsePage({ ...page, schema_version: 2 }, dayRow.day, 1),
+    () => validateBrowsePage({ ...page, schema_version: 3 }, dayRow.day, 1),
     /schema_version/,
   );
 });
@@ -1412,14 +1412,14 @@ test("the path a collection publishes for the level below is the one this reader
   // data origin chooses and this consumer follows.
   const yearRow = { year: "2026", days: 1, results: 1, versions: 1 };
   const head = {
-    schema_version: 1,
+    schema_version: 2,
     results: 1,
     versions: 1,
     year_path: "browse/{year}.json",
     years: [yearRow],
   };
   const year = {
-    schema_version: 1,
+    schema_version: 2,
     year: "2026",
     page_path: "browse/{day}/{page}.json",
     days: [{ day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 }],
@@ -1462,7 +1462,7 @@ function subjectRow(overrides = {}) {
     id: "PALOMAR-2026-07-29-000123",
     version: 1,
     title: "A result",
-    status: "accepted",
+    status: "registered",
     path: "entries/PALOMAR-2026-07-29-000123-v1.json",
     published_at: "2026-07-29T09:14:07Z",
     classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
@@ -1486,7 +1486,7 @@ function subjectFixture() {
     archived,
     yearRow,
     head: {
-      schema_version: 1,
+      schema_version: 2,
       kind: "arxiv",
       code: "math.CO",
       entries: [front, older],
@@ -1496,7 +1496,7 @@ function subjectFixture() {
       years: [yearRow],
     },
     year: {
-      schema_version: 1,
+      schema_version: 2,
       year: "2026",
       page_path: "subjects/arxiv/math.CO/{day}/{page}.json",
       days: [
@@ -1504,7 +1504,7 @@ function subjectFixture() {
         { day: "2026-07-29", first_page: 1, last_page: 1, results: 1, versions: 1 },
       ],
     },
-    page: { schema_version: 1, day: "2026-07-29", page: 1, entries: [archived] },
+    page: { schema_version: 2, day: "2026-07-29", page: 1, entries: [archived] },
   };
 }
 
@@ -1568,7 +1568,7 @@ test("a subject URL cannot leave its own directory or name a code that is not on
 });
 
 test("a subject document is refused unless it is about the code that was asked for", () => {
-  assert.equal(SUBJECT_SCHEMA_VERSION, 1);
+  assert.equal(SUBJECT_SCHEMA_VERSION, 2);
   const { head, year, yearRow, page, front, archived } = subjectFixture();
 
   assert.deepEqual(validateSubjectHead(head, "arxiv", "math.CO").entries.map((row) => row.id), [
@@ -1586,7 +1586,7 @@ test("a subject document is refused unless it is about the code that was asked f
     /is for a different classification code/,
   );
   assert.throws(
-    () => validateSubjectHead({ ...head, schema_version: 2 }, "arxiv", "math.CO"),
+    () => validateSubjectHead({ ...head, schema_version: 3 }, "arxiv", "math.CO"),
     /schema_version/,
   );
   // A row that is a perfectly good row, under a heading it has nothing to do
@@ -1665,7 +1665,7 @@ const SEARCH_BASE = "https://data.example.test/";
 
 function searchHead(overrides = {}) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     term: "ring",
     page_size: 128,
     pages: 2,
@@ -1725,13 +1725,13 @@ test("a postings head must account for the pages it sends a reader after", () =>
     /more pages/,
   );
   assert.throws(() => validateSearchHead(searchHead({ page_size: 1025 }), "ring"), /page_size/);
-  assert.throws(() => validateSearchHead(searchHead({ schema_version: 2 }), "ring"), /schema_version/);
+  assert.throws(() => validateSearchHead(searchHead({ schema_version: 3 }), "ring"), /schema_version/);
 });
 
 test("a postings page must be the page it was asked for, in order, and no longer", () => {
   const head = searchHead({ page_size: 4, pages: 2, results: 8 });
   const page = (postings, overrides = {}) => ({
-    schema_version: 1,
+    schema_version: 2,
     term: "ring",
     page: 1,
     postings,
@@ -1761,7 +1761,7 @@ test("a postings page must be the page it was asked for, in order, and no longer
   );
   assert.throws(() => validateSearchPage(page(["PALOMAR-2026-07-29-000001"]), "ring", 1, head),
     /malformed/);
-  assert.throws(() => validateSearchPage(page(rows, { schema_version: 2 }), "ring", 1, head),
+  assert.throws(() => validateSearchPage(page(rows, { schema_version: 3 }), "ring", 1, head),
     /schema_version/);
 });
 
@@ -1788,26 +1788,26 @@ test("the published stopword list is read, and refused if it becomes a dictionar
     stopwordsUrl(SEARCH_BASE).href,
     "https://data.example.test/search/stopwords.json",
   );
-  const dropped = validateStopwords({ schema_version: 1, stopwords: ["the", "of"] });
+  const dropped = validateStopwords({ schema_version: 2, stopwords: ["the", "of"] });
   assert.ok(dropped.has("the") && !dropped.has("ring"));
 
   assert.throws(
-    () => validateStopwords({ schema_version: 1, stopwords: ["The"] }),
+    () => validateStopwords({ schema_version: 2, stopwords: ["The"] }),
     /not a word/,
   );
   assert.throws(
-    () => validateStopwords({ schema_version: 1, stopwords: [7] }),
+    () => validateStopwords({ schema_version: 2, stopwords: [7] }),
     /must be a non-empty string/,
   );
   assert.throws(
     () => validateStopwords({
-      schema_version: 1,
+      schema_version: 2,
       stopwords: Array.from({ length: 2001 }, (_unused, index) => `w${index}`),
     }),
     /term dictionary/,
   );
   assert.throws(
-    () => validateStopwords({ schema_version: 2, stopwords: [] }),
+    () => validateStopwords({ schema_version: 3, stopwords: [] }),
     /schema_version/,
   );
 });

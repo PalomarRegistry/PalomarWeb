@@ -17,7 +17,7 @@ function posting(serial) {
 
 function head(term, results, pageSize) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     term,
     page_size: pageSize,
     pages: Math.ceil(results / pageSize),
@@ -26,7 +26,7 @@ function head(term, results, pageSize) {
 }
 
 function page(term, number, postings) {
-  return { schema_version: 1, term, page: number, postings };
+  return { schema_version: 2, term, page: number, postings };
 }
 
 function wait(milliseconds) {
@@ -41,7 +41,7 @@ test("the distinct-term limit is a hard head-request bound", async () => {
   let headRequests = 0;
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path.endsWith("/head.json")) {
       headRequests += 1;
       const error = new Error("not indexed");
@@ -99,7 +99,7 @@ test("query validation checks characters first and deduplicates normalized terms
 test("search pipelines I/O but retains validated publisher order", async () => {
   const postings = [1, 2, 3, 4].map(posting);
   const responses = new Map([
-    ["/search/stopwords.json", { schema_version: 1, stopwords: [] }],
+    ["/search/stopwords.json", { schema_version: 2, stopwords: [] }],
     ["/search/t/alpha/head.json", head("alpha", 4, 2)],
     ["/search/t/beta/head.json", head("beta", 4, 2)],
     ["/search/t/alpha/0.json", page("alpha", 0, postings.slice(0, 2))],
@@ -154,7 +154,7 @@ test("failed pages and records yield only validated results and a degraded resul
   const postings = [1, 2, 3, 4].map(posting);
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 4, 2);
     if (path === "/search/t/alpha/1.json") throw new Error("posting page unavailable");
     if (path === "/search/t/alpha/0.json") return page("alpha", 0, postings.slice(0, 2));
@@ -177,7 +177,7 @@ test("failed pages and records yield only validated results and a degraded resul
 test("one overall deadline bounds every search stage, including an abort-ignoring fetch", async () => {
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 1, 1);
     if (path === "/search/t/alpha/0.json") return new Promise(() => {});
     throw new Error(`unexpected request ${path}`);
@@ -197,7 +197,7 @@ test("one overall deadline bounds every search stage, including an abort-ignorin
 test("a caller can abort the shared search deadline without reporting a timeout", async () => {
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 1, 1);
     if (path === "/search/t/alpha/0.json") return new Promise(() => {});
     throw new Error(`unexpected request ${path}`);
@@ -219,7 +219,7 @@ test("a caller can abort the shared search deadline without reporting a timeout"
 test("one failed head degrades but does not discard exact results from a healthy driver", async () => {
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") throw new Error("head unavailable");
     if (path === "/search/t/beta/head.json") return head("beta", 1, 1);
     if (path === "/search/t/beta/0.json") return page("beta", 0, [posting(1)]);
@@ -248,7 +248,7 @@ test("a non-404 stopword failure is reported and retried by the next search", as
         error.status = 503;
         throw error;
       }
-      return { schema_version: 1, stopwords: [] };
+      return { schema_version: 2, stopwords: [] };
     }
     if (path === "/search/t/alpha/head.json") return head("alpha", 1, 1);
     if (path === "/search/t/alpha/0.json") return page("alpha", 0, [posting(1)]);
@@ -270,7 +270,7 @@ test("a secondary term that cannot fit the remaining page budget is not partly r
   const postings = [posting(1), posting(2)];
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 2, 1);
     if (path === "/search/t/beta/head.json") return head("beta", 2, 1);
     const match = path.match(/^\/search\/t\/(alpha|beta)\/([0-9]+)\.json$/);
@@ -303,7 +303,7 @@ test("matching versions of one result collapse to its newest matching version", 
   const requestedRecords = [];
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 2, 2);
     if (path === "/search/t/alpha/0.json") {
       // Publisher order is lexical, so the consumer must compare versions as
@@ -329,7 +329,7 @@ test("a version group reports broken postings in order and continues to an older
   const id = "PALOMAR-2026-07-29-000001";
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 3, 3);
     if (path === "/search/t/alpha/0.json") {
       return page("alpha", 0, [`${id}-v10`, `${id}-v8`, `${id}-v9`]);
@@ -356,7 +356,7 @@ test("a complete postings sequence remains incomplete when the candidate cap tru
   let recordRequests = 0;
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 3, 3);
     if (path === "/search/t/alpha/0.json") return page("alpha", 0, postings);
     if (path.startsWith("/entries/")) {
@@ -387,7 +387,7 @@ test("page, candidate, and concurrency limits remain hard bounds", async () => {
   let recordRequests = 0;
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 100, 5);
     const pageMatch = path.match(/^\/search\/t\/alpha\/([0-9]+)\.json$/);
     if (pageMatch) {
@@ -435,7 +435,7 @@ test("the record window stops with at most concurrency minus one speculative gro
   let recordRequests = 0;
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 100, 100);
     if (path === "/search/t/alpha/0.json") return page("alpha", 0, postings);
     if (path.startsWith("/entries/")) {
@@ -466,7 +466,7 @@ test("the initial record window never exceeds the result limit", async () => {
   let recordRequests = 0;
   const fetchJson = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/search/stopwords.json") return { schema_version: 1, stopwords: [] };
+    if (path === "/search/stopwords.json") return { schema_version: 2, stopwords: [] };
     if (path === "/search/t/alpha/head.json") return head("alpha", 20, 20);
     if (path === "/search/t/alpha/0.json") return page("alpha", 0, postings);
     if (path.startsWith("/entries/")) {

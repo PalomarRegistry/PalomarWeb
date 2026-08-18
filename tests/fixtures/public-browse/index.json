@@ -1,6 +1,6 @@
 {
   "results": 1,
-  "schema_version": 1,
+  "schema_version": 2,
   "versions": 2,
   "year_path": "browse/{year}.json",
   "years": [
