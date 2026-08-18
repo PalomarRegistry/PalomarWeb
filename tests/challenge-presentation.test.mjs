@@ -278,7 +278,7 @@ test("a missing large entry render keeps its source controls and uses the missin
   assert.equal(byClass(result.section, "challenge-metadata").length, 0);
   const [fallback] = byClass(result.section, "challenge-fallback");
   assert.match(fallback.textContent, /formatted statement is not available/);
-  assert.deepEqual(pageCalls.map(([page]) => page), ["entry.html", "render.html"]);
+  assert.deepEqual(pageCalls.map(([page]) => page), ["/entry", "/render"]);
   assert.ok(byClass(result.section, "challenge-source")[0].href.startsWith("https://github.com/"));
   const [playground] = byClass(result.section, "challenge-playground");
   assert.equal(playground.textContent, "Open in Lean Playground");

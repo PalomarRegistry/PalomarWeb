@@ -239,7 +239,7 @@ export function createChallengePresentation({ fetchJson, document, window, local
     // render page does not carry them, so from there it is a trip somewhere else.
     const dependencyRecordUrl = dependenciesOnThisPage
       ? new URL("#statement-dependencies", window.location.href)
-      : localPageUrl("entry.html", entry);
+      : localPageUrl("/entry", entry);
     if (!dependenciesOnThisPage) dependencyRecordUrl.hash = "statement-dependencies";
     const comparatorPath = entry.formalization.comparator_config_path;
     const challengePath = entry.formalization.challenge_path;
@@ -293,7 +293,7 @@ export function createChallengePresentation({ fetchJson, document, window, local
     if (!forceFrame && !inline) {
       links.append(
         " · ",
-        internalLink("Open formatted statement", localPageUrl("render.html", entry)),
+        internalLink("Open formatted statement", localPageUrl("/render", entry)),
       );
     }
     section.append(links);

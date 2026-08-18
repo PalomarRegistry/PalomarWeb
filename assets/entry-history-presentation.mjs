@@ -19,14 +19,14 @@ export function createEntryHistoryPresentation({ document, localPageUrl, window 
   function localLink(text, entry) {
     const node = el("a", "", text);
     node.href = safeInternalUrl(
-      localPageUrl("entry.html", entry),
+      localPageUrl("/entry", entry),
       window.location.href,
     ).href;
     return node;
   }
 
   function canonicalEntryPageUrl(entry) {
-    const target = new URL("entry.html", CANONICAL_WEB_BASE);
+    const target = new URL("entry", CANONICAL_WEB_BASE);
     target.searchParams.set("id", entry.id);
     target.searchParams.set("version", String(entry.version));
     return safeExternalUrl(target);

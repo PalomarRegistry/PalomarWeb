@@ -938,7 +938,7 @@ test("the public documentation describes the current review and version contract
   // though it outranked the law: an unqualified "permanent" would promise a
   // submitter something the lawful-request process can override.
   assert.match(guide, /does not do is override a\s+legal obligation/);
-  assert.match(guide, /href="privacy\.html#after-registration"/);
+  assert.match(guide, /href="\/privacy#after-registration"/);
   assert.doesNotMatch(guide, /Registration is permanent/);
 });
 

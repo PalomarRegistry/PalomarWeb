@@ -311,7 +311,7 @@ function entryCard(
   );
   top.append(identity, trustBadge(entry));
   const title = el("h3");
-  const titleLink = internalLink(entry.title, localPageUrl("entry.html", entry));
+  const titleLink = internalLink(entry.title, localPageUrl("/entry", entry));
   // The card is built from a landing row on one grid and from a whole
   // validated record on the other. The preview is told which it has rather
   // than left to work it out from what is missing.
@@ -336,7 +336,7 @@ function entryCard(
   }
   const footer = el("div", "card-footer");
   const location = topSourceLocation(entry, null);
-  const historyUrl = new URL(localPageUrl("entry.html", entry));
+  const historyUrl = new URL(localPageUrl("/entry", entry));
   historyUrl.hash = "version-history";
   footer.append(
     externalLink(
@@ -344,7 +344,7 @@ function entryCard(
       pinnedRepositoryDirectoryUrl(entry.source.repository, entry.source.commit),
       "repo-link",
     ),
-    internalLink("View record", localPageUrl("entry.html", entry)),
+    internalLink("View record", localPageUrl("/entry", entry)),
   );
   footer.append(
     externalLink(
@@ -953,7 +953,7 @@ function localPageUrl(page, entry) {
 }
 
 function subjectPageUrl(kind, code) {
-  const target = new URL("subject.html", window.location.href);
+  const target = new URL("/subject", window.location.href);
   target.search = "";
   target.searchParams.set("kind", kind);
   target.searchParams.set("code", code);
@@ -1491,7 +1491,7 @@ function renderSubjectRows(rows, content) {
       el("span", "entry-date", `Registered ${displayDate(registrationDate(row.published_at))}`),
     );
     const title = el("h2");
-    title.append(internalLink(row.title, localPageUrl("entry.html", row)));
+    title.append(internalLink(row.title, localPageUrl("/entry", row)));
     article.append(identity, title);
     const abstract = presentationAbstract(row);
     if (abstract) article.append(el("p", "card-abstract", abstract));

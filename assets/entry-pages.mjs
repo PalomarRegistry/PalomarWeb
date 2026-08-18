@@ -66,7 +66,7 @@ export async function renderEntryPage({
     }
     const { entry } = loaded;
     if (version === null) {
-      const resolvedUrl = localPageUrl("entry.html", entry);
+      const resolvedUrl = localPageUrl("/entry", entry);
       resolvedUrl.hash = requestedHash;
       history.replaceState(null, "", resolvedUrl);
     }

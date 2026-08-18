@@ -462,6 +462,19 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - inherited HTTP method name
         path = self.path.split("?", 1)[0]
+        clean_pages = {
+            "/about": "/about.html",
+            "/entry": "/entry.html",
+            "/how-to-submit": "/how-to-submit.html",
+            "/privacy": "/privacy.html",
+            "/render": "/render.html",
+            "/statement": "/statement.html",
+            "/subject": "/subject.html",
+        }
+        if path in clean_pages:
+            query = self.path[len(path) :]
+            self.path = clean_pages[path] + query
+            path = clean_pages[path]
         if path in {
             "/database/source-availability.json",
             "/database/source-availability-missing.json",
