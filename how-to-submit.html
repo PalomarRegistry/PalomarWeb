@@ -185,6 +185,16 @@
           commit.
         </p>
         <p>
+          Use <code>sources[].authors</code> only for bibliographic authorship.
+          To credit someone for another source role, use
+          <code>sources[].contributors</code>; each contributor has a
+          <code>name</code> and a free-form <code>role</code>, such as
+          <code>editor</code> or <code>problem proposer</code>. The
+          <a href="https://github.com/PalomarRegistry/PalomarTemplate/blob/main/formalization.yaml">starter metadata</a>
+          shows the exact YAML shape. Palomar publishes these credits with the
+          source and displays them on the registry entry.
+        </p>
+        <p>
           Submit only if you are a responsible author or maintainer of the
           substantive formalization, or have approval from one. For a thin
           wrapper this means the people responsible for the underlying

@@ -1048,6 +1048,20 @@ test("the extra-axioms FAQ names the standard three Lean axioms", async () => {
   assert.doesNotMatch(section[0], /comparator-configuration|current/i);
 });
 
+test("the submission guide distinguishes source authors from other contributors", async () => {
+  const guide = await readFile(new URL("../how-to-submit.html", import.meta.url), "utf8");
+  const section = /<h3 id="formalization-yaml">[\s\S]*?<\/section>/.exec(guide);
+  assert.notEqual(section, null);
+  assert.match(section[0], /sources\[\]\.authors/);
+  assert.match(section[0], /bibliographic authorship/);
+  assert.match(section[0], /sources\[\]\.contributors/);
+  assert.match(section[0], /free-form <code>role<\/code>/);
+  assert.match(section[0], /editor/);
+  assert.match(section[0], /problem proposer/);
+  assert.match(section[0], /PalomarTemplate\/blob\/main\/formalization\.yaml/);
+  assert.match(section[0], /displays them on the registry entry/);
+});
+
 test("the public documentation says what registration publishes, and what it does not", async () => {
   // About said the submitter's identity becomes public on registration. It
   // does not, the schema has no field for it, and that is the direction of
