@@ -360,6 +360,95 @@ test("an MSC filter matches every code beginning with what was typed", async ({ 
   );
 });
 
+test("the registry can be ordered by when a result first entered it", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  // 000123 is a v2 registered on 2 August; 000124 is a v1 registered on 29
+  // July, the same day 000123 first entered the registry.
+  await expect(page.locator(".entry-card .entry-id")).toHaveText([
+    "PALOMAR-2026-07-29-000123 v2 · current",
+    "PALOMAR-2026-07-29-000124 v1 · current",
+  ]);
+  await expect(page.locator(".entry-card").first().locator(".entry-date"))
+    .toHaveText("Registered 2 August 2026");
+  await expect(page.locator(".entry-card").first().locator(".entry-origin-date"))
+    .toHaveText("First registered 29 July 2026");
+  // A result registered once has one date, whichever order the page is in.
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-date"))
+    .toHaveText("Registered 29 July 2026");
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-origin-date")).toHaveCount(0);
+
+  await page.locator("#order-by").selectOption("registered");
+  await expect(page.locator(".entry-card .entry-id")).toHaveText([
+    "PALOMAR-2026-07-29-000124 v1 · current",
+    "PALOMAR-2026-07-29-000123 v2 · current",
+  ]);
+  // The leading date is the one the page is arranged by, so it still runs down
+  // the page in the page's order.
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-date"))
+    .toHaveText("First registered 29 July 2026");
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-origin-date"))
+    .toHaveText("Latest version 2 August 2026");
+});
+
+test("a date range narrows the listing by the date it is ordered by", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator("#date-from").fill("2026-08-01");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000123");
+  await expect(page.locator("#status")).toBeHidden();
+
+  // The same range against the day each result first entered the registry:
+  // the August version is a new version of a July result, not a new result.
+  await page.locator("#order-by").selectOption("registered");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. First registered on or after 1 August 2026.",
+  );
+
+  await page.locator("#date-from").fill("2026-07-29");
+  await page.locator("#date-to").fill("2026-07-29");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+});
+
+test("a range that cannot be read, or cannot hold a day, matches nothing and says so", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator("#date-from").fill("2026-08-13");
+  await page.locator("#date-to").fill("2026-08-02");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. The date range ends before it begins.",
+  );
+
+  await page.locator("#date-from").fill("");
+  await page.locator("#date-to").fill("");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator("#status")).toBeHidden();
+});
+
+test("a range reaching past the newest results says what the page cannot answer for", async ({ page }) => {
+  await page.goto(`/?database=${database}&from=2026-01-01`);
+  await expect(page.locator("#date-from")).toHaveValue("2026-01-01");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator("#status")).toHaveText(
+    "Versions registered before 29 July 2026 are not on this page.",
+  );
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
+});
+
+test("an order and a range apply from a deep link", async ({ page }) => {
+  await page.goto(`/?database=${database}&order=registered&from=2026-07-29&to=2026-07-29`);
+  await expect(page.locator("#order-by")).toHaveValue("registered");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator(".entry-card").first().locator(".entry-id"))
+    .toHaveText("PALOMAR-2026-07-29-000124 v1 · current");
+
+  // An order nothing offers is the default rather than an empty page.
+  await page.goto(`/?database=${database}&order=sideways`);
+  await expect(page.locator("#order-by")).toHaveValue("updated");
+  await expect(page.locator(".entry-card").first().locator(".entry-id"))
+    .toHaveText("PALOMAR-2026-07-29-000123 v2 · current");
+});
+
 test("an MSC prefix applies from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&msc=11`);
   await expect(page.locator("#msc-query")).toHaveValue("11");

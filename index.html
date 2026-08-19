@@ -66,6 +66,17 @@
             </label>
             <datalist id="msc-options"></datalist>
           </div>
+          <div class="date-filters" role="group" aria-label="Registration date">
+            <label for="order-by">Order by:</label>
+            <select id="order-by">
+              <option value="updated">latest version</option>
+              <option value="registered">first registration</option>
+            </select>
+            <label for="date-from">from</label>
+            <input id="date-from" type="date">
+            <label for="date-to">to</label>
+            <input id="date-to" type="date">
+          </div>
         </div>
 
         <div id="status" class="status" role="status">
