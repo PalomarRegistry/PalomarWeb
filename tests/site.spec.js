@@ -329,6 +329,44 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
   await expect(page.locator(".entry-card:visible")).toContainText("000123");
 });
 
+test("an MSC filter matches every code beginning with what was typed", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+
+  // 000123 is 05C10, 000124 is 11N13.
+  await page.locator("#msc-query").fill("11");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+  await expect(page.locator("#status")).toBeHidden();
+
+  await page.locator("#msc-query").fill("11n");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+
+  await page.locator("#msc-query").fill("11N1");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+
+  await page.locator("#msc-query").fill("12");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Classification query: MSC2020 12.",
+  );
+
+  await page.locator("#msc-query").fill("1N");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Invalid classification code format: MSC2020.",
+  );
+});
+
+test("an MSC prefix applies from a deep link", async ({ page }) => {
+  await page.goto(`/?database=${database}&msc=11`);
+  await expect(page.locator("#msc-query")).toHaveValue("11");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+});
+
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
   await expect(page.locator("#arxiv-query")).toBeVisible();
