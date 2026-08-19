@@ -24,6 +24,7 @@ const browserModuleFiles = [
   "formalization-presentation.mjs",
   "loading.mjs",
   "presentation-text.mjs",
+  "registry-dates.mjs",
   "registry-loading.mjs",
   "rendering.js",
   "searching.mjs",

@@ -58,9 +58,25 @@ any exact code, so such a deep link produces a useful empty result even before
 that classification has an entry. The MSC2020 field takes the beginning of a
 code as well as a whole one, in either case: `11` keeps every code in number
 theory, `11P` narrows that to additive number theory, and `11P32` names one
-section. That filter is over `recent.json`, which is
-the newest 200 current versions and not the registry, so it narrows what is on
-the page rather than searching everything; the search box does the latter, a
+section.
+
+A result has two dates and the toolbar's second line says which one it means. A
+result's identifier carries the day its version 1 was registered and every later
+version inherits it, while the card's own date is the instant that version was
+registered, so a new version of an old result is new by one date and old by the
+other. "Order by: latest version" arranges the page by the second, which is the
+publisher's own newest-first order; "first registration" arranges it by the
+first, which is what a reader looking for results that are new to the registry
+means. The `from` and `to` fields bound the same date, inclusively at both ends,
+and `?order=registered&from=2026-08-01` fills all three in from a link. A card
+leads with the day its listing is arranged by and names the other underneath
+when they differ, so the leading dates run down the page in the page's order.
+
+Those filters are over `recent.json`, which is
+the newest 200 current versions and not the registry, so they narrow what is on
+the page rather than searching everything: a range reaching back before the
+oldest row says so rather than answering for days the page does not hold. The
+search box searches everything, a
 word at a time, over titles, abstracts and author names, and the subject pages
 answer a code exactly.
 Search accepts at most 4,096 characters and 20 distinct normalized words. The

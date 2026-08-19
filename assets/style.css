@@ -353,6 +353,35 @@ button:focus-visible {
   font: .9rem var(--sans);
 }
 
+/* The dates read as one sentence — order by this, from here, to here — so they
+   take the toolbar's second line rather than competing with the filters above
+   for the end of the first. */
+.date-filters {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem .5rem;
+  font: .8rem var(--sans);
+}
+
+.date-filters select,
+.date-filters input {
+  min-height: 2rem;
+  padding: .25rem .4rem;
+  border: 1px solid var(--field);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: .9rem var(--sans);
+}
+
+.date-filters select:focus-visible,
+.date-filters input:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
 /*
  * The Subjects row of a card. It had no rule of its own for a while and
  * inherited one meant for something else, which is how the codes came to run
@@ -1032,6 +1061,15 @@ footer {
 .entry-date {
   color: var(--muted);
   font: .75rem/1.3 var(--sans);
+}
+
+/* The result's other date, shown only when it differs from the one the listing
+   is arranged by. Quieter than that one, because it is context and not the
+   line's subject. */
+.entry-origin-date {
+  color: var(--muted);
+  font: .72rem/1.3 var(--sans);
+  opacity: .85;
 }
 
 .verification-status {
