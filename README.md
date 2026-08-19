@@ -55,7 +55,10 @@ The toolbar also filters the rows the landing page holds by text or trust, with
 the arXiv and MSC2020 subject inputs on its line, at its right edge, and a deep
 link such as `?arxiv=math.AG` fills them in. The classification fields suggest codes represented by those rows but also accept
 any exact code, so such a deep link produces a useful empty result even before
-that classification has an entry. That filter is over `recent.json`, which is
+that classification has an entry. The MSC2020 field takes the beginning of a
+code as well as a whole one, in either case: `11` keeps every code in number
+theory, `11P` narrows that to additive number theory, and `11P32` names one
+section. That filter is over `recent.json`, which is
 the newest 200 current versions and not the registry, so it narrows what is on
 the page rather than searching everything; the search box does the latter, a
 word at a time, over titles, abstracts and author names, and the subject pages

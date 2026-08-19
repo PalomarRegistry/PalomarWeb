@@ -39,7 +39,11 @@ import {
 
 const params = new URLSearchParams(window.location.search);
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
-const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
+// Every MSC2020 code is five characters: two digits for the subject, then
+// either a letter or a hyphen, then two more digits. A reader knows the
+// subject long before the section, so the filter takes any prefix of that
+// shape ("11", "11P", "11P3") and matches every code that begins with it.
+const MSC2020_FILTER_RE = /^[0-9]{1,2}$|^[0-9]{2}[A-Z-][0-9]{0,2}$/;
 const FILTER_UPDATE_DELAY_MS = 200;
 // Longer than the classification filter above, because each registry search
 // costs a stopword read, a head read per word, posting pages, and up to sixty
@@ -488,7 +492,9 @@ async function renderIndex() {
     // can stay instant and local.
     const update = () => {
       const arxivValue = arxiv?.value.trim() || "";
-      const mscValue = msc?.value.trim() || "";
+      // Codes are written in upper case in the registry, and typing one in
+      // lower case is not a mistake worth an error message.
+      const mscValue = (msc?.value.trim() || "").toUpperCase();
       const arxivInvalid = Boolean(arxivValue && !ARXIV_FILTER_RE.test(arxivValue));
       const mscInvalid = Boolean(mscValue && !MSC2020_FILTER_RE.test(mscValue));
       let shown = 0;
@@ -496,7 +502,9 @@ async function renderIndex() {
         const visible =
           (trust === "all" || card.dataset.trust === trust) &&
           (!arxivValue || (!arxivInvalid && card.dataset.arxiv.split(" ").includes(arxivValue))) &&
-          (!mscValue || (!mscInvalid && card.dataset.msc.split(" ").includes(mscValue)));
+          (!mscValue ||
+            (!mscInvalid &&
+              card.dataset.msc.split(" ").some((code) => code.startsWith(mscValue))));
         card.hidden = !visible;
         if (visible) shown += 1;
       }
