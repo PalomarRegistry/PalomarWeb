@@ -116,6 +116,22 @@ test("every shipped page carries a footer link to the privacy policy", async () 
   }
 });
 
+// /llms.txt is the machine map of this origin. A page that ships without it
+// is how palomar-registry.org/llms.txt stayed a 404 while the submission
+// host already had one: agents start here, not at submit.
+test("every shipped page carries a footer link to llms.txt", async () => {
+  for (const file of htmlFiles) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    const footer = html.slice(html.indexOf("<footer>"), html.indexOf("</footer>"));
+    assert.ok(footer, `${file} has no footer to carry the llms.txt link`);
+    assert.match(
+      footer,
+      /<a href="\/llms\.txt">llms\.txt<\/a>/,
+      `${file} does not link llms.txt from its footer`,
+    );
+  }
+});
+
 test("shipped navigation exposes routes rather than HTML filenames", async () => {
   for (const file of htmlFiles) {
     const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
