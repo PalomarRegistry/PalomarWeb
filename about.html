@@ -455,6 +455,25 @@
         </p>
       </section>
 
+      <section id="repository-hosting">
+        <h2>Does a Palomar submission have to be hosted by GitHub?</h2>
+        <p>
+          Currently, yes, for technical reasons. Palomar requires a public
+          GitHub repository and a full commit SHA to initiate a submission:
+          GitHub also provides the account that proves write access to the
+          submitted repository, and the continuous integration that runs
+          mechanical verification. The proof project’s own dependencies are not
+          restricted this way — any pinned, publicly readable Git repository may
+          be used — but the submitted snapshot itself must be on GitHub.
+        </p>
+        <p>
+          We are open to supporting other hosts in future if there is enough
+          demand to merit the added code complexity. If you are interested,
+          please raise the issue in the
+          <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
+        </p>
+      </section>
+
       <section id="other-proof-assistants">
         <h2>What about other proof assistants?</h2>
         <p>
