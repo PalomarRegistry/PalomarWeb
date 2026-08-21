@@ -1,7 +1,67 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bibtexCitation } from "../assets/citation-presentation.mjs";
+import {
+  bibtexCitation,
+  createCitationPresentation,
+} from "../assets/citation-presentation.mjs";
+
+function fakeDocument(copyResult) {
+  const createElement = (tag) => {
+    const node = {
+      attributes: new Map(),
+      children: [],
+      className: "",
+      listeners: new Map(),
+      tagName: tag.toUpperCase(),
+      textContent: "",
+      append(...children) {
+        for (const child of children) {
+          if (child && typeof child === "object") child.parent = this;
+          this.children.push(child);
+        }
+      },
+      addEventListener(name, listener) {
+        this.listeners.set(name, listener);
+      },
+      remove() {
+        if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this);
+      },
+      select() {},
+      setAttribute(name, value) {
+        this.attributes.set(name, value);
+      },
+      setSelectionRange() {},
+    };
+    node.classList = {
+      remove(name) {
+        node.className = node.className.split(" ").filter((item) => item !== name).join(" ");
+      },
+      toggle(name, force) {
+        this.remove(name);
+        if (force) node.className = `${node.className} ${name}`.trim();
+      },
+    };
+    return node;
+  };
+  const body = createElement("body");
+  return {
+    activeElement: { focus() {} },
+    body,
+    createElement,
+    execCommand: () => copyResult,
+  };
+}
+
+function byClass(root, className) {
+  if (!root || typeof root !== "object") return null;
+  if (root.className?.split(" ").includes(className)) return root;
+  for (const child of root.children ?? []) {
+    const found = byClass(child, className);
+    if (found) return found;
+  }
+  return null;
+}
 
 test("BibTeX citations pin the selected immutable Palomar version", () => {
   const entry = {
@@ -36,6 +96,40 @@ test("BibTeX citations preserve Unicode and escape TeX-significant record text",
   assert.match(citation, /author = \{\{Research \\& Development\}\}/);
   assert.match(
     citation,
-    /title = \{\{Erdős \\& 100\\% of \\\{cases\\\}\\_x \\~\{\} \\\^\{\} \\textbackslash\{\} path continued\}\}/,
+    /title = \{\{Erdős \\& 100\\% of \\\{cases\\\}\\_x \\textasciitilde\{\} \\textasciicircum\{\} \\textbackslash\{\} path continued\}\}/,
   );
+});
+
+test("citation controls report and reset a failed clipboard fallback", async () => {
+  const document = fakeDocument(false);
+  let reset;
+  const window = {
+    clearTimeout() {},
+    requestAnimationFrame: (callback) => callback(),
+    setTimeout(callback) {
+      reset = callback;
+      return 1;
+    },
+  };
+  const navigator = { clipboard: { writeText: async () => { throw new Error("denied"); } } };
+  const { citationSection } = createCitationPresentation({ document, navigator, window });
+  const section = citationSection({
+    id: "PALOMAR-2026-08-08-000001",
+    version: 1,
+    registered_at: "2026-08-08T12:00:00Z",
+    title: "A result",
+    authors: [{ name: "Example" }],
+  });
+  const button = byClass(section, "citation-copy");
+  const status = byClass(section, "citation-status");
+  const block = byClass(section, "citation-bibtex");
+
+  assert.equal(block.tabIndex, 0);
+  assert.equal(block.attributes.get("role"), "group");
+  await button.listeners.get("click")();
+  assert.equal(button.textContent, "Copy failed");
+  assert.equal(status.textContent, "Could not copy BibTeX citation.");
+  reset();
+  assert.equal(button.textContent, "Copy BibTeX");
+  assert.equal(status.textContent, "");
 });

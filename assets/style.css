@@ -854,7 +854,7 @@ footer {
 .citation-copy:focus-visible,
 .citation-copy.copied {
   border-color: var(--success-line);
-  color: var(--success);
+  color: var(--copied);
 }
 
 .citation-bibtex {

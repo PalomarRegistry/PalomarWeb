@@ -1,6 +1,9 @@
+import {
+  CLIPBOARD_RESET_DELAY_MS,
+  createClipboard,
+} from "./clipboard.mjs";
 import { canonicalEntryPageUrl } from "./entry-history-presentation.mjs";
 
-const RESET_DELAY_MS = 1600;
 const BIBTEX_ESCAPES = Object.freeze({
   "\\": "\\textbackslash{}",
   "{": "\\{",
@@ -10,8 +13,8 @@ const BIBTEX_ESCAPES = Object.freeze({
   "%": "\\%",
   "&": "\\&",
   "_": "\\_",
-  "^": "\\^{}",
-  "~": "\\~{}",
+  "^": "\\textasciicircum{}",
+  "~": "\\textasciitilde{}",
 });
 
 function bibtexText(value) {
@@ -22,6 +25,9 @@ function bibtexText(value) {
 /** A ready-to-paste citation of exactly the immutable snapshot being viewed. */
 export function bibtexCitation(entry) {
   const key = `${entry.id.toLowerCase()}-v${entry.version}`;
+  // Records carry one exact display name rather than structured given/family
+  // parts. Bracing each complete name preserves it and prevents a literal
+  // "and" in one name from becoming a false author boundary.
   const authors = entry.authors
     .map((author) => `{${bibtexText(author.name)}}`)
     .join(" and ");
@@ -36,43 +42,15 @@ export function bibtexCitation(entry) {
   ].join("\n");
 }
 
-function fallbackCopy(document, text) {
-  const previousFocus = document.activeElement;
-  const input = document.createElement("textarea");
-  input.value = text;
-  input.className = "clipboard-fallback";
-  document.body.append(input);
-  input.select();
-  input.setSelectionRange(0, text.length);
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    input.remove();
-    previousFocus?.focus();
-  }
-}
-
 /** Bind the citation and its clipboard control to an entry page. */
 export function createCitationPresentation({ document, navigator, window }) {
+  const { announce, copyText } = createClipboard({ document, navigator, window });
+
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
-  }
-
-  async function copyText(text) {
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch {
-        // The fallback supports browsers that expose but deny the Clipboard API.
-      }
-    }
-    return fallbackCopy(document, text);
   }
 
   function citationSection(entry) {
@@ -95,6 +73,9 @@ export function createCitationPresentation({ document, navigator, window }) {
 
     const code = el("code", "", citation);
     const block = el("pre", "citation-bibtex");
+    block.tabIndex = 0;
+    block.setAttribute("role", "group");
+    block.setAttribute("aria-labelledby", titleHeading.id);
     block.append(code);
     section.append(
       heading,
@@ -113,13 +94,14 @@ export function createCitationPresentation({ document, navigator, window }) {
       window.clearTimeout(resetTimer);
       copy.classList.toggle("copied", copied);
       copy.textContent = copied ? "Copied!" : "Copy failed";
-      status.textContent = copied
+      announce(status, copied
         ? "Copied BibTeX citation."
-        : "Could not copy BibTeX citation.";
+        : "Could not copy BibTeX citation.");
       resetTimer = window.setTimeout(() => {
         copy.classList.remove("copied");
         copy.textContent = "Copy BibTeX";
-      }, RESET_DELAY_MS);
+        status.textContent = "";
+      }, CLIPBOARD_RESET_DELAY_MS);
     });
 
     return section;

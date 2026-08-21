@@ -684,7 +684,19 @@ test("mathematical sources format known identifiers and preserve unknown ones", 
         {
           title: "A journal source",
           authors: [],
-          identifier: "doi:10.1000/example",
+          identifier: "doi:10.1000/a?#b",
+          relationship: "background",
+        },
+        {
+          title: "An older arXiv source",
+          authors: [],
+          identifier: "arXiv:math.AG/0211159",
+          relationship: "background",
+        },
+        {
+          title: "A DOI preserved without normalization",
+          authors: [],
+          identifier: "doi:10.1000/../10.9999/other",
           relationship: "background",
         },
         {
@@ -697,6 +709,17 @@ test("mathematical sources format known identifiers and preserve unknown ones", 
           title: "An unsafe link preserved as text",
           authors: [],
           identifier: "https://reader:secret@example.invalid/source",
+          relationship: "background",
+        },
+        {
+          title: "A linked web source",
+          authors: [],
+          identifier: "https://example.invalid/a/very/long/source/url",
+          relationship: "background",
+        },
+        {
+          title: "A source without an identifier",
+          authors: [],
           relationship: "background",
         },
       ];
@@ -713,9 +736,16 @@ test("mathematical sources format known identifiers and preserve unknown ones", 
   );
   await expect(page.getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
     .toHaveAttribute("href", "https://arxiv.org/abs/2605.20695");
-  await expect(page.getByRole("link", { name: "doi:10.1000/example", includeHidden: true }))
-    .toHaveAttribute("href", "https://doi.org/10.1000/example");
+  await expect(page.getByRole("link", { name: "doi:10.1000/a?#b", includeHidden: true }))
+    .toHaveAttribute("href", "https://doi.org/10.1000/a%3F%23b");
+  await expect(page.getByRole("link", { name: "arXiv:math.AG/0211159", includeHidden: true }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/math.AG/0211159");
+  await expect(page.getByRole("link", {
+    name: "Open source for A linked web source",
+    includeHidden: true,
+  })).toHaveAttribute("href", "https://example.invalid/a/very/long/source/url");
   await expect(page.locator(".provenance-sources code")).toHaveText([
+    "doi:10.1000/../10.9999/other",
     "bibliographic:custom-reference",
     "https://reader:secret@example.invalid/source",
   ]);
@@ -1050,6 +1080,9 @@ test("entry pages offer a version-pinned BibTeX citation that can be copied", as
 
   const citation = page.locator(".entry-citation");
   await expect(citation.getByRole("heading", { name: "Cite this" })).toBeVisible();
+  await expect(citation.locator("pre")).toHaveAttribute("tabindex", "0");
+  await expect(citation.locator("pre")).toHaveAttribute("role", "group");
+  await expect(citation.locator("pre")).toHaveAttribute("aria-labelledby", "citation-heading");
   await expect(citation.locator("code")).toHaveText(
     `@misc{palomar-2026-07-29-000123-v1,
   author = {{Example}},

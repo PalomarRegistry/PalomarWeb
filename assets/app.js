@@ -21,6 +21,7 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
+import { mathematicalSourceUrl } from "./bibliography.mjs";
 import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
@@ -1197,25 +1198,13 @@ function classificationSection(entry) {
   return section;
 }
 
-function mathematicalSourceIdentifier(identifier) {
+function mathematicalSourceIdentifier(identifier, sourceLabel) {
   if (!identifier) return null;
-  const arxiv = /^arXiv:([0-9]{4}\.[0-9]{4,5}(?:v[0-9]+)?)$/i.exec(identifier);
-  if (arxiv) {
-    return externalLink(identifier, `https://arxiv.org/abs/${arxiv[1]}`);
-  }
-  const doi = /^doi:(10\.[0-9]{4,9}\/\S+)$/i.exec(identifier);
-  if (doi) {
-    const encoded = doi[1].split("/").map(encodeURIComponent).join("/");
-    return externalLink(identifier, `https://doi.org/${encoded}`);
-  }
-  if (identifier.startsWith("https://")) {
-    try {
-      return externalLink(identifier, identifier);
-    } catch {
-      // An unparseable source is still bibliography text; it is never a link.
-    }
-  }
-  return el("code", "", identifier);
+  const resolved = mathematicalSourceUrl(identifier);
+  if (!resolved) return el("code", "", identifier);
+  const link = externalLink(resolved.kind === "url" ? "Source link" : identifier, resolved.href);
+  if (resolved.kind === "url") link.setAttribute("aria-label", `Open source for ${sourceLabel}`);
+  return link;
 }
 
 function provenanceSection(entry, sourceAvailability) {
@@ -1291,7 +1280,7 @@ function provenanceSection(entry, sourceAvailability) {
         ? `${source.authors.map((author) => author.name).join(", ")}: ${source.title}`
         : source.title;
       item.append(el("span", "source-citation", label));
-      const identifier = mathematicalSourceIdentifier(source.identifier);
+      const identifier = mathematicalSourceIdentifier(source.identifier, label);
       if (identifier) item.append(" · ", identifier);
       if (source.contributors?.length) {
         item.append(el(
