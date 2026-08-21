@@ -21,6 +21,7 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
+import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
@@ -1076,6 +1077,7 @@ const {
   versionHistory,
   versionNotice,
 } = createEntryHistoryPresentation({ document, localPageUrl, window });
+const { citationSection } = createCitationPresentation({ document, navigator, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
 function assurance(kind, ...content) {
@@ -1195,6 +1197,27 @@ function classificationSection(entry) {
   return section;
 }
 
+function mathematicalSourceIdentifier(identifier) {
+  if (!identifier) return null;
+  const arxiv = /^arXiv:([0-9]{4}\.[0-9]{4,5}(?:v[0-9]+)?)$/i.exec(identifier);
+  if (arxiv) {
+    return externalLink(identifier, `https://arxiv.org/abs/${arxiv[1]}`);
+  }
+  const doi = /^doi:(10\.[0-9]{4,9}\/\S+)$/i.exec(identifier);
+  if (doi) {
+    const encoded = doi[1].split("/").map(encodeURIComponent).join("/");
+    return externalLink(identifier, `https://doi.org/${encoded}`);
+  }
+  if (identifier.startsWith("https://")) {
+    try {
+      return externalLink(identifier, identifier);
+    } catch {
+      // An unparseable source is still bibliography text; it is never a link.
+    }
+  }
+  return el("code", "", identifier);
+}
+
 function provenanceSection(entry, sourceAvailability) {
   const provenance = entry.provenance;
   const section = el("section", "entry-provenance");
@@ -1267,11 +1290,9 @@ function provenanceSection(entry, sourceAvailability) {
       const label = source.authors.length
         ? `${source.authors.map((author) => author.name).join(", ")}: ${source.title}`
         : source.title;
-      if (source.identifier?.startsWith("https://")) {
-        item.append(externalLink(label, source.identifier));
-      } else {
-        item.append(el("span", "", label));
-      }
+      item.append(el("span", "source-citation", label));
+      const identifier = mathematicalSourceIdentifier(source.identifier);
+      if (identifier) item.append(" · ", identifier);
       if (source.contributors?.length) {
         item.append(el(
           "span",
@@ -1282,9 +1303,6 @@ function provenanceSection(entry, sourceAvailability) {
         ));
       }
       item.append(el("span", "source-relationship", ` — ${source.relationship}`));
-      if (source.identifier && !source.identifier.startsWith("https://")) {
-        item.append(el("code", "", source.identifier));
-      }
       sources.append(item);
     }
     disclosure.append(sources);
@@ -1524,6 +1542,7 @@ async function renderEntry(
     externalLink,
   });
   const versionNoticeNode = versionNotice(entry, currentVersion);
+  const citation = citationSection(entry);
   const history = versionHistory(entry, versions, currentVersion);
   content.append(heading);
   // A broken or degraded source affects every link on the page and remains a
@@ -1543,6 +1562,7 @@ async function renderEntry(
     solutionMetadata(entry, challenge.metadata, sourceAvailability),
     provenanceSection(entry, sourceAvailability),
     classificationSection(entry),
+    citation,
     editorial,
     history,
   );

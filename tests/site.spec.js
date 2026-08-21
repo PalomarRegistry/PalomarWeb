@@ -663,33 +663,62 @@ test("a thin wrapper says where the mathematics is before anything else", async 
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
-test("mathematical sources show non-author contributor roles", async ({ page }) => {
+test("mathematical sources format known identifiers and preserve unknown ones", async ({ page }) => {
   await page.route(
     "**/database/entries/PALOMAR-2026-07-29-000123-v2.json",
     async (route) => {
       const response = await route.fetch();
       const entry = await response.json();
       entry.provenance.result_origin = "source-based";
-      entry.provenance.mathematical_sources = [{
-        title: "Kourovka Notebook",
-        authors: [{ name: "Solution Author" }],
-        contributors: [
-          { name: "Wilhelm Magnus", role: "problem-proposer" },
-          { name: "Evgenii Khukhro", role: "editor" },
-        ],
-        relationship: "formalizes",
-      }];
+      entry.provenance.mathematical_sources = [
+        {
+          title: "Kourovka Notebook",
+          authors: [{ name: "Solution Author" }],
+          contributors: [
+            { name: "Wilhelm Magnus", role: "problem-proposer" },
+            { name: "Evgenii Khukhro", role: "editor" },
+          ],
+          identifier: "arXiv:2605.20695",
+          relationship: "formalizes",
+        },
+        {
+          title: "A journal source",
+          authors: [],
+          identifier: "doi:10.1000/example",
+          relationship: "background",
+        },
+        {
+          title: "A preserved custom source",
+          authors: [],
+          identifier: "bibliographic:custom-reference",
+          relationship: "background",
+        },
+        {
+          title: "An unsafe link preserved as text",
+          authors: [],
+          identifier: "https://reader:secret@example.invalid/source",
+          relationship: "background",
+        },
+      ];
       await route.fulfill({ response, json: entry });
     },
   );
 
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
-  await expect(page.locator(".provenance-sources li")).toContainText(
+  await expect(page.locator(".provenance-sources li").first()).toContainText(
     "Solution Author: Kourovka Notebook",
   );
   await expect(page.locator(".source-contributors")).toHaveText(
     " — Wilhelm Magnus (problem-proposer); Evgenii Khukhro (editor)",
   );
+  await expect(page.getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/2605.20695");
+  await expect(page.getByRole("link", { name: "doi:10.1000/example", includeHidden: true }))
+    .toHaveAttribute("href", "https://doi.org/10.1000/example");
+  await expect(page.locator(".provenance-sources code")).toHaveText([
+    "bibliographic:custom-reference",
+    "https://reader:secret@example.invalid/source",
+  ]);
 });
 
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
@@ -1011,6 +1040,32 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
     "href",
     "https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1",
   );
+});
+
+test("entry pages offer a version-pinned BibTeX citation that can be copied", async ({ context, page }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+
+  const citation = page.locator(".entry-citation");
+  await expect(citation.getByRole("heading", { name: "Cite this" })).toBeVisible();
+  await expect(citation.locator("code")).toHaveText(
+    `@misc{palomar-2026-07-29-000123-v1,
+  author = {{Example}},
+  title = {{Fixture PALOMAR-2026-07-29-000123 version 1}},
+  year = {2026},
+  howpublished = {Palomar, PALOMAR-2026-07-29-000123 v1},
+  url = {https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1},
+}`,
+  );
+
+  await citation.getByRole("button", { name: "Copy BibTeX" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(
+    "@misc{palomar-2026-07-29-000123-v1,",
+  );
+  await expect(citation.getByRole("status")).toHaveText("Copied BibTeX citation.");
+  await expect(citation.getByRole("button", { name: "Copied!" })).toHaveClass(/copied/);
 });
 
 test("a single current version has no supersession treatment", async ({ page }) => {

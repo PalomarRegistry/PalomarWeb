@@ -26,6 +26,10 @@ test("deployment build versions coupled browser assets", async () => {
       path.join(destination, "assets", "challenge-presentation.mjs"),
       "utf8",
     );
+    const citationPresentation = await readFile(
+      path.join(destination, "assets", "citation-presentation.mjs"),
+      "utf8",
+    );
     const entryHistoryPresentation = await readFile(
       path.join(destination, "assets", "entry-history-presentation.mjs"),
       "utf8",
@@ -62,6 +66,7 @@ test("deployment build versions coupled browser assets", async () => {
     assert.match(about, /assets\/about\.js\?v=0123456789abcdef/);
     await readFile(path.join(destination, "assets", "about.js"), "utf8");
     assert.match(app, /\.\/challenge-presentation\.mjs\?v=0123456789abcdef/);
+    assert.match(app, /\.\/citation-presentation\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/entry-history-presentation\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/entry-pages\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/formalization-presentation\.mjs\?v=0123456789abcdef/);
@@ -74,6 +79,10 @@ test("deployment build versions coupled browser assets", async () => {
     assert.match(registryLoading, /\.\/loading\.mjs\?v=0123456789abcdef/);
     assert.match(registryLoading, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(challengePresentation, /\.\/rendering\.js\?v=0123456789abcdef/);
+    assert.match(
+      citationPresentation,
+      /\.\/entry-history-presentation\.mjs\?v=0123456789abcdef/,
+    );
     assert.match(challengePresentation, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(entryHistoryPresentation, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(
