@@ -14,6 +14,8 @@
 import { readFile } from "node:fs/promises";
 
 import { shippedFiles } from "./build-site.mjs";
+import { validateChallengeMetadata } from "../assets/challenge-presentation.mjs";
+import { challengeMetadataUrl } from "../assets/rendering.js";
 import {
   entryRecordUrl,
   subjectHeadUrl,
@@ -117,6 +119,7 @@ async function fetchJson(url, fetcher, policy) {
       ]);
       if (!response.ok) {
         const error = new Error(`${url} responded ${response.status}`);
+        error.status = response.status;
         error.retryable = response.status === 408 || response.status === 425 ||
           response.status === 429 || response.status >= 500;
         throw error;
@@ -134,6 +137,7 @@ async function fetchJson(url, fetcher, policy) {
 }
 
 const PUBLIC_VALIDATORS = {
+  validateChallengeMetadata,
   validateBrowseHead,
   validateBrowsePage,
   validateBrowseYear,
@@ -231,6 +235,22 @@ export async function publicDataState(
         return [summary.path, entry];
       },
     );
+    await mapBounded(fetchedEntries, async ([_path, entry]) => {
+      try {
+        const metadata = await fetchJson(
+          challengeMetadataUrl(entry, base),
+          fetcher,
+          policy,
+        );
+        validators.validateChallengeMetadata(entry, metadata);
+      } catch (error) {
+        // A historical entry may have no formatted artifact, which the entry
+        // page already presents as a pinned-source fallback. Any render
+        // metadata that is served must still satisfy the same correspondence
+        // contract before deployment as it does in a reader's browser.
+        if (error.status !== 404) throw error;
+      }
+    });
     const entriesByPath = new Map(fetchedEntries);
     const historiesById = new Map(histories.map((history) => [history.id, history.entries]));
     const rendersById = new Map(recentRenders.renders.map((row) => [row.id, row]));

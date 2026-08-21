@@ -54,7 +54,7 @@ export function validateChallengeMetadata(entry, metadata) {
     Array.isArray(left) && left.length === right.length &&
       left.every((value, index) => value === right[index]);
   if (
-    ![1, 2].includes(metadata?.schema_version) ||
+    ![1, 2, 3].includes(metadata?.schema_version) ||
     !sameArray(metadata.declarations, expectedDeclarations) ||
     !sameArray(metadata.imports, expectedImports) ||
     !(metadata.module_doc === null ||
@@ -69,6 +69,31 @@ export function validateChallengeMetadata(entry, metadata) {
       !metadata.solution_imports.every((item) => typeof item === "string" && item.length > 0))
   ) {
     throw new Error("Challenge render metadata contains invalid Solution imports");
+  }
+  if (metadata.schema_version >= 3) {
+    const audit = metadata.audit_declarations;
+    let auditCharacters = 0;
+    if (
+      !Array.isArray(audit) ||
+      audit.length !== expectedDeclarations.length ||
+      !audit.every((item, index) => {
+        if (
+          !item ||
+          typeof item !== "object" ||
+          Array.isArray(item) ||
+          Object.keys(item).sort().join(",") !== "declaration,name" ||
+          item.name !== expectedDeclarations[index] ||
+          typeof item.declaration !== "string" ||
+          item.declaration.trim().length === 0
+        ) {
+          return false;
+        }
+        auditCharacters += item.declaration.length;
+        return auditCharacters <= 512 * 1024;
+      })
+    ) {
+      throw new Error("Challenge render metadata contains invalid audit declarations");
+    }
   }
   return metadata;
 }
@@ -211,6 +236,40 @@ export function createChallengePresentation({ fetchJson, document, window, local
     return panel;
   }
 
+  function auditPanel(metadata) {
+    if (metadata.schema_version < 3 || metadata.audit_declarations.length === 0) return null;
+    const panel = el("details", "challenge-audit");
+    panel.append(
+      el("summary", "", "View core-notation audit"),
+      el(
+        "p",
+        "challenge-audit-intro",
+        "Palomar's renderer printed these declarations from their elaborated terms using only Lean's core notation, without imported delaborators or unexpanders. Author-defined notation and macros therefore cannot disguise this view. The text is pinned in the same content-addressed render bundle as the formatted view above.",
+      ),
+    );
+    for (const [index, item] of metadata.audit_declarations.entries()) {
+      const declaration = el("section", "challenge-audit-declaration");
+      const heading = el("h3", "", item.name);
+      heading.id = `challenge-audit-declaration-${index}`;
+      const source = el("pre", "", item.declaration);
+      source.setAttribute("tabindex", "0");
+      source.setAttribute("aria-labelledby", heading.id);
+      declaration.append(
+        heading,
+        source,
+      );
+      panel.append(declaration);
+    }
+    panel.append(
+      el(
+        "p",
+        "challenge-audit-limits",
+        "This view does not reveal misleading instances, silently inserted coercions, or definitions whose names hide the wrong meaning. Those still require inspection of the pinned statement and its dependencies.",
+      ),
+    );
+    return panel;
+  }
+
   return async function challengePresentation(
     entry,
     renderBase,
@@ -336,6 +395,8 @@ export function createChallengePresentation({ fetchJson, document, window, local
         ),
       );
     }
+    const audit = auditPanel(metadata);
+    if (audit) section.append(audit);
     return { section, metadata };
   };
 }

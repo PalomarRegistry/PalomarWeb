@@ -22,11 +22,15 @@ function acceptedEntry() {
 
 function renderMetadata(overrides = {}) {
   return {
-    schema_version: 2,
+    schema_version: 3,
     declarations: ["Example.theorem"],
     imports: ["Mathlib"],
     solution_imports: [],
     module_doc: "A module note.",
+    audit_declarations: [{
+      name: "Example.theorem",
+      declaration: "theorem Example.theorem : Eq Nat.zero Nat.zero",
+    }],
     ...overrides,
   };
 }
@@ -102,23 +106,74 @@ test("render metadata must correspond exactly to the registered entry", async (t
   const record = acceptedEntry();
   const current = renderMetadata();
   assert.equal(validateChallengeMetadata(record, current), current);
+  const versionTwo = renderMetadata({ schema_version: 2 });
+  delete versionTwo.audit_declarations;
+  assert.equal(validateChallengeMetadata(record, versionTwo), versionTwo);
   const versionOne = renderMetadata({ schema_version: 1 });
   delete versionOne.solution_imports;
+  delete versionOne.audit_declarations;
   assert.equal(validateChallengeMetadata(record, versionOne), versionOne);
 
   for (const [name, mutate, message] of [
     ["boolean schema", (value) => { value.schema_version = true; }, /does not match/],
-    ["future schema", (value) => { value.schema_version = 3; }, /does not match/],
+    ["future schema", (value) => { value.schema_version = 4; }, /does not match/],
     ["different declaration", (value) => { value.declarations = ["Other.theorem"]; }, /does not match/],
     ["different import", (value) => { value.imports = ["Batteries"]; }, /does not match/],
     ["oversized module note", (value) => { value.module_doc = "x".repeat(256 * 1024 + 1); }, /does not match/],
     ["missing Solution imports", (value) => { delete value.solution_imports; }, /invalid Solution imports/],
     ["non-string Solution import", (value) => { value.solution_imports = [true]; }, /invalid Solution imports/],
+    ["missing audit declarations", (value) => { delete value.audit_declarations; }, /invalid audit declarations/],
+    ["misordered audit declaration", (value) => { value.audit_declarations[0].name = "Other.theorem"; }, /invalid audit declarations/],
+    ["empty audit declaration", (value) => { value.audit_declarations[0].declaration = " \n"; }, /invalid audit declarations/],
+    ["extra audit field", (value) => { value.audit_declarations[0].source = "submitted"; }, /invalid audit declarations/],
+    ["oversized audit", (value) => { value.audit_declarations[0].declaration = "x".repeat(512 * 1024 + 1); }, /invalid audit declarations/],
   ]) {
     await t.test(name, () => {
       const malformed = renderMetadata();
       mutate(malformed);
       assert.throws(() => validateChallengeMetadata(record, malformed), message);
+    });
+  }
+});
+
+test("audit metadata corresponds and stays bounded across multiple declarations", async (t) => {
+  const record = acceptedEntry();
+  record.formalization.definition_names = ["Example.definition"];
+  const rows = () => [
+    {
+      name: "Example.theorem",
+      declaration: "theorem Example.theorem : Eq Nat.zero Nat.zero",
+    },
+    {
+      name: "Example.definition",
+      declaration: "def Example.definition : Nat := Nat.zero",
+    },
+  ];
+  const metadata = () => renderMetadata({
+    declarations: ["Example.theorem", "Example.definition"],
+    audit_declarations: rows(),
+  });
+  assert.equal(validateChallengeMetadata(record, metadata()).audit_declarations.length, 2);
+
+  for (const [name, mutate] of [
+    ["transposed rows", (value) => { value.audit_declarations.reverse(); }],
+    ["missing row", (value) => { value.audit_declarations.pop(); }],
+    ["extra row", (value) => { value.audit_declarations.push(rows()[0]); }],
+    ["null row", (value) => { value.audit_declarations[1] = null; }],
+    ["string row", (value) => { value.audit_declarations[1] = "declaration"; }],
+    ["array row", (value) => { value.audit_declarations[1] = []; }],
+    ["cumulative limit", (value) => {
+      value.audit_declarations[0].declaration = "x".repeat(300 * 1024);
+      value.audit_declarations[1].declaration = "y".repeat(300 * 1024);
+    }],
+  ]) {
+    await t.test(name, () => {
+      const malformed = metadata();
+      mutate(malformed);
+      assert.throws(
+        () => validateChallengeMetadata(record, malformed),
+        /invalid audit declarations/,
+      );
     });
   }
 });
@@ -151,6 +206,15 @@ test("an inline presentation keeps links confined and accepts height only from i
   assert.equal(byClass(result.section, "challenge-metadata").length, 1);
   assert.equal(byClass(result.section, "challenge-no-module-doc").length, 1);
   assert.equal(byClass(result.section, "challenge-fallback").length, 0);
+  const [audit] = byClass(result.section, "challenge-audit");
+  assert.ok(audit);
+  assert.equal(audit.children[0].textContent, "View core-notation audit");
+  assert.match(byClass(audit, "challenge-audit-intro")[0].textContent, /same content-addressed render bundle/);
+  const auditSource = byClass(audit, "challenge-audit-declaration")[0].children[1];
+  assert.equal(auditSource.textContent, "theorem Example.theorem : Eq Nat.zero Nat.zero");
+  assert.equal(auditSource.getAttribute("tabindex"), "0");
+  assert.equal(auditSource.getAttribute("aria-labelledby"), "challenge-audit-declaration-0");
+  assert.match(byClass(audit, "challenge-audit-limits")[0].textContent, /misleading instances/);
   const [frame] = byClass(result.section, "challenge-frame");
   const [shell] = byClass(result.section, "challenge-frame-shell");
   assert.ok(frame);
@@ -193,6 +257,46 @@ test("an inline presentation keeps links confined and accepts height only from i
   assert.equal(frame.dataset.heightAdjusted, "true");
   onMessage({ source: frame.contentWindow, data: { type: "palomar-render-height", height: 1_000 } });
   assert.equal(frame.style.height, "672px");
+});
+
+test("historical render metadata does not invent an audit view", async () => {
+  const browser = fakeBrowser();
+  const record = acceptedEntry();
+  const metadata = renderMetadata({ schema_version: 2 });
+  delete metadata.audit_declarations;
+  const present = createChallengePresentation({
+    ...browser,
+    fetchJson: async () => metadata,
+    localPageUrl: () => assert.fail("the inline entry view should not build another page URL"),
+  });
+
+  const result = await present(
+    record,
+    new URL("http://127.0.0.1:4173/database/"),
+    { dependenciesOnThisPage: true },
+  );
+
+  assert.equal(byClass(result.section, "challenge-audit").length, 0);
+});
+
+test("metadata with no compared declarations does not claim an audit view", async () => {
+  const browser = fakeBrowser();
+  const record = acceptedEntry();
+  record.formalization.theorem_names = [];
+  const metadata = renderMetadata({ declarations: [], audit_declarations: [] });
+  const present = createChallengePresentation({
+    ...browser,
+    fetchJson: async () => metadata,
+    localPageUrl: () => assert.fail("the inline entry view should not build another page URL"),
+  });
+
+  const result = await present(
+    record,
+    new URL("http://127.0.0.1:4173/database/"),
+    { dependenciesOnThisPage: true },
+  );
+
+  assert.equal(byClass(result.section, "challenge-audit").length, 0);
 });
 
 test("late availability updates statement source controls in place", async () => {
