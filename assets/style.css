@@ -835,6 +835,39 @@ footer {
   font-style: italic;
 }
 
+.citation-intro {
+  margin: 0 0 .65rem;
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.citation-copy {
+  padding: .4rem .65rem;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font: bold .78rem/1.2 var(--sans);
+}
+
+.citation-copy:hover,
+.citation-copy:focus-visible,
+.citation-copy.copied {
+  border-color: var(--success-line);
+  color: var(--copied);
+}
+
+.citation-bibtex {
+  max-width: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: .8rem;
+  border: 1px solid var(--line);
+  background: var(--shade);
+  font-size: .8rem;
+  white-space: pre;
+}
+
 .entry-page section {
   padding: 1.5rem 0;
   border-top: 1px solid var(--line);

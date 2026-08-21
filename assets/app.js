@@ -21,6 +21,8 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
+import { mathematicalSourceUrl } from "./bibliography.mjs";
+import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
@@ -1076,6 +1078,7 @@ const {
   versionHistory,
   versionNotice,
 } = createEntryHistoryPresentation({ document, localPageUrl, window });
+const { citationSection } = createCitationPresentation({ document, navigator, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
 function assurance(kind, ...content) {
@@ -1195,6 +1198,15 @@ function classificationSection(entry) {
   return section;
 }
 
+function mathematicalSourceIdentifier(identifier, sourceLabel) {
+  if (!identifier) return null;
+  const resolved = mathematicalSourceUrl(identifier);
+  if (!resolved) return el("code", "", identifier);
+  const link = externalLink(resolved.kind === "url" ? "Source link" : identifier, resolved.href);
+  if (resolved.kind === "url") link.setAttribute("aria-label", `Open source for ${sourceLabel}`);
+  return link;
+}
+
 function provenanceSection(entry, sourceAvailability) {
   const provenance = entry.provenance;
   const section = el("section", "entry-provenance");
@@ -1267,11 +1279,9 @@ function provenanceSection(entry, sourceAvailability) {
       const label = source.authors.length
         ? `${source.authors.map((author) => author.name).join(", ")}: ${source.title}`
         : source.title;
-      if (source.identifier?.startsWith("https://")) {
-        item.append(externalLink(label, source.identifier));
-      } else {
-        item.append(el("span", "", label));
-      }
+      item.append(el("span", "source-citation", label));
+      const identifier = mathematicalSourceIdentifier(source.identifier, label);
+      if (identifier) item.append(" · ", identifier);
       if (source.contributors?.length) {
         item.append(el(
           "span",
@@ -1282,9 +1292,6 @@ function provenanceSection(entry, sourceAvailability) {
         ));
       }
       item.append(el("span", "source-relationship", ` — ${source.relationship}`));
-      if (source.identifier && !source.identifier.startsWith("https://")) {
-        item.append(el("code", "", source.identifier));
-      }
       sources.append(item);
     }
     disclosure.append(sources);
@@ -1524,6 +1531,7 @@ async function renderEntry(
     externalLink,
   });
   const versionNoticeNode = versionNotice(entry, currentVersion);
+  const citation = citationSection(entry);
   const history = versionHistory(entry, versions, currentVersion);
   content.append(heading);
   // A broken or degraded source affects every link on the page and remains a
@@ -1543,6 +1551,7 @@ async function renderEntry(
     solutionMetadata(entry, challenge.metadata, sourceAvailability),
     provenanceSection(entry, sourceAvailability),
     classificationSection(entry),
+    citation,
     editorial,
     history,
   );
