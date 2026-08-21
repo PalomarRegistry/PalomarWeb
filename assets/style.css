@@ -965,7 +965,15 @@ footer {
   border: 1px solid var(--line);
   background: var(--paper);
   color: var(--ink);
-  white-space: pre;
+  font-size: .9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.challenge-audit-declaration pre:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
 }
 
 .challenge-audit-limits {

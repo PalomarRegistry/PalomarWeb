@@ -136,6 +136,48 @@ test("render metadata must correspond exactly to the registered entry", async (t
   }
 });
 
+test("audit metadata corresponds and stays bounded across multiple declarations", async (t) => {
+  const record = acceptedEntry();
+  record.formalization.definition_names = ["Example.definition"];
+  const rows = () => [
+    {
+      name: "Example.theorem",
+      declaration: "theorem Example.theorem : Eq Nat.zero Nat.zero",
+    },
+    {
+      name: "Example.definition",
+      declaration: "def Example.definition : Nat := Nat.zero",
+    },
+  ];
+  const metadata = () => renderMetadata({
+    declarations: ["Example.theorem", "Example.definition"],
+    audit_declarations: rows(),
+  });
+  assert.equal(validateChallengeMetadata(record, metadata()).audit_declarations.length, 2);
+
+  for (const [name, mutate] of [
+    ["transposed rows", (value) => { value.audit_declarations.reverse(); }],
+    ["missing row", (value) => { value.audit_declarations.pop(); }],
+    ["extra row", (value) => { value.audit_declarations.push(rows()[0]); }],
+    ["null row", (value) => { value.audit_declarations[1] = null; }],
+    ["string row", (value) => { value.audit_declarations[1] = "declaration"; }],
+    ["array row", (value) => { value.audit_declarations[1] = []; }],
+    ["cumulative limit", (value) => {
+      value.audit_declarations[0].declaration = "x".repeat(300 * 1024);
+      value.audit_declarations[1].declaration = "y".repeat(300 * 1024);
+    }],
+  ]) {
+    await t.test(name, () => {
+      const malformed = metadata();
+      mutate(malformed);
+      assert.throws(
+        () => validateChallengeMetadata(record, malformed),
+        /invalid audit declarations/,
+      );
+    });
+  }
+});
+
 test("an inline presentation keeps links confined and accepts height only from its frame", async () => {
   const browser = fakeBrowser();
   const record = acceptedEntry();
@@ -167,8 +209,11 @@ test("an inline presentation keeps links confined and accepts height only from i
   const [audit] = byClass(result.section, "challenge-audit");
   assert.ok(audit);
   assert.equal(audit.children[0].textContent, "View core-notation audit");
-  assert.match(byClass(audit, "challenge-audit-intro")[0].textContent, /without imported delaborators or unexpanders/);
-  assert.equal(byClass(audit, "challenge-audit-declaration")[0].children[1].textContent, "theorem Example.theorem : Eq Nat.zero Nat.zero");
+  assert.match(byClass(audit, "challenge-audit-intro")[0].textContent, /same content-addressed render bundle/);
+  const auditSource = byClass(audit, "challenge-audit-declaration")[0].children[1];
+  assert.equal(auditSource.textContent, "theorem Example.theorem : Eq Nat.zero Nat.zero");
+  assert.equal(auditSource.getAttribute("tabindex"), "0");
+  assert.equal(auditSource.getAttribute("aria-labelledby"), "challenge-audit-declaration-0");
   assert.match(byClass(audit, "challenge-audit-limits")[0].textContent, /misleading instances/);
   const [frame] = byClass(result.section, "challenge-frame");
   const [shell] = byClass(result.section, "challenge-frame-shell");
@@ -219,6 +264,26 @@ test("historical render metadata does not invent an audit view", async () => {
   const record = acceptedEntry();
   const metadata = renderMetadata({ schema_version: 2 });
   delete metadata.audit_declarations;
+  const present = createChallengePresentation({
+    ...browser,
+    fetchJson: async () => metadata,
+    localPageUrl: () => assert.fail("the inline entry view should not build another page URL"),
+  });
+
+  const result = await present(
+    record,
+    new URL("http://127.0.0.1:4173/database/"),
+    { dependenciesOnThisPage: true },
+  );
+
+  assert.equal(byClass(result.section, "challenge-audit").length, 0);
+});
+
+test("metadata with no compared declarations does not claim an audit view", async () => {
+  const browser = fakeBrowser();
+  const record = acceptedEntry();
+  record.formalization.theorem_names = [];
+  const metadata = renderMetadata({ declarations: [], audit_declarations: [] });
   const present = createChallengePresentation({
     ...browser,
     fetchJson: async () => metadata,

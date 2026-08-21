@@ -1188,8 +1188,14 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(audit.locator("summary")).toHaveText("View core-notation audit");
   await expect(audit.locator(".challenge-audit-declaration")).not.toBeVisible();
   await audit.locator("summary").click();
-  await expect(audit.locator(".challenge-audit-declaration pre")).toHaveText(
+  const auditSource = audit.locator(".challenge-audit-declaration pre");
+  await expect(auditSource).toHaveText(
     "theorem Example.theorem : Eq Nat.zero Nat.zero",
+  );
+  await expect(auditSource).toHaveAttribute("tabindex", "0");
+  await expect(auditSource).toHaveAttribute(
+    "aria-labelledby",
+    "challenge-audit-declaration-0",
   );
   await expect(audit.locator(".challenge-audit-intro")).toContainText(
     "without imported delaborators or unexpanders",

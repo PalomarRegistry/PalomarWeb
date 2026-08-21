@@ -150,7 +150,15 @@ audit disclosure, and presentation states. Render-metadata schema v3 carries an
 `declarations`; each row has exactly `name` and `declaration`, and the browser
 refuses a v3 document whose rows do not correspond to the accepted entry.
 Historical v1/v2 render metadata remains readable but does not claim to provide
-an audit view. `formalization-presentation.mjs`
+an audit view. A render-metadata version widening deploys Web first and the
+Submission producer may emit the new version only after that consumer is live;
+this is the reverse of a closed projection's producer-first shape replacement,
+because the existing Web consumer rejects a version it does not know.
+`check-published.mjs --data` reads and validates every available render metadata
+document in the advertised entry traversal before deployment. The audit view
+closes author-defined notation and macro spoofing, but it does not expose
+misleading instances, inserted coercions, or definitions whose names hide the
+wrong meaning. `formalization-presentation.mjs`
 owns statement trust labels and the statement/proof dependency presentation,
 `entry-history-presentation.mjs` owns the entry page's canonical link,
 supersession notice, and immutable version-history section;
