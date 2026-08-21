@@ -237,21 +237,26 @@ export function createChallengePresentation({ fetchJson, document, window, local
   }
 
   function auditPanel(metadata) {
-    if (metadata.schema_version < 3) return null;
+    if (metadata.schema_version < 3 || metadata.audit_declarations.length === 0) return null;
     const panel = el("details", "challenge-audit");
     panel.append(
       el("summary", "", "View core-notation audit"),
       el(
         "p",
         "challenge-audit-intro",
-        "These declarations were printed from their elaborated terms using only Lean's core notation, without imported delaborators or unexpanders. Author-defined notation and macros therefore cannot disguise this view.",
+        "Palomar's renderer printed these declarations from their elaborated terms using only Lean's core notation, without imported delaborators or unexpanders. Author-defined notation and macros therefore cannot disguise this view. The text is pinned in the same content-addressed render bundle as the formatted view above.",
       ),
     );
-    for (const item of metadata.audit_declarations) {
+    for (const [index, item] of metadata.audit_declarations.entries()) {
       const declaration = el("section", "challenge-audit-declaration");
+      const heading = el("h3", "", item.name);
+      heading.id = `challenge-audit-declaration-${index}`;
+      declaration.setAttribute("aria-labelledby", heading.id);
+      const source = el("pre", "", item.declaration);
+      source.setAttribute("tabindex", "0");
       declaration.append(
-        el("h3", "", item.name),
-        el("pre", "", item.declaration),
+        heading,
+        source,
       );
       panel.append(declaration);
     }
@@ -259,7 +264,7 @@ export function createChallengePresentation({ fetchJson, document, window, local
       el(
         "p",
         "challenge-audit-limits",
-        "This view does not reveal misleading instances, silently inserted coercions, or definitions whose names hide the wrong meaning. Those still require inspection of the pinned statement and its dependencies.",
+        "This view does not reveal misleading instances, silently inserted coercions, or definitions whose names hide the wrong meaning. Lean marks an omitted subterm with ⋯ if it reaches a printer resource limit. Those cases still require inspection of the pinned statement and its dependencies.",
       ),
     );
     return panel;
