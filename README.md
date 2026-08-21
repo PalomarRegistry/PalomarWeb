@@ -144,8 +144,13 @@ matches its manifest observations, resolves repository locations, publishes the
 progressive entry result, and decorates existing source controls,
 `entry-pages.mjs` owns entry-route input and page-state
 transitions, `challenge-presentation.mjs` owns the named-declarations artifact's
-entry correspondence, source and Mathlib playground controls, and presentation
-states, `formalization-presentation.mjs`
+entry correspondence, source and Mathlib playground controls, core-notation
+audit disclosure, and presentation states. Render-metadata schema v3 carries an
+`audit_declarations` row for every compared declaration, in the same order as
+`declarations`; each row has exactly `name` and `declaration`, and the browser
+refuses a v3 document whose rows do not correspond to the accepted entry.
+Historical v1/v2 render metadata remains readable but does not claim to provide
+an audit view. `formalization-presentation.mjs`
 owns statement trust labels and the statement/proof dependency presentation,
 `entry-history-presentation.mjs` owns the entry page's canonical link,
 supersession notice, and immutable version-history section;
