@@ -478,6 +478,36 @@ test("a canonical registered record validates", () => {
   assert.equal(validateEntry(entry(), summary()).id, "PALOMAR-2026-07-29-000123");
 });
 
+test("registered records require authors and bounded source identifiers", () => {
+  const authorless = entry();
+  authorless.authors = [];
+  assert.throws(() => validateEntry(authorless, summary()), /authors must not be empty/);
+
+  const nonStringIdentifier = entry();
+  nonStringIdentifier.provenance.mathematical_sources = [{
+    title: "Source",
+    authors: [],
+    relationship: "background",
+    identifier: 123,
+  }];
+  assert.throws(
+    () => validateEntry(nonStringIdentifier, summary()),
+    /mathematical_sources\[0\]\.identifier must be a non-empty string/,
+  );
+
+  const oversizedIdentifier = entry();
+  oversizedIdentifier.provenance.mathematical_sources = [{
+    title: "Source",
+    authors: [],
+    relationship: "background",
+    identifier: "x".repeat(2049),
+  }];
+  assert.throws(
+    () => validateEntry(oversizedIdentifier, summary()),
+    /mathematical_sources\[0\]\.identifier is longer than 2048 characters/,
+  );
+});
+
 test("preservation must cover every immutable source", () => {
   const missing = entry();
   missing.preservation.repositories.pop();

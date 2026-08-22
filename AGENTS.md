@@ -123,6 +123,17 @@
   entry page's render-metadata correspondence check; it is a preview of an
   immutable artifact at a content address, and the entry page remains where a
   rendering is tied to its accepted record.
+  `assets/registry-dates.mjs` owns the two dates a registered result has — the
+  first-registration day its identifier carries, and the instant the listed
+  version was registered — together with the order each one implies, the
+  inclusive day window the landing toolbar filters by, and which of the two a
+  card leads with. The first-registration day is read from the identifier and
+  not from a row field: the publisher requires an entry's `first_registered_on`
+  to equal its identifier's day, so ordering and filtering by it costs no
+  addition to the closed `recent.json` row contract. `app.js` wires those to
+  the toolbar and rearranges the cards the grid already holds rather than
+  rebuilding them, because a rebuilt card loses its hover-preview registration
+  and whatever the availability answer decorated it with;
   `assets/app.js` owns remaining page composition and controller wiring. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed

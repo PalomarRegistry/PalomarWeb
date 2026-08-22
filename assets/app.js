@@ -21,12 +21,25 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
+import { mathematicalSourceUrl } from "./bibliography.mjs";
+import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
 import { createStatementPreview } from "./statement-preview.mjs";
 import { renderSubjectPage } from "./subject-pages.mjs";
 import { presentationAbstract } from "./presentation-text.mjs";
+import {
+  DEFAULT_ORDER,
+  FIRST_REGISTRATION_ORDER,
+  cardDates,
+  compareRows,
+  dayWindow,
+  normalizeOrder,
+  orderedDay,
+  registrationDay,
+  withinWindow,
+} from "./registry-dates.mjs";
 import {
   bindSourceControl,
   createSourceAvailabilityBinding,
@@ -39,7 +52,11 @@ import {
 
 const params = new URLSearchParams(window.location.search);
 const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
-const MSC2020_FILTER_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
+// Every MSC2020 code is five characters: two digits for the subject, then
+// either a letter or a hyphen, then two more digits. A reader knows the
+// subject long before the section, so the filter takes any prefix of that
+// shape ("11", "11P", "11P3") and matches every code that begins with it.
+const MSC2020_FILTER_RE = /^[0-9]{1,2}$|^[0-9]{2}[A-Z-][0-9]{0,2}$/;
 const FILTER_UPDATE_DELAY_MS = 200;
 // Longer than the classification filter above, because each registry search
 // costs a stopword read, a head read per word, posting pages, and up to sixty
@@ -214,25 +231,6 @@ function categoryTokens(entry) {
   return tokens;
 }
 
-/**
- * The day this version was registered.
- *
- * Not `first_registered_on`, which is the *result's* date: the identifier carries it,
- * every later version inherits it, and it is already on the card beside this.
- * So a v2 labelled by it named a day years before that version existed, and on
- * a page ordered by registration the visible dates ran out of order.
- *
- * There is no fallback to the review's date any more. A review's outcome and
- * the registration it leads to are different moments, and the record carries
- * `registered_at` for exactly this.
- */
-function registrationDate(value) {
-  if (!/^\d{4}-\d{2}-\d{2}T/.test(value || "")) {
-    throw new Error("entry is missing a valid registration date");
-  }
-  return value.slice(0, 10);
-}
-
 function displayDate(value) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
@@ -291,9 +289,34 @@ function searchBlob(entry) {
   ].join(" ").toLowerCase();
 }
 
+function dateSpans({ id, registeredAt }, order) {
+  return cardDates({ id, registeredAt }, order).map(({ className, label, day }) =>
+    el("span", className, `${label} ${displayDate(day)}`));
+}
+
+/**
+ * Date a card again after the grid is rearranged.
+ *
+ * The dates are rewritten rather than the card rebuilt: a card carries a hover
+ * preview registration and whatever the availability answer decorated it with,
+ * and neither survives being replaced by an equal one.
+ */
+function setCardDates(card, row, order) {
+  const identity = card.querySelector(".card-identity");
+  identity.replaceChildren(
+    identity.querySelector(".entry-id"),
+    ...dateSpans(row, order),
+  );
+}
+
 function entryCard(
   entry,
-  { versionCount = null, current = false, registeredAt = entry.registered_at } = {},
+  {
+    versionCount = null,
+    current = false,
+    registeredAt = entry.registered_at,
+    order = DEFAULT_ORDER,
+  } = {},
 ) {
   const categories = classification(entry);
   const card = el("article", "entry-card");
@@ -307,7 +330,7 @@ function entryCard(
   const identity = el("div", "card-identity");
   identity.append(
     el("span", "entry-id", `${entry.id} v${entry.version}${current ? " · current" : ""}`),
-    el("span", "entry-date", `Registered ${displayDate(registrationDate(registeredAt))}`),
+    ...dateSpans({ id: entry.id, registeredAt }, order),
   );
   top.append(identity, trustBadge(entry));
   const title = el("h3");
@@ -377,6 +400,16 @@ function setLandingStatusHidden(hidden) {
   if (status) status.hidden = landingSuppressed || hidden;
 }
 
+/** The day window the toolbar is holding, named by the date it applies to. */
+function describeWindow(dates, order) {
+  const subject = order === FIRST_REGISTRATION_ORDER ? "First registered" : "Registered";
+  if (dates.from && dates.to) {
+    return `${subject} between ${displayDate(dates.from)} and ${displayDate(dates.to)}`;
+  }
+  if (dates.from) return `${subject} on or after ${displayDate(dates.from)}`;
+  return `${subject} on or before ${displayDate(dates.to)}`;
+}
+
 function setLandingSuppressed(suppressed) {
   landingSuppressed = suppressed;
   // A panel outlives the card it was raised from unless something says so:
@@ -425,13 +458,48 @@ async function renderIndex() {
     setLandingStatusHidden(true);
     status.textContent = "";
     status.className = "status";
+    const orderControl = document.querySelector("#order-by");
+    const fromControl = document.querySelector("#date-from");
+    const toControl = document.querySelector("#date-to");
+    if (orderControl && params.has("order")) {
+      orderControl.value = normalizeOrder(params.get("order"));
+    }
+    for (const [control, name] of [[fromControl, "from"], [toControl, "to"]]) {
+      if (control && params.has(name)) control.value = params.get(name).slice(0, 10);
+    }
+    // A deployment's HTML and its JavaScript can be a moment apart on GitHub
+    // Pages, so the order is read from the control when the page has one and
+    // from the link when it does not.
+    let order = normalizeOrder(orderControl ? orderControl.value : params.get("order"));
     const cards = entries.map((entry) =>
       entryCard(entry, {
         versionCount: entry.versions,
         current: true,
         registeredAt: entry.published_at,
+        order,
       }));
-    grid.append(...cards);
+    // The rows the grid is arranged and filtered by, paired with the cards
+    // showing them, so that neither question has to read a card back.
+    const listed = entries.map((entry, index) => ({
+      card: cards[index],
+      row: { id: entry.id, registeredAt: entry.published_at },
+    }));
+    /**
+     * The cards, in the order asked for, dated by the day that order keys on.
+     *
+     * Appending a card already in the grid moves it, so this rearranges the
+     * cards rather than rebuilding them: a rebuilt card would lose its hover
+     * preview registration and whatever the availability answer decorated it
+     * with.
+     */
+    const arrange = () => {
+      statementPreview.close();
+      const ordered = [...listed].sort((left, right) =>
+        compareRows(left.row, right.row, order));
+      for (const item of ordered) setCardDates(item.card, item.row, order);
+      grid.append(...ordered.map((item) => item.card));
+    };
+    arrange();
     void availabilityPromise.then((availability) => {
       decorateCardSet(cards, entries, availability, "Landing card");
     }).catch((error) => {
@@ -488,19 +556,27 @@ async function renderIndex() {
     // can stay instant and local.
     const update = () => {
       const arxivValue = arxiv?.value.trim() || "";
-      const mscValue = msc?.value.trim() || "";
+      // Codes are written in upper case in the registry, and typing one in
+      // lower case is not a mistake worth an error message.
+      const mscValue = (msc?.value.trim() || "").toUpperCase();
       const arxivInvalid = Boolean(arxivValue && !ARXIV_FILTER_RE.test(arxivValue));
       const mscInvalid = Boolean(mscValue && !MSC2020_FILTER_RE.test(mscValue));
+      const dates = dayWindow({ from: fromControl?.value, to: toControl?.value });
       let shown = 0;
-      for (const card of grid.children) {
+      let oldest = null;
+      for (const { card, row } of listed) {
+        const day = orderedDay(row, order);
+        if (oldest === null || day < oldest) oldest = day;
         const visible =
           (trust === "all" || card.dataset.trust === trust) &&
           (!arxivValue || (!arxivInvalid && card.dataset.arxiv.split(" ").includes(arxivValue))) &&
-          (!mscValue || (!mscInvalid && card.dataset.msc.split(" ").includes(mscValue)));
+          (!mscValue ||
+            (!mscInvalid &&
+              card.dataset.msc.split(" ").some((code) => code.startsWith(mscValue)))) &&
+          withinWindow(day, dates);
         card.hidden = !visible;
         if (visible) shown += 1;
       }
-      setLandingStatusHidden(shown !== 0);
       const classificationQuery = [
         arxivValue && `arXiv ${arxivValue}`,
         mscValue && `MSC2020 ${mscValue}`,
@@ -509,24 +585,54 @@ async function renderIndex() {
         arxivInvalid && "arXiv",
         mscInvalid && "MSC2020",
       ].filter(Boolean);
+      const classificationReason = invalidClassifications.length
+        ? `Invalid classification code format: ${invalidClassifications.join(", ")}.`
+        : classificationQuery.length
+        ? `Classification query: ${classificationQuery.join(", ")}.`
+        : "";
+      const dateReason = dates.malformed.length
+        ? `Invalid date: ${dates.malformed.join(", ")}.`
+        : dates.empty
+        ? "The date range ends before it begins."
+        : dates.active
+        ? `${describeWindow(dates, order)}.`
+        : "";
+      // This page is the newest results and not the whole registry, so a range
+      // that reaches past its oldest row reaches past what it can answer for.
+      // Said whether or not anything matched, because a reader who gets some of
+      // the range back has no way to tell that it was not all of it.
+      const reachesEarlier = Boolean(
+        dates.from && !dates.malformed.length && !dates.empty && oldest && dates.from < oldest,
+      );
+      const boundReason = reachesEarlier
+        ? `${order === FIRST_REGISTRATION_ORDER ? "Results first registered" : "Versions registered"} ` +
+          `before ${displayDate(oldest)} are not on this page.`
+        : "";
+      const reasons = [classificationReason, dateReason, boundReason].filter(Boolean);
       status.textContent = shown
-        ? ""
-        : invalidClassifications.length
-          ? `No registry entries match the current filters. Invalid classification code format: ${invalidClassifications.join(", ")}.`
-          : classificationQuery.length
-          ? `No registry entries match the current filters. Classification query: ${classificationQuery.join(", ")}.`
-          : "No registry entries match those filters.";
+        ? boundReason
+        : reasons.length
+        ? `No registry entries match the current filters. ${reasons.join(" ")}`
+        : "No registry entries match those filters.";
+      setLandingStatusHidden(Boolean(shown) && !boundReason);
     };
     let updateTimer;
     const scheduleUpdate = () => {
       window.clearTimeout(updateTimer);
       updateTimer = window.setTimeout(update, FILTER_UPDATE_DELAY_MS);
     };
-    for (const control of [arxiv, msc]) {
+    for (const control of [arxiv, msc, fromControl, toControl]) {
       for (const eventName of ["input", "change", "search"]) {
         control?.addEventListener(eventName, scheduleUpdate);
       }
     }
+    // Not on the delay the text fields use. Choosing an order is one act on a
+    // list, not a word being typed a letter at a time.
+    orderControl?.addEventListener("change", () => {
+      order = normalizeOrder(orderControl.value);
+      arrange();
+      update();
+    });
     document.querySelectorAll(".filter").forEach((button) => {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;
@@ -972,6 +1078,7 @@ const {
   versionHistory,
   versionNotice,
 } = createEntryHistoryPresentation({ document, localPageUrl, window });
+const { citationSection } = createCitationPresentation({ document, navigator, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
 function assurance(kind, ...content) {
@@ -1038,7 +1145,7 @@ function registrationCallout(entry, databaseBase) {
     ),
   );
   copy.append(
-    el("strong", "", `Registered on ${displayDate(registrationDate(entry.registered_at))}`),
+    el("strong", "", `Registered on ${displayDate(registrationDay(entry.registered_at))}`),
     assurance(
       "Mechanical assurance",
       "Comparator checked that the recorded ",
@@ -1089,6 +1196,15 @@ function classificationSection(entry) {
   );
   section.append(details);
   return section;
+}
+
+function mathematicalSourceIdentifier(identifier, sourceLabel) {
+  if (!identifier) return null;
+  const resolved = mathematicalSourceUrl(identifier);
+  if (!resolved) return el("code", "", identifier);
+  const link = externalLink(resolved.kind === "url" ? "Source link" : identifier, resolved.href);
+  if (resolved.kind === "url") link.setAttribute("aria-label", `Open source for ${sourceLabel}`);
+  return link;
 }
 
 function provenanceSection(entry, sourceAvailability) {
@@ -1163,11 +1279,9 @@ function provenanceSection(entry, sourceAvailability) {
       const label = source.authors.length
         ? `${source.authors.map((author) => author.name).join(", ")}: ${source.title}`
         : source.title;
-      if (source.identifier?.startsWith("https://")) {
-        item.append(externalLink(label, source.identifier));
-      } else {
-        item.append(el("span", "", label));
-      }
+      item.append(el("span", "source-citation", label));
+      const identifier = mathematicalSourceIdentifier(source.identifier, label);
+      if (identifier) item.append(" · ", identifier);
       if (source.contributors?.length) {
         item.append(el(
           "span",
@@ -1178,9 +1292,6 @@ function provenanceSection(entry, sourceAvailability) {
         ));
       }
       item.append(el("span", "source-relationship", ` — ${source.relationship}`));
-      if (source.identifier && !source.identifier.startsWith("https://")) {
-        item.append(el("code", "", source.identifier));
-      }
       sources.append(item);
     }
     disclosure.append(sources);
@@ -1420,6 +1531,7 @@ async function renderEntry(
     externalLink,
   });
   const versionNoticeNode = versionNotice(entry, currentVersion);
+  const citation = citationSection(entry);
   const history = versionHistory(entry, versions, currentVersion);
   content.append(heading);
   // A broken or degraded source affects every link on the page and remains a
@@ -1439,6 +1551,7 @@ async function renderEntry(
     solutionMetadata(entry, challenge.metadata, sourceAvailability),
     provenanceSection(entry, sourceAvailability),
     classificationSection(entry),
+    citation,
     editorial,
     history,
   );
@@ -1503,7 +1616,7 @@ function renderSubjectRows(rows, content) {
     const identity = el("div", "card-identity");
     identity.append(
       el("span", "entry-id", `${row.id} v${row.version}`),
-      el("span", "entry-date", `Registered ${displayDate(registrationDate(row.published_at))}`),
+      el("span", "entry-date", `Registered ${displayDate(registrationDay(row.published_at))}`),
     );
     const title = el("h2");
     title.append(internalLink(row.title, localPageUrl("/entry", row)));

@@ -62,9 +62,20 @@
             </label>
             <datalist id="arxiv-options"></datalist>
             <label>MSC:
-              <input id="msc-query" type="search" list="msc-options" maxlength="5" placeholder="e.g. 05C10" autocomplete="off" spellcheck="false">
+              <input id="msc-query" type="search" list="msc-options" maxlength="5" placeholder="e.g. 05 or 05C10" autocomplete="off" spellcheck="false">
             </label>
             <datalist id="msc-options"></datalist>
+          </div>
+          <div class="date-filters" role="group" aria-label="Registration date">
+            <label for="order-by">Order by:</label>
+            <select id="order-by">
+              <option value="updated">latest version</option>
+              <option value="registered">first registration</option>
+            </select>
+            <label for="date-from">from</label>
+            <input id="date-from" type="date">
+            <label for="date-to">to</label>
+            <input id="date-to" type="date">
           </div>
         </div>
 

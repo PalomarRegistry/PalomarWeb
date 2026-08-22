@@ -329,6 +329,133 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
   await expect(page.locator(".entry-card:visible")).toContainText("000123");
 });
 
+test("an MSC filter matches every code beginning with what was typed", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+
+  // 000123 is 05C10, 000124 is 11N13.
+  await page.locator("#msc-query").fill("11");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+  await expect(page.locator("#status")).toBeHidden();
+
+  await page.locator("#msc-query").fill("11n");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+
+  await page.locator("#msc-query").fill("11N1");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+
+  await page.locator("#msc-query").fill("12");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Classification query: MSC2020 12.",
+  );
+
+  await page.locator("#msc-query").fill("1N");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. Invalid classification code format: MSC2020.",
+  );
+});
+
+test("the registry can be ordered by when a result first entered it", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  // 000123 is a v2 registered on 2 August; 000124 is a v1 registered on 29
+  // July, the same day 000123 first entered the registry.
+  await expect(page.locator(".entry-card .entry-id")).toHaveText([
+    "PALOMAR-2026-07-29-000123 v2 · current",
+    "PALOMAR-2026-07-29-000124 v1 · current",
+  ]);
+  await expect(page.locator(".entry-card").first().locator(".entry-date"))
+    .toHaveText("Registered 2 August 2026");
+  await expect(page.locator(".entry-card").first().locator(".entry-origin-date"))
+    .toHaveText("First registered 29 July 2026");
+  // A result registered once has one date, whichever order the page is in.
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-date"))
+    .toHaveText("Registered 29 July 2026");
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-origin-date")).toHaveCount(0);
+
+  await page.locator("#order-by").selectOption("registered");
+  await expect(page.locator(".entry-card .entry-id")).toHaveText([
+    "PALOMAR-2026-07-29-000124 v1 · current",
+    "PALOMAR-2026-07-29-000123 v2 · current",
+  ]);
+  // The leading date is the one the page is arranged by, so it still runs down
+  // the page in the page's order.
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-date"))
+    .toHaveText("First registered 29 July 2026");
+  await expect(page.locator(".entry-card").nth(1).locator(".entry-origin-date"))
+    .toHaveText("Latest version 2 August 2026");
+});
+
+test("a date range narrows the listing by the date it is ordered by", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator("#date-from").fill("2026-08-01");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000123");
+  await expect(page.locator("#status")).toBeHidden();
+
+  // The same range against the day each result first entered the registry:
+  // the August version is a new version of a July result, not a new result.
+  await page.locator("#order-by").selectOption("registered");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. First registered on or after 1 August 2026.",
+  );
+
+  await page.locator("#date-from").fill("2026-07-29");
+  await page.locator("#date-to").fill("2026-07-29");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+});
+
+test("a range that cannot be read, or cannot hold a day, matches nothing and says so", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await page.locator("#date-from").fill("2026-08-13");
+  await page.locator("#date-to").fill("2026-08-02");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveText(
+    "No registry entries match the current filters. The date range ends before it begins.",
+  );
+
+  await page.locator("#date-from").fill("");
+  await page.locator("#date-to").fill("");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator("#status")).toBeHidden();
+});
+
+test("a range reaching past the newest results says what the page cannot answer for", async ({ page }) => {
+  await page.goto(`/?database=${database}&from=2026-01-01`);
+  await expect(page.locator("#date-from")).toHaveValue("2026-01-01");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator("#status")).toHaveText(
+    "Versions registered before 29 July 2026 are not on this page.",
+  );
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
+});
+
+test("an order and a range apply from a deep link", async ({ page }) => {
+  await page.goto(`/?database=${database}&order=registered&from=2026-07-29&to=2026-07-29`);
+  await expect(page.locator("#order-by")).toHaveValue("registered");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(2);
+  await expect(page.locator(".entry-card").first().locator(".entry-id"))
+    .toHaveText("PALOMAR-2026-07-29-000124 v1 · current");
+
+  // An order nothing offers is the default rather than an empty page.
+  await page.goto(`/?database=${database}&order=sideways`);
+  await expect(page.locator("#order-by")).toHaveValue("updated");
+  await expect(page.locator(".entry-card").first().locator(".entry-id"))
+    .toHaveText("PALOMAR-2026-07-29-000123 v2 · current");
+});
+
+test("an MSC prefix applies from a deep link", async ({ page }) => {
+  await page.goto(`/?database=${database}&msc=11`);
+  await expect(page.locator("#msc-query")).toHaveValue("11");
+  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
+  await expect(page.locator(".entry-card:visible")).toContainText("000124");
+});
+
 test("classification filters apply from a deep link", async ({ page }) => {
   await page.goto(`/?database=${database}&arxiv=math.NT`);
   await expect(page.locator("#arxiv-query")).toBeVisible();
@@ -536,33 +663,92 @@ test("a thin wrapper says where the mathematics is before anything else", async 
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
-test("mathematical sources show non-author contributor roles", async ({ page }) => {
+test("mathematical sources format known identifiers and preserve unknown ones", async ({ page }) => {
   await page.route(
     "**/database/entries/PALOMAR-2026-07-29-000123-v2.json",
     async (route) => {
       const response = await route.fetch();
       const entry = await response.json();
       entry.provenance.result_origin = "source-based";
-      entry.provenance.mathematical_sources = [{
-        title: "Kourovka Notebook",
-        authors: [{ name: "Solution Author" }],
-        contributors: [
-          { name: "Wilhelm Magnus", role: "problem-proposer" },
-          { name: "Evgenii Khukhro", role: "editor" },
-        ],
-        relationship: "formalizes",
-      }];
+      entry.provenance.mathematical_sources = [
+        {
+          title: "Kourovka Notebook",
+          authors: [{ name: "Solution Author" }],
+          contributors: [
+            { name: "Wilhelm Magnus", role: "problem-proposer" },
+            { name: "Evgenii Khukhro", role: "editor" },
+          ],
+          identifier: "arXiv:2605.20695",
+          relationship: "formalizes",
+        },
+        {
+          title: "A journal source",
+          authors: [],
+          identifier: "doi:10.1000/a?#b",
+          relationship: "background",
+        },
+        {
+          title: "An older arXiv source",
+          authors: [],
+          identifier: "arXiv:math.AG/0211159",
+          relationship: "background",
+        },
+        {
+          title: "A DOI preserved without normalization",
+          authors: [],
+          identifier: "doi:10.1000/../10.9999/other",
+          relationship: "background",
+        },
+        {
+          title: "A preserved custom source",
+          authors: [],
+          identifier: "bibliographic:custom-reference",
+          relationship: "background",
+        },
+        {
+          title: "An unsafe link preserved as text",
+          authors: [],
+          identifier: "https://reader:secret@example.invalid/source",
+          relationship: "background",
+        },
+        {
+          title: "A linked web source",
+          authors: [],
+          identifier: "https://example.invalid/a/very/long/source/url",
+          relationship: "background",
+        },
+        {
+          title: "A source without an identifier",
+          authors: [],
+          relationship: "background",
+        },
+      ];
       await route.fulfill({ response, json: entry });
     },
   );
 
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
-  await expect(page.locator(".provenance-sources li")).toContainText(
+  await expect(page.locator(".provenance-sources li").first()).toContainText(
     "Solution Author: Kourovka Notebook",
   );
   await expect(page.locator(".source-contributors")).toHaveText(
     " — Wilhelm Magnus (problem-proposer); Evgenii Khukhro (editor)",
   );
+  await expect(page.getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/2605.20695");
+  await expect(page.getByRole("link", { name: "doi:10.1000/a?#b", includeHidden: true }))
+    .toHaveAttribute("href", "https://doi.org/10.1000/a%3F%23b");
+  await expect(page.getByRole("link", { name: "arXiv:math.AG/0211159", includeHidden: true }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/math.AG/0211159");
+  await expect(page.getByRole("link", {
+    name: "Open source for A linked web source",
+    includeHidden: true,
+  })).toHaveAttribute("href", "https://example.invalid/a/very/long/source/url");
+  await expect(page.locator(".provenance-sources code")).toHaveText([
+    "doi:10.1000/../10.9999/other",
+    "bibliographic:custom-reference",
+    "https://reader:secret@example.invalid/source",
+  ]);
 });
 
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
@@ -884,6 +1070,35 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
     "href",
     "https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1",
   );
+});
+
+test("entry pages offer a version-pinned BibTeX citation that can be copied", async ({ context, page }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+
+  const citation = page.locator(".entry-citation");
+  await expect(citation.getByRole("heading", { name: "Cite this" })).toBeVisible();
+  await expect(citation.locator("pre")).toHaveAttribute("tabindex", "0");
+  await expect(citation.locator("pre")).toHaveAttribute("role", "group");
+  await expect(citation.locator("pre")).toHaveAttribute("aria-labelledby", "citation-heading");
+  await expect(citation.locator("code")).toHaveText(
+    `@misc{palomar-2026-07-29-000123-v1,
+  author = {{Example}},
+  title = {{Fixture PALOMAR-2026-07-29-000123 version 1}},
+  year = {2026},
+  howpublished = {Palomar, PALOMAR-2026-07-29-000123 v1},
+  url = {https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1},
+}`,
+  );
+
+  await citation.getByRole("button", { name: "Copy BibTeX" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(
+    "@misc{palomar-2026-07-29-000123-v1,",
+  );
+  await expect(citation.getByRole("status")).toHaveText("Copied BibTeX citation.");
+  await expect(citation.getByRole("button", { name: "Copied!" })).toHaveClass(/copied/);
 });
 
 test("a single current version has no supersession treatment", async ({ page }) => {
