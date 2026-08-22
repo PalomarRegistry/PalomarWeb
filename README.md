@@ -1,6 +1,8 @@
 # Palomar Web
 
 The read-only human view of Palomar's machine-readable public registry.
+A short machine-facing map of how to read, search, and submit is served at
+[`/llms.txt`](https://palomar-registry.org/llms.txt).
 
 The site is static and deployed with GitHub Pages. It reads
 <https://data.palomar-registry.org/> at runtime, so publishing a database change
