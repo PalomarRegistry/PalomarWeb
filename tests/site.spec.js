@@ -257,42 +257,38 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
   ]);
 });
 
-test("old, partial, and malformed recent summaries fail closed before rendering", async ({ page }) => {
-  let variant = "old";
-  const entryRequests = [];
-  page.on("request", (request) => {
-    const path = new URL(request.url()).pathname;
-    if (path.startsWith("/database/entries/")) entryRequests.push(path);
-  });
+test("an unusable recent row is omitted without hiding its valid siblings", async ({ page }) => {
   await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
     const document = await response.json();
-    if (variant === "old") {
-      document.entries = document.entries.map((row) => ({
-        id: row.id,
-        version: row.version,
-        title: row.title,
-        status: row.status,
-        path: row.path,
-        published_at: row.published_at,
-        versions: row.versions,
-      }));
-    } else if (variant === "partial") {
-      delete document.entries[0].abstract;
-    } else {
-      document.entries[0].preservation.repositories[0].commit = "2".repeat(40);
-    }
+    document.entries[0].preservation.repositories[0].commit = "2".repeat(40);
     await route.fulfill({ response, json: document });
   });
 
-  for (const selected of ["old", "partial", "malformed"]) {
-    variant = selected;
-    await page.goto(`/?database=${database}&contract-case=${selected}`);
-    await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
-    await expect(page.locator("#status")).toHaveClass(/error/);
-    await expect(page.locator("#status")).toContainText("The registry could not be loaded");
-  }
-  expect(entryRequests).toEqual([]);
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(1);
+  await expect(page.locator("#registry-warning")).toBeVisible();
+  await expect(page.locator("#registry-warning")).toHaveText(
+    "1 registry entry could not be displayed.",
+  );
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
+  await page.locator("#arxiv-query").fill("math.NT");
+  await expect(page.locator("#registry-warning")).toBeVisible();
+});
+
+test("an entirely unusable recent projection is not reported as an empty registry", async ({ page }) => {
+  await page.route("**/database/recent.json", async (route) => {
+    const response = await route.fetch();
+    const document = await response.json();
+    for (const row of document.entries) row.status = "draft";
+    await route.fulfill({ response, json: document });
+  });
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveClass(/warning/);
+  await expect(page.locator("#status")).toContainText("registry entries could not be displayed");
+  await expect(page.locator("#status")).not.toContainText("No entries have been registered");
 });
 
 test("an unavailable recent summary reports failure instead of emptiness", async ({ page }) => {
@@ -953,7 +949,7 @@ test("entry schema v1 fails closed before rendering", async ({ page }) => {
   await expect(page.locator("#status")).toContainText("unsupported entry schema_version 1");
 });
 
-test("a recent row without the required preservation mapping fails closed", async ({ page }) => {
+test("a recent row without the required preservation mapping is omitted", async ({ page }) => {
   await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
     const recent = await response.json();
@@ -962,9 +958,11 @@ test("a recent row without the required preservation mapping fails closed", asyn
   });
   await page.goto(`/?database=${database}`);
 
-  await expect(page.locator(".entry-card")).toHaveCount(0);
-  await expect(page.locator("#status")).toHaveClass(/error/);
-  await expect(page.locator("#status")).toContainText("preservation must be an object");
+  await expect(page.locator(".entry-card")).toHaveCount(1);
+  await expect(page.locator("#registry-warning")).toHaveText(
+    "1 registry entry could not be displayed.",
+  );
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
 });
 
 test("a card says the original is unavailable exactly when the manifest says so", async ({ page }) => {

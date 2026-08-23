@@ -381,6 +381,17 @@ test("live-data health fails on the same contract error a visitor would see", as
   assert.match(state.reason, /entry\.review\.scores must be an object/);
 });
 
+test("live-data health refuses a landing projection that omitted unusable rows", async () => {
+  const fetcher = async () => ({ ok: true, async json() { return { entries: [{}] }; } });
+  const state = await publicDataState("https://data.example", fetcher, {
+    validateRecent: (value) => value,
+    recentValidationIssues: () => ({ omitted: 1, details: [] }),
+  });
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /recent\.json contains 1 unusable rows/);
+});
+
 test("live-data health retries a transient request and recovers", async () => {
   const fixture = oneEntryRegistry();
   let recentAttempts = 0;

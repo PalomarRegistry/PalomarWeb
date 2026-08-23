@@ -307,6 +307,7 @@ h3 {
 
 body.registry-searching .toolbar,
 body.registry-searching #status,
+body.registry-searching #registry-warning,
 body.registry-searching #entry-grid {
   display: none;
 }

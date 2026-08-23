@@ -45,6 +45,7 @@ import {
   recentRenderRow,
   recentRendersUrl,
   recentUrl,
+  recentValidationIssues,
   tombstoneUrl,
   validateEntry,
   validateAvailability,
@@ -189,25 +190,21 @@ test("what is new is read from the database prefix and nowhere else", () => {
   );
 });
 
-test("recent validation rejects unsupported, rejected, and malformed rows", () => {
+test("recent validation rejects unsupported envelopes and isolates malformed rows", () => {
   assert.throws(() => validateRecent(recent([], { schema_version: 3 })), /unsupported recent/);
-  assert.throws(
-    () => validateRecent(recent([recentRow({ status: "draft" })])),
-    /status is not registered/,
-  );
-  assert.throws(
-    () => validateRecent(recent([recentRow({ published_at: "yesterday" })])),
-    /published_at is malformed/,
-  );
-  // A date, not an instant. Every row carries the record's `registered_at`,
-  // which the schema requires of every version, and a date read as an instant
-  // is midnight: such a row would sort ahead of everything registered that day
-  // and no reader could tell why.
-  assert.throws(
-    () => validateRecent(recent([recentRow({ published_at: "2026-07-29" })])),
-    /published_at is malformed/,
-  );
+  // A date, not an instant, would sort at an invented midnight with no way for
+  // a reader to tell why.
+  for (const row of [
+    recentRow({ status: "draft" }),
+    recentRow({ published_at: "yesterday" }),
+    recentRow({ published_at: "2026-07-29" }),
+  ]) {
+    const document = validateRecent(recent([row]));
+    assert.deepEqual(document.entries, []);
+    assert.equal(recentValidationIssues(document).omitted, 1);
+  }
   assert.equal(validateRecent(recent()).entries.length, 1);
+  assert.throws(() => recentValidationIssues(recent()), /was not validated/);
 });
 
 test("recent validation accepts the Database-owned landing-card fixture", async () => {
@@ -219,7 +216,7 @@ test("recent validation accepts the Database-owned landing-card fixture", async 
     await readFile(join(checkout, "tests", "fixtures", "recent.json"), "utf8"),
   );
   assert.ok(fixture.entries.length > 0, "the external contract fixture must exercise a row");
-  assert.equal(validateRecent(fixture), fixture);
+  assert.deepEqual(validateRecent(fixture), fixture);
 });
 
 test("an empty recent registry is valid", () => {
@@ -268,69 +265,75 @@ test("a rejected render companion leaves no row usable", () => {
   assert.throws(() => recentRenderRow(document, renderRow().id), /was not validated/);
 });
 
-test("recent is one exact complete projection, not a legacy summary shape", () => {
-  assert.throws(
-    () => validateRecent({ schema_version: 2, entries: [summary()] }),
-    /invalid shape/,
-  );
+test("recent requires renderable fields but ignores additive producer fields", () => {
+  const legacy = validateRecent({ schema_version: 2, entries: [summary()] });
+  assert.deepEqual(legacy.entries, []);
+  assert.equal(recentValidationIssues(legacy).omitted, 1);
+
+  const additive = recent();
+  additive.legacy_entries = [];
+  additive.entries[0].registered_at = additive.entries[0].published_at;
+  additive.entries[0].authors[0].github = "somebody";
+  assert.equal(validateRecent(additive).entries.length, 1);
 
   for (const mutate of [
-    (page) => { page.legacy_entries = []; },
-    (page) => { delete page.entries[0].abstract; },
-    (page) => { page.entries[0].registered_at = page.entries[0].published_at; },
-    (page) => { delete page.entries[0].source.project_path; },
-    (page) => { page.entries[0].authors[0].github = "somebody"; },
     (page) => { page.entries[0].preservation = null; },
     (page) => { page.entries[0].preservation.repositories = []; },
   ]) {
     const page = recent();
     mutate(page);
-    assert.throws(
-      () => validateRecent(page),
-      /invalid shape|preservation must be an object|must contain one source mapping/,
-    );
+    const validated = validateRecent(page);
+    assert.deepEqual(validated.entries, []);
+    assert.equal(recentValidationIssues(validated).omitted, 1);
+  }
+
+  for (const mutate of [
+    (page) => { delete page.entries[0].abstract; },
+    (page) => { delete page.entries[0].source.project_path; },
+  ]) {
+    const page = recent();
+    mutate(page);
+    assert.equal(validateRecent(page).entries.length, 1);
   }
 });
 
-test("recent validates every projected card field and source mapping", () => {
+test("recent treats classification cardinality as producer policy", () => {
   const duplicateClassifications = recent();
   duplicateClassifications.entries[0].classification.arxiv.push("math.CO");
-  assert.throws(() => validateRecent(duplicateClassifications), /distinct values/);
+  assert.equal(validateRecent(duplicateClassifications).entries.length, 1);
 
   const missingTheorems = recent();
   missingTheorems.entries[0].formalization.theorem_names = [];
-  assert.throws(() => validateRecent(missingTheorems), /non-empty array/);
+  assert.equal(validateRecent(missingTheorems).entries.length, 1);
+
+  const manyClassifications = recent();
+  manyClassifications.entries[0].classification.arxiv = Array.from(
+    { length: 12 },
+    (_unused, position) => `math.${String.fromCharCode(65 + position)}A`,
+  );
+  manyClassifications.entries[0].classification.msc2020 = [];
+  assert.equal(validateRecent(manyClassifications).entries.length, 1);
 
   const mismatchedPreservation = recent();
   mismatchedPreservation.entries[0].preservation.repositories[0].commit = "2".repeat(40);
-  assert.throws(() => validateRecent(mismatchedPreservation), /does not match source/);
+  const validated = validateRecent(mismatchedPreservation);
+  assert.deepEqual(validated.entries, []);
+  assert.match(recentValidationIssues(validated).details[0].reason, /does not match source/);
 });
 
-test("recent applies the canonical producer's cheap presentation bounds", () => {
+test("recent applies cheap presentation text bounds", () => {
   for (const [field, maximum] of [["title", 300], ["abstract", 10_000]]) {
     const atBound = recent();
     atBound.entries[0][field] = "x".repeat(maximum);
-    assert.equal(validateRecent(atBound), atBound);
+    assert.deepEqual(validateRecent(atBound), atBound);
 
     const overBound = recent();
     overBound.entries[0][field] = "x".repeat(maximum + 1);
-    assert.throws(() => validateRecent(overBound), new RegExp(`longer than ${maximum}`));
+    const validated = validateRecent(overBound);
+    assert.equal(recentValidationIssues(validated).omitted, 1);
+    assert.match(recentValidationIssues(validated).details[0].reason, new RegExp(`longer than ${maximum}`));
   }
 
-  const classifications = recent();
-  classifications.entries[0].classification.arxiv = [
-    "math.CO", "math.NT", "cs.DM", "math.AG", "math.AT", "math.CA", "math.CT", "math.LO",
-  ];
-  classifications.entries[0].classification.msc2020 = Array.from(
-    { length: 8 },
-    (_unused, position) => `10A${String(position + 1).padStart(2, "0")}`,
-  );
-  assert.equal(validateRecent(classifications), classifications);
-  classifications.entries[0].classification.arxiv.push("math.MG");
-  assert.throws(() => validateRecent(classifications), /more than 8 codes/);
-  classifications.entries[0].classification.arxiv.pop();
-  classifications.entries[0].classification.msc2020.push("10A09");
-  assert.throws(() => validateRecent(classifications), /more than 8 codes/);
 });
 
 test("a record must say when the version was registered, and agree with its result date", () => {
@@ -387,35 +390,34 @@ test("a recent summary's publication instant matches the entry it orders", () =>
   assert.equal(validateEntry(record, summary()), record);
 });
 
-test("what recent claims is coverage and ordering, so both are checked", () => {
-  // The rows would render perfectly well in any order, and a result listed
-  // twice under two versions is two well-formed rows. Nothing else on this
-  // side would notice either, which is exactly why this does.
+test("recent leaves producer ordering to the Database and isolates duplicate identities", () => {
   const older = recentRow({
     id: "PALOMAR-2026-07-29-000124",
     path: "entries/PALOMAR-2026-07-29-000124-v1.json",
     published_at: "2026-07-01T00:00:00Z",
   });
   const newer = recentRow({ published_at: "2026-08-01T00:00:00Z" });
-  assert.throws(() => validateRecent(recent([older, newer])), /newest-first/);
+  assert.deepEqual(validateRecent(recent([older, newer])).entries, [older, newer]);
   assert.equal(validateRecent(recent([newer, older])).entries.length, 2);
-  assert.throws(
-    () => validateRecent(recent([recentRow(), recentRow({ version: 2, path: "entries/PALOMAR-2026-07-29-000123-v2.json" })])),
-    /more than once/,
-  );
+  const duplicates = validateRecent(recent([
+    recentRow(),
+    recentRow({ version: 2, path: "entries/PALOMAR-2026-07-29-000123-v2.json" }),
+  ]));
+  assert.deepEqual(duplicates.entries, []);
+  assert.equal(recentValidationIssues(duplicates).omitted, 2);
 });
 
-test("recent breaks equal publication timestamps by descending identifier", () => {
+test("recent accepts either producer order for equal publication timestamps", () => {
   const lower = recentRow();
   const higher = recentRow({
     id: "PALOMAR-2026-07-29-000124",
     path: "entries/PALOMAR-2026-07-29-000124-v1.json",
   });
   assert.deepEqual(validateRecent(recent([higher, lower])).entries, [higher, lower]);
-  assert.throws(() => validateRecent(recent([lower, higher])), /newest-first/);
+  assert.deepEqual(validateRecent(recent([lower, higher])).entries, [lower, higher]);
 });
 
-test("recent is bounded, because the document it replaced was the registry", () => {
+test("recent bounds presentation without rejecting its usable prefix", () => {
   // A reader that accepted an unbounded page would let the whole-registry
   // document come back under another name with nothing failing to say so.
   const page = recent(
@@ -427,7 +429,10 @@ test("recent is bounded, because the document it replaced was the registry", () 
       });
     }),
   );
-  assert.throws(() => validateRecent(page), /more rows than it may/);
+  const validated = validateRecent(page);
+  assert.equal(validated.entries.length, 200);
+  assert.equal(recentValidationIssues(validated).omitted, 1);
+  assert.match(recentValidationIssues(validated).details[0].reason, /presentation limit/);
 });
 
 test("exact tombstones are closed, date-only, and bound to their URL", () => {
@@ -478,6 +483,19 @@ test("active-content and insecure data-derived links are never allowed", () => {
 
 test("a canonical registered record validates", () => {
   assert.equal(validateEntry(entry(), summary()).id, "PALOMAR-2026-07-29-000123");
+});
+
+test("entry classification policy is not duplicated in the browser", () => {
+  const record = entry();
+  record.classification.arxiv = [
+    "math.CO", "math.NT", "cs.DM", "math.AG", "math.AT",
+    "math.CA", "math.CT", "math.LO", "math.MG", "math.CO",
+  ];
+  record.classification.msc2020 = [];
+  assert.equal(validateEntry(record, summary()), record);
+
+  record.classification.arxiv.push("not a subject code");
+  assert.throws(() => validateEntry(record, summary()), /malformed code/);
 });
 
 test("registered records require authors and bounded source identifiers", () => {

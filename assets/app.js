@@ -3,6 +3,7 @@ import {
   REPOSITORY_ROLE_LABELS,
   isLoopbackHostname,
   pinnedRepositoryDirectoryUrl,
+  recentValidationIssues,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
@@ -128,9 +129,10 @@ function theoremNames(entry) {
 }
 
 function classification(entry) {
+  const distinct = (value) => Array.isArray(value) ? [...new Set(value)] : [];
   return {
-    arxiv: Array.isArray(entry.classification?.arxiv) ? entry.classification.arxiv : [],
-    msc2020: Array.isArray(entry.classification?.msc2020) ? entry.classification.msc2020 : [],
+    arxiv: distinct(entry.classification?.arxiv),
+    msc2020: distinct(entry.classification?.msc2020),
   };
 }
 
@@ -394,6 +396,32 @@ function entryCard(
 let landingSuppressed = false;
 let landingStatusHidden = document.querySelector("#status")?.hidden ?? true;
 
+function registryWarningNode() {
+  let warning = document.querySelector("#registry-warning");
+  if (warning) return warning;
+  const status = document.querySelector("#status");
+  if (!status) return null;
+  warning = el("div", "status warning");
+  warning.id = "registry-warning";
+  warning.hidden = true;
+  warning.setAttribute("role", "status");
+  status.before(warning);
+  return warning;
+}
+
+function showRecentIssues(issues) {
+  const warning = registryWarningNode();
+  if (!warning) return;
+  warning.hidden = issues.omitted === 0;
+  warning.textContent = issues.omitted === 1
+    ? "1 registry entry could not be displayed."
+    : `${issues.omitted} registry entries could not be displayed.`;
+  for (const issue of issues.details) {
+    const identity = issue.id ? ` (${issue.id})` : "";
+    console.warn(`Recent registry row ${issue.position}${identity}: ${issue.reason}`);
+  }
+}
+
 function setLandingStatusHidden(hidden) {
   landingStatusHidden = hidden;
   const status = document.querySelector("#status");
@@ -428,7 +456,9 @@ function setLandingSuppressed(suppressed) {
 async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
+  const warning = registryWarningNode();
   try {
+    if (warning) warning.hidden = true;
     status.className = "status";
     status.textContent = "Reading the Palomar database…";
     setLandingStatusHidden(false);
@@ -439,6 +469,7 @@ async function renderIndex() {
     // entries into this bounded newest-first document. Rendering the selection
     // therefore costs one summary read, not one record read per card.
     const recent = await loadRecent(databaseBase);
+    const issues = recentValidationIssues(recent);
     const entries = recent.entries;
     landingMatches = entries.map((entry) => ({ entry, blob: searchBlob(entry) }));
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
@@ -450,11 +481,21 @@ async function renderIndex() {
     );
     if (!entries.length) {
       setLandingStatusHidden(false);
-      status.textContent =
-        "The telescope is ready. No entries have been registered yet; the first registered result will appear here automatically.";
-      status.classList.add("empty");
+      if (issues.omitted) {
+        status.textContent = issues.omitted === 1
+          ? "1 registry entry could not be displayed."
+          : `${issues.omitted} registry entries could not be displayed.`;
+        status.classList.add("warning");
+      } else {
+        status.textContent =
+          "The telescope is ready. No entries have been registered yet; the first registered result will appear here automatically.";
+        status.classList.add("empty");
+      }
+      showRecentIssues(issues);
+      if (warning) warning.hidden = true;
       return true;
     }
+    showRecentIssues(issues);
     setLandingStatusHidden(true);
     status.textContent = "";
     status.className = "status";
@@ -647,6 +688,7 @@ async function renderIndex() {
     update();
     return true;
   } catch (error) {
+    if (warning) warning.hidden = true;
     setLandingStatusHidden(false);
     status.textContent = `The registry could not be loaded: ${error.message}`;
     status.className = "status error";

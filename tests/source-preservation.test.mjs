@@ -9,7 +9,12 @@ import {
   sourceLocation,
   topSourceLocation,
 } from "../assets/source-preservation.mjs";
-import { validateAvailability, validateEntry, validateRecent } from "../assets/security.mjs";
+import {
+  recentValidationIssues,
+  validateAvailability,
+  validateEntry,
+  validateRecent,
+} from "../assets/security.mjs";
 import {
   COMMIT,
   availabilityEndpoint,
@@ -289,12 +294,11 @@ test("recent presentation also uses the mapping captured by validation", () => {
   assert.equal(topSourceLocation(record, null).archiveRepository, acceptedFork);
 });
 
-test("a rejected recent document leaves its earlier rows unusable", () => {
+test("duplicate recent identities leave every ambiguous row unusable", () => {
   const first = recentRow();
-  assert.throws(
-    () => validateRecent(recent([first, recentRow()])),
-    /more than once/,
-  );
+  const projection = validateRecent(recent([first, recentRow()]));
+  assert.deepEqual(projection.entries, []);
+  assert.equal(recentValidationIssues(projection).omitted, 2);
   assert.throws(
     () => topSourceLocation(first, null),
     /was not validated/,
