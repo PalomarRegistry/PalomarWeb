@@ -72,9 +72,12 @@ export const AVAILABILITY_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const availabilityIndexes = new WeakMap();
 const validatedSourceRecords = new WeakMap();
 const recentRenderIndexes = new WeakMap();
+const recentIssueIndexes = new WeakMap();
+
+class RegistryDataError extends Error {}
 
 function fail(message) {
-  throw new Error(`invalid registry data: ${message}`);
+  throw new RegistryDataError(`invalid registry data: ${message}`);
 }
 
 export function validatedSourceMapping(record, repository, revision) {
@@ -177,6 +180,25 @@ function distinctStringArray(value, field, pattern = null) {
     fail(`${field} contains a malformed value`);
   }
   return items;
+}
+
+/**
+ * Classification fields needed by presentation.
+ *
+ * Cardinality, uniqueness, and exact schema shape are producer policy. The
+ * browser only requires arrays of codes it can turn into usable subject links.
+ */
+function validateClassification(value, field) {
+  const classification = object(value, field);
+  const arxiv = stringArray(classification.arxiv, `${field}.arxiv`);
+  const msc2020 = stringArray(classification.msc2020, `${field}.msc2020`);
+  if (arxiv.some((code) => !ARXIV_RE.test(code))) {
+    fail(`${field}.arxiv contains a malformed code`);
+  }
+  if (msc2020.some((code) => !MSC2020_RE.test(code))) {
+    fail(`${field}.msc2020 contains a malformed code`);
+  }
+  return classification;
 }
 
 function commit(value, field) {
@@ -295,152 +317,131 @@ export function recentRendersUrl(databaseBase) {
 /**
  * What is new, from `recent.json`.
  *
- * Each row is the publisher's exact, self-contained landing-card projection of
- * one validated canonical entry. The deliberately small nested objects carry
- * every field a card renders and no record-only fields. Besides that complete
- * shape, this document claims to be the newest current versions and no more
- * than the publisher's bound of them, so coverage and ordering are checked too.
+ * Each accepted row has every field a card needs to render and link safely.
+ * Producer policy is checked before publication; one unusable row here is
+ * omitted rather than turning every independent sibling into an error page.
  */
-export function validateRecent(value) {
-  const document = exactObject(value, ["schema_version", "entries"], "recent");
-  if (document.schema_version !== RECENT_SCHEMA_VERSION) {
-    fail(`unsupported recent schema_version ${String(document.schema_version)}`);
+function validateRecentRow(value, position) {
+  const field = `recent.entries[${position}]`;
+  const summary = object(value, field);
+  const id = string(summary.id, `${field}.id`);
+  if (!ID_RE.test(id)) fail(`${field}.id is malformed`);
+  const version = integer(summary.version, `${field}.version`);
+  boundedString(summary.title, `${field}.title`, 300);
+  if (summary.abstract !== undefined) boundedString(summary.abstract, `${field}.abstract`, 10_000);
+  if (summary.status !== "registered") fail(`${field}.status is not registered`);
+  const expectedPath = `entries/${id}-v${version}.json`;
+  if (summary.path !== expectedPath) fail(`${field}.path must be ${expectedPath}`);
+  integer(summary.versions, `${field}.versions`);
+  instant(summary.published_at, `${field}.published_at`);
+
+  for (const [authorPosition, authorValue] of array(summary.authors, `${field}.authors`).entries()) {
+    const authorField = `${field}.authors[${authorPosition}]`;
+    string(object(authorValue, authorField).name, `${authorField}.name`);
   }
-  const entries = array(document.entries, "recent.entries");
-  if (entries.length > RECENT_ITEMS) fail("recent carries more rows than it may");
-  const seen = new Set();
-  const sourceReceipts = [];
-  let previous = null;
-  for (const [position, value] of entries.entries()) {
-    const field = `recent.entries[${position}]`;
-    const summary = exactObject(value, [
-      "abstract",
-      "authors",
-      "classification",
-      "formalization",
-      "id",
-      "path",
-      "preservation",
-      "published_at",
-      "source",
-      "status",
-      "title",
-      "trust",
-      "version",
-      "versions",
-    ], field);
-    const id = string(summary.id, `${field}.id`);
-    if (!ID_RE.test(id)) fail(`recent.entries[${position}].id is malformed`);
-    const version = integer(summary.version, `${field}.version`);
-    boundedString(summary.title, `${field}.title`, 300);
-    boundedString(summary.abstract, `${field}.abstract`, 10_000);
-    if (summary.status !== "registered") fail(`recent.entries[${position}].status is not registered`);
-    const expectedPath = `entries/${id}-v${version}.json`;
-    if (summary.path !== expectedPath) {
-      fail(`recent.entries[${position}].path must be ${expectedPath}`);
-    }
-    integer(summary.versions, `${field}.versions`);
-    const publishedAt = string(summary.published_at, `${field}.published_at`);
-    // An instant, and only an instant. This is the record's `registered_at`,
-    // which the schema requires of every version. A date was tolerated while a
-    // row could fall back to `first_registered_on`, and a date read as an instant is
-    // midnight, so such a row would sort ahead of everything registered that
-    // day with nothing to say why.
-    if (!TIMESTAMP_RE.test(publishedAt)) {
-      fail(`recent.entries[${position}].published_at is malformed`);
-    }
-    const moment = Date.parse(publishedAt);
-    if (Number.isNaN(moment) ||
-        new Date(moment).toISOString().replace(".000Z", "Z") !== publishedAt) {
-      fail(`recent.entries[${position}].published_at is malformed`);
-    }
-    if (previous !== null &&
-        (moment > previous.moment || (moment === previous.moment && id > previous.id))) {
-      fail("recent is not in newest-first order");
-    }
-    previous = { moment, id };
-    // One row per result, because these are the current versions: the same
-    // identifier twice means this is not the selection it says it is.
-    if (seen.has(id)) fail(`recent names ${id} more than once`);
-    seen.add(id);
 
-    const authors = array(summary.authors, `${field}.authors`);
-    if (!authors.length) fail(`${field}.authors must be a non-empty array`);
-    for (const [authorPosition, authorValue] of authors.entries()) {
-      const authorField = `${field}.authors[${authorPosition}]`;
-      const author = exactObject(authorValue, ["name"], authorField);
-      string(author.name, `${authorField}.name`);
-    }
+  validateClassification(summary.classification, `${field}.classification`);
+  const formalization = object(summary.formalization, `${field}.formalization`);
+  stringArray(formalization.theorem_names, `${field}.formalization.theorem_names`);
+  const trust = object(summary.trust, `${field}.trust`);
+  if (!["high", "qualified"].includes(trust.level)) fail(`${field}.trust.level is invalid`);
 
-    const classification = exactObject(
-      summary.classification,
-      ["arxiv", "msc2020"],
-      `${field}.classification`,
-    );
-    const arxiv = distinctStringArray(
-      classification.arxiv,
-      `${field}.classification.arxiv`,
-      ARXIV_RE,
-    );
-    if (arxiv.length > 2) fail(`${field}.classification.arxiv has more than 2 codes`);
-    const msc2020 = distinctStringArray(
-      classification.msc2020,
-      `${field}.classification.msc2020`,
-      MSC2020_RE,
-    );
-    if (msc2020.length > 8) fail(`${field}.classification.msc2020 has more than 8 codes`);
-    const formalization = exactObject(
-      summary.formalization,
-      ["theorem_names"],
-      `${field}.formalization`,
-    );
-    distinctStringArray(formalization.theorem_names, `${field}.formalization.theorem_names`);
-    const trust = exactObject(summary.trust, ["level"], `${field}.trust`);
-    if (!["high", "qualified"].includes(trust.level)) fail(`${field}.trust.level is invalid`);
+  const source = object(summary.source, `${field}.source`);
+  const repository = string(source.repository, `${field}.source.repository`);
+  if (!REPOSITORY_RE.test(repository)) fail(`${field}.source.repository is malformed`);
+  commit(string(source.commit, `${field}.source.commit`), `${field}.source.commit`);
+  if (source.project_path !== null && source.project_path !== undefined) {
+    safeRepositoryPath(source.project_path, `${field}.source.project_path`);
+  }
 
-    const source = exactObject(
-      summary.source,
-      ["repository", "commit", "project_path"],
-      `${field}.source`,
-    );
-    const repository = string(source.repository, `${field}.source.repository`);
-    if (!REPOSITORY_RE.test(repository)) fail(`${field}.source.repository is malformed`);
-    commit(string(source.commit, `${field}.source.commit`), `${field}.source.commit`);
-    if (source.project_path !== null) safeRepositoryPath(source.project_path, `${field}.source.project_path`);
-
-    const preservation = exactObject(
-      summary.preservation,
-      ["repositories"],
-      `${field}.preservation`,
-    );
-    const repositories = array(preservation.repositories, `${field}.preservation.repositories`);
-    if (repositories.length !== 1) fail(`${field}.preservation must contain one source mapping`);
-    const mapping = exactObject(repositories[0], [
-      "source_repository",
-      "commit",
-      "fork_repository",
-    ], `${field}.preservation.repositories[0]`);
-    if (typeof mapping.source_repository !== "string" ||
-        mapping.source_repository.toLowerCase() !== repository.toLowerCase() ||
-        mapping.commit !== source.commit ||
-        typeof mapping.fork_repository !== "string" ||
-        !REPOSITORY_RE.test(mapping.fork_repository) ||
-        !mapping.fork_repository.startsWith("PalomarArchive/")) {
-      fail(`${field}.preservation does not match source`);
-    }
-    const key = `${mapping.source_repository.toLowerCase()}\0${mapping.commit}`;
-    sourceReceipts.push({
+  const preservation = object(summary.preservation, `${field}.preservation`);
+  const repositories = array(preservation.repositories, `${field}.preservation.repositories`);
+  const matching = repositories.filter((mapping) =>
+    mapping && typeof mapping === "object" && !Array.isArray(mapping) &&
+    typeof mapping.source_repository === "string" &&
+    mapping.source_repository.toLowerCase() === repository.toLowerCase() &&
+    mapping.commit === source.commit);
+  if (matching.length !== 1) fail(`${field}.preservation does not match source`);
+  const [mapping] = matching;
+  if (typeof mapping.fork_repository !== "string" ||
+      !REPOSITORY_RE.test(mapping.fork_repository) ||
+      !mapping.fork_repository.startsWith("PalomarArchive/")) {
+    fail(`${field}.preservation does not match source`);
+  }
+  const key = `${mapping.source_repository.toLowerCase()}\0${mapping.commit}`;
+  return {
+    id,
+    summary,
+    receipt: {
       record: summary,
       repositories,
       index: new Map([[key, sourceMappingSnapshot(mapping)]]),
-    });
+    },
+  };
+}
+
+export function validateRecent(value) {
+  const source = object(value, "recent");
+  if (source.schema_version !== RECENT_SCHEMA_VERSION) {
+    fail(`unsupported recent schema_version ${String(source.schema_version)}`);
   }
-  // Mark rows only after the complete projection succeeds. A reference to an
-  // early row from a later-rejected document must not become presentation data.
-  for (const receipt of sourceReceipts) {
-    validatedSourceRecords.set(receipt.record, receipt);
+  const rawEntries = array(source.entries, "recent.entries");
+  const details = [];
+  let omitted = Math.max(0, rawEntries.length - RECENT_ITEMS);
+  if (omitted) {
+    details.push(Object.freeze({
+      id: null,
+      position: RECENT_ITEMS,
+      reason: `${omitted} rows exceed the ${RECENT_ITEMS}-card presentation limit`,
+    }));
   }
+
+  const candidates = [];
+  for (const [position, raw] of rawEntries.slice(0, RECENT_ITEMS).entries()) {
+    try {
+      candidates.push({ ...validateRecentRow(raw, position), position });
+    } catch (error) {
+      if (!(error instanceof RegistryDataError)) throw error;
+      omitted += 1;
+      details.push(Object.freeze({
+        id: typeof raw?.id === "string" && ID_RE.test(raw.id) ? raw.id : null,
+        position,
+        reason: error.message,
+      }));
+    }
+  }
+
+  const counts = new Map();
+  for (const { id } of candidates) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const accepted = [];
+  for (const candidate of candidates) {
+    if (counts.get(candidate.id) !== 1) {
+      omitted += 1;
+      details.push(Object.freeze({
+        id: candidate.id,
+        position: candidate.position,
+        reason: `invalid registry data: recent names ${candidate.id} more than once`,
+      }));
+      continue;
+    }
+    accepted.push(candidate.summary);
+    validatedSourceRecords.set(candidate.receipt.record, candidate.receipt);
+  }
+
+  const document = { schema_version: source.schema_version, entries: accepted };
+  recentIssueIndexes.set(document, Object.freeze({
+    received: rawEntries.length,
+    omitted,
+    details: Object.freeze(details),
+  }));
   return document;
+}
+
+/** Diagnostics for a validated landing projection, kept outside public JSON. */
+export function recentValidationIssues(document) {
+  const issues = recentIssueIndexes.get(document);
+  if (!issues) fail("recent document was not validated");
+  return issues;
 }
 
 /**
@@ -963,19 +964,7 @@ function validateSubjectRow(value, field, { kind, code, abstract }) {
   );
   instant(row.published_at, `${field}.published_at`);
   if (abstract) boundedString(row.abstract, `${field}.abstract`, 10_000);
-  const classification = exactObject(
-    row.classification,
-    ["arxiv", "msc2020"],
-    `${field}.classification`,
-  );
-  const arxiv = distinctStringArray(classification.arxiv, `${field}.classification.arxiv`, ARXIV_RE);
-  if (arxiv.length > 2) fail(`${field}.classification.arxiv has more than 2 codes`);
-  const msc2020 = distinctStringArray(
-    classification.msc2020,
-    `${field}.classification.msc2020`,
-    MSC2020_RE,
-  );
-  if (msc2020.length > 8) fail(`${field}.classification.msc2020 has more than 8 codes`);
+  const classification = validateClassification(row.classification, `${field}.classification`);
   if (!classification[SUBJECT_CLASSIFICATION_FIELDS[kind]].includes(code)) {
     fail(`${field} is not classified ${code}`);
   }
@@ -1402,27 +1391,13 @@ export function validateEntry(entry, summary) {
     fail("entry.registered_at does not match summary.published_at");
   }
 
-  for (const [position, value] of array(entry.authors, "entry.authors").entries()) {
+  const entryAuthors = array(entry.authors, "entry.authors");
+  if (!entryAuthors.length) fail("entry.authors must not be empty");
+  for (const [position, value] of entryAuthors.entries()) {
     string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
   }
 
-  {
-    const classification = object(entry.classification, "entry.classification");
-    const arxiv = stringArray(classification.arxiv, "entry.classification.arxiv");
-    const msc2020 = stringArray(classification.msc2020, "entry.classification.msc2020");
-    if (arxiv.length < 1 || arxiv.length > 2 || new Set(arxiv).size !== arxiv.length) {
-      fail("entry.classification.arxiv must contain one or two unique codes");
-    }
-    if (msc2020.length < 1 || msc2020.length > 8 || new Set(msc2020).size !== msc2020.length) {
-      fail("entry.classification.msc2020 must contain one to eight unique codes");
-    }
-    if (arxiv.some((code) => !ARXIV_RE.test(code))) {
-      fail("entry.classification.arxiv contains a malformed code");
-    }
-    if (msc2020.some((code) => !MSC2020_RE.test(code))) {
-      fail("entry.classification.msc2020 contains a malformed code");
-    }
-  }
+  validateClassification(entry.classification, "entry.classification");
 
   // A published record names the submission, and nothing about the person who
   // sent it. There is no submitter field to display, by construction.
@@ -1469,6 +1444,13 @@ export function validateEntry(entry, summary) {
       const item = object(sourceRecord, `entry.provenance.mathematical_sources[${position}]`);
       string(item.title, `entry.provenance.mathematical_sources[${position}].title`);
       array(item.authors, `entry.provenance.mathematical_sources[${position}].authors`);
+      if (item.identifier !== undefined) {
+        boundedString(
+          item.identifier,
+          `entry.provenance.mathematical_sources[${position}].identifier`,
+          2048,
+        );
+      }
       if (item.contributors !== undefined) {
         const contributors = array(
           item.contributors,

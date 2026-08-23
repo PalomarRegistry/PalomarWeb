@@ -107,7 +107,9 @@
             Palomar record to know exactly what they need to audit (the statement),
             and what is being ensured by Lean. Further, comparator allows Palomar
             to securely check the proof (even in the face of adversarial Lean
-            proofs).
+            proofs). Palomar also replays every exported proof through a second,
+            independently implemented kernel (<code>nanoda</code>) as well as
+            Lean’s own, and publishes the exact commit of each with the entry.
           </li>
           <li>
             Every submission must have a

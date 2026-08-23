@@ -144,6 +144,23 @@
         </p>
       </section>
 
+      <section id="ai-generated-submissions">
+        <h2>Are AI-generated submissions allowed?</h2>
+        <p>
+          Yes. A formalization may be written by a person, produced by AI, or
+          any mixture of the two. The
+          <a href="https://github.com/mathlib-initiative/formalization.yaml"><code>formalization.yaml</code></a>
+          file must record the automation methods used, including models,
+          framework, and tooling, or <code>manual</code> for formalizations not
+          using any automation.
+        </p>
+        <p>
+          Additionally, submitters must either be a responsible author or
+          maintainer of the substantive formalization, or have approval from
+          one — see <a href="/how-to-submit">how to submit</a>.
+        </p>
+      </section>
+
       <section id="disagreeing-with-the-review">
         <h2>I disagree with the review’s assessment of my result. What can I do?</h2>
         <p>
@@ -418,7 +435,7 @@
         <p>
           Palomar was initially incubated by the
           <a href="https://lean-fro.org/">Lean FRO</a> and
-          <a href="https://icarm.math.brown.edu/">ICARM</a>. Palomar launches
+          <a href="https://icarm.io/">ICARM</a>. Palomar launches
           with three distinct groups, even though their initial memberships
           overlap. The complete role and access contract is maintained in
           <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/docs/governance.md">Palomar Policy</a>.
@@ -451,6 +468,24 @@
           These memberships may change as the project develops. Kim Morrison
           is the initial point of contact.
           Questions and proposals are welcome in the
+          <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
+        </p>
+      </section>
+
+      <section id="repository-hosting">
+        <h2>Does a Palomar submission have to be hosted by GitHub?</h2>
+        <p>
+          Currently, yes, for technical reasons. Palomar requires a public
+          GitHub repository and a full commit SHA to initiate a submission:
+          We also query Github to ensure the submitter has write access
+          to the registered repository. The proof project’s own dependencies are not
+          restricted this way — any pinned, publicly readable Git repository may
+          be used — but the submitted snapshot itself must be on GitHub.
+        </p>
+        <p>
+          We are open to supporting other hosts in future if there is enough
+          demand to merit the added code complexity. If you are interested,
+          please raise the issue in the
           <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
         </p>
       </section>
