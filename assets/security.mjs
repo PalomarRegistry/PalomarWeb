@@ -1412,11 +1412,11 @@ export function validateEntry(entry, summary) {
     const classification = object(entry.classification, "entry.classification");
     const arxiv = stringArray(classification.arxiv, "entry.classification.arxiv");
     const msc2020 = stringArray(classification.msc2020, "entry.classification.msc2020");
-    if (arxiv.length < 1 || arxiv.length > 2 || new Set(arxiv).size !== arxiv.length) {
-      fail("entry.classification.arxiv must contain one or two unique codes");
+    if (arxiv.length < 1 || arxiv.length > 8 || new Set(arxiv).size !== arxiv.length) {
+      fail("entry.classification.arxiv must contain one to eight unique codes");
     }
-    if (msc2020.length < 1 || msc2020.length > 8 || new Set(msc2020).size !== msc2020.length) {
-      fail("entry.classification.msc2020 must contain one to eight unique codes");
+    if (msc2020.length > 8 || new Set(msc2020).size !== msc2020.length) {
+      fail("entry.classification.msc2020 must contain at most eight unique codes");
     }
     if (arxiv.some((code) => !ARXIV_RE.test(code))) {
       fail("entry.classification.arxiv contains a malformed code");
