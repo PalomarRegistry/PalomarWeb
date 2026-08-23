@@ -382,7 +382,7 @@ export function validateRecent(value) {
       `${field}.classification.arxiv`,
       ARXIV_RE,
     );
-    if (arxiv.length > 2) fail(`${field}.classification.arxiv has more than 2 codes`);
+    if (arxiv.length > 8) fail(`${field}.classification.arxiv has more than 8 codes`);
     const msc2020 = distinctStringArray(
       classification.msc2020,
       `${field}.classification.msc2020`,
@@ -969,7 +969,7 @@ function validateSubjectRow(value, field, { kind, code, abstract }) {
     `${field}.classification`,
   );
   const arxiv = distinctStringArray(classification.arxiv, `${field}.classification.arxiv`, ARXIV_RE);
-  if (arxiv.length > 2) fail(`${field}.classification.arxiv has more than 2 codes`);
+  if (arxiv.length > 8) fail(`${field}.classification.arxiv has more than 8 codes`);
   const msc2020 = distinctStringArray(
     classification.msc2020,
     `${field}.classification.msc2020`,
