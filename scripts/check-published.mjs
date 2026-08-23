@@ -16,6 +16,7 @@ import { readFile } from "node:fs/promises";
 import { shippedFiles } from "./build-site.mjs";
 import {
   entryRecordUrl,
+  recentValidationIssues,
   subjectHeadUrl,
   validateBrowseHead,
   validateBrowsePage,
@@ -134,6 +135,7 @@ async function fetchJson(url, fetcher, policy) {
 }
 
 const PUBLIC_VALIDATORS = {
+  recentValidationIssues,
   validateBrowseHead,
   validateBrowsePage,
   validateBrowseYear,
@@ -156,6 +158,12 @@ export async function publicDataState(
     const recent = validators.validateRecent(
       await fetchJson(new URL("recent.json", base), fetcher, policy),
     );
+    if (validators.recentValidationIssues) {
+      const issues = validators.recentValidationIssues(recent);
+      if (issues.omitted) {
+        throw new Error(`recent.json contains ${issues.omitted} unusable rows`);
+      }
+    }
     const recentRenders = validators.validateRecentRenders(
       await fetchJson(new URL("recent-renders.json", base), fetcher, policy),
     );

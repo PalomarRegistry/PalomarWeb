@@ -1,5 +1,9 @@
+import {
+  CLIPBOARD_RESET_DELAY_MS,
+  createClipboard,
+} from "./clipboard.mjs";
+
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-const RESET_DELAY_MS = 1600;
 
 function linkIcon() {
   const svg = document.createElementNS(SVG_NAMESPACE, "svg");
@@ -17,35 +21,11 @@ function linkIcon() {
   return svg;
 }
 
-function fallbackCopy(text) {
-  const previousFocus = document.activeElement;
-  const input = document.createElement("textarea");
-  input.value = text;
-  input.className = "clipboard-fallback";
-  document.body.append(input);
-  input.select();
-  input.setSelectionRange(0, text.length);
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    input.remove();
-    previousFocus?.focus();
-  }
-}
-
-async function copyText(text) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // The fallback supports browsers that expose but deny the Clipboard API.
-    }
-  }
-  return fallbackCopy(text);
-}
+const { announce: announceClipboard, copyText } = createClipboard({
+  document,
+  navigator,
+  window,
+});
 
 function anchorTarget(heading) {
   if (heading.id) return heading.id;
@@ -55,10 +35,7 @@ function anchorTarget(heading) {
 const status = document.querySelector("#anchor-status");
 
 function announce(message) {
-  status.textContent = "";
-  window.requestAnimationFrame(() => {
-    status.textContent = message;
-  });
+  announceClipboard(status, message);
 }
 
 for (const heading of document.querySelectorAll("main.about h2, main.about h3")) {
@@ -85,7 +62,8 @@ for (const heading of document.querySelectorAll("main.about h2, main.about h3"))
       announce(`Could not copy link to ${label}`);
       resetTimer = window.setTimeout(() => {
         anchor.title = "Copy link to this section";
-      }, RESET_DELAY_MS);
+        status.textContent = "";
+      }, CLIPBOARD_RESET_DELAY_MS);
       return;
     }
     anchor.classList.add("copied");
@@ -94,6 +72,7 @@ for (const heading of document.querySelectorAll("main.about h2, main.about h3"))
     resetTimer = window.setTimeout(() => {
       anchor.classList.remove("copied");
       anchor.title = "Copy link to this section";
-    }, RESET_DELAY_MS);
+      status.textContent = "";
+    }, CLIPBOARD_RESET_DELAY_MS);
   });
 }

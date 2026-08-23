@@ -2,6 +2,14 @@ import { safeExternalUrl, safeInternalUrl } from "./security.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
+/** The public URL of one immutable registered snapshot. */
+export function canonicalEntryPageUrl(entry) {
+  const target = new URL("entry", CANONICAL_WEB_BASE);
+  target.searchParams.set("id", entry.id);
+  target.searchParams.set("version", String(entry.version));
+  return safeExternalUrl(target);
+}
+
 /**
  * Bind immutable-version history presentation to the page's DOM and local URL
  * builder. Entry/version validation, route orchestration, and page composition
@@ -23,13 +31,6 @@ export function createEntryHistoryPresentation({ document, localPageUrl, window 
       window.location.href,
     ).href;
     return node;
-  }
-
-  function canonicalEntryPageUrl(entry) {
-    const target = new URL("entry", CANONICAL_WEB_BASE);
-    target.searchParams.set("id", entry.id);
-    target.searchParams.set("version", String(entry.version));
-    return safeExternalUrl(target);
   }
 
   function setCanonicalEntryPage(entry) {
