@@ -460,9 +460,8 @@
         <p>
           Currently, yes, for technical reasons. Palomar requires a public
           GitHub repository and a full commit SHA to initiate a submission:
-          GitHub also provides the account that proves write access to the
-          submitted repository, and the continuous integration that runs
-          mechanical verification. The proof project’s own dependencies are not
+          We also query Github to ensure the submitter has write access
+          to the registered repository. The proof project’s own dependencies are not
           restricted this way — any pinned, publicly readable Git repository may
           be used — but the submitted snapshot itself must be on GitHub.
         </p>
