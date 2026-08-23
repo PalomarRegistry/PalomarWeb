@@ -9,6 +9,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://data.palomar-registry.org; frame-src 'self' https://data.palomar-registry.org; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
     <title>How to submit — Palomar</title>
     <link rel="canonical" href="https://palomar-registry.org/how-to-submit">
+    <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/style.css">
   </head>
@@ -227,6 +228,13 @@
           authorship, which is why you are asked about your relationship to the
           formalization separately.
         </p>
+        <p>
+          Machines should not drive the form. The short map of how to read,
+          search, and submit is
+          <a href="/llms.txt"><code>llms.txt</code></a>;
+          the agent protocol itself is
+          <a href="https://submit.palomar-registry.org/llms.txt">on the submission host</a>.
+        </p>
         <h3 id="what-is-public">What is public, and what is not</h3>
         <p>
           Public from verification onward: your repository, your commit, the
@@ -335,7 +343,7 @@
 
     <footer>
       <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
-      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="/privacy">Privacy</a><a href="https://data.palomar-registry.org/recent.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
+      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><a href="https://data.palomar-registry.org/recent.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
     </footer>
     <script type="module" src="assets/about.js"></script>
   </body>

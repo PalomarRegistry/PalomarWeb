@@ -14,7 +14,7 @@ export const htmlFiles = [
   "statement.html",
   "subject.html",
 ];
-const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg"];
+const publicFiles = [...htmlFiles, "site.webmanifest", "favicon.svg", "llms.txt"];
 const browserModuleFiles = [
   "about.js",
   "app.js",
