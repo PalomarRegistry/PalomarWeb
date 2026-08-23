@@ -318,14 +318,16 @@ test("recent applies the canonical producer's cheap presentation bounds", () => 
   }
 
   const classifications = recent();
-  classifications.entries[0].classification.arxiv = ["math.CO", "math.NT"];
+  classifications.entries[0].classification.arxiv = [
+    "math.CO", "math.NT", "cs.DM", "math.AG", "math.AT", "math.CA", "math.CT", "math.LO",
+  ];
   classifications.entries[0].classification.msc2020 = Array.from(
     { length: 8 },
     (_unused, position) => `10A${String(position + 1).padStart(2, "0")}`,
   );
   assert.equal(validateRecent(classifications), classifications);
-  classifications.entries[0].classification.arxiv.push("cs.DM");
-  assert.throws(() => validateRecent(classifications), /more than 2 codes/);
+  classifications.entries[0].classification.arxiv.push("math.MG");
+  assert.throws(() => validateRecent(classifications), /more than 8 codes/);
   classifications.entries[0].classification.arxiv.pop();
   classifications.entries[0].classification.msc2020.push("10A09");
   assert.throws(() => validateRecent(classifications), /more than 8 codes/);
