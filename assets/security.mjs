@@ -1402,7 +1402,9 @@ export function validateEntry(entry, summary) {
     fail("entry.registered_at does not match summary.published_at");
   }
 
-  for (const [position, value] of array(entry.authors, "entry.authors").entries()) {
+  const entryAuthors = array(entry.authors, "entry.authors");
+  if (!entryAuthors.length) fail("entry.authors must not be empty");
+  for (const [position, value] of entryAuthors.entries()) {
     string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
   }
 
@@ -1469,6 +1471,13 @@ export function validateEntry(entry, summary) {
       const item = object(sourceRecord, `entry.provenance.mathematical_sources[${position}]`);
       string(item.title, `entry.provenance.mathematical_sources[${position}].title`);
       array(item.authors, `entry.provenance.mathematical_sources[${position}].authors`);
+      if (item.identifier !== undefined) {
+        boundedString(
+          item.identifier,
+          `entry.provenance.mathematical_sources[${position}].identifier`,
+          2048,
+        );
+      }
       if (item.contributors !== undefined) {
         const contributors = array(
           item.contributors,
