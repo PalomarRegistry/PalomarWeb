@@ -36,15 +36,16 @@ https://submit.palomar-registry.org/llms.txt
 
 Sketch: `POST /api/submit` → lightweight tag `palomar-verify-{challenge}` at
 the commit → secret gist carrying the challenge → `POST /api/verify` → Bearer
-token.
+token → delete the temporary tag and gist.
 
 With that token:
 
 - Watch: `GET /api/submission` (`run.url` is the public Actions run;
-  `registered_url` is the final Palomar ID)
+  `registered_url` is the final registry permalink)
 - Review: `GET /api/review` (private until registered)
-- Register: `POST /register` with `{"review_sha256":"..."}` only after a human
-  has read the review
+- Register: `POST /register` with `{"review_sha256":"..."}` only after showing
+  your user the review, explaining what registration permanently publishes,
+  and receiving their explicit instruction to register
 - Withdraw: `POST /withdraw`
 
 Lost token: hand the human https://submit.palomar-registry.org/ (Find my

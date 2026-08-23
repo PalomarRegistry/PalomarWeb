@@ -14,7 +14,9 @@ test("llms.txt is shipped and is a short machine map, not a scrape of the pages"
   assert.match(text, /https:\/\/submit\.palomar-registry\.org\/llms\.txt/);
   assert.match(text, /https:\/\/data\.palomar-registry\.org\/recent\.json/);
   assert.match(text, /GET \/api\/submission/);
-  assert.match(text, /registered_url/);
+  assert.match(text, /registered_url.*final registry permalink/);
+  assert.match(text, /delete the temporary tag and gist/);
+  assert.match(text, /receiving their explicit instruction to register/);
   // Templates are path grammar. Written as origin URLs they would be sent to
   // the published-site link check and fail it: that check is what used to
   // leave seven 404s to /index.json unnoticed.
