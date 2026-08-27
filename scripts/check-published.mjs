@@ -18,6 +18,7 @@ import { validateChallengeMetadata } from "../assets/challenge-presentation.mjs"
 import { challengeMetadataUrl } from "../assets/rendering.js";
 import {
   entryRecordUrl,
+  recentValidationIssues,
   subjectHeadUrl,
   validateBrowseHead,
   validateBrowsePage,
@@ -137,6 +138,7 @@ async function fetchJson(url, fetcher, policy) {
 }
 
 const PUBLIC_VALIDATORS = {
+  recentValidationIssues,
   validateChallengeMetadata,
   validateBrowseHead,
   validateBrowsePage,
@@ -160,6 +162,12 @@ export async function publicDataState(
     const recent = validators.validateRecent(
       await fetchJson(new URL("recent.json", base), fetcher, policy),
     );
+    if (validators.recentValidationIssues) {
+      const issues = validators.recentValidationIssues(recent);
+      if (issues.omitted) {
+        throw new Error(`recent.json contains ${issues.omitted} unusable rows`);
+      }
+    }
     const recentRenders = validators.validateRecentRenders(
       await fetchJson(new URL("recent-renders.json", base), fetcher, policy),
     );

@@ -19,10 +19,12 @@
   agrees with everything. Without a checkout you get hard failures and no hint
   why, so this is the first thing to check.
 
-- `recent.json` is an exact closed producer/consumer contract. Shape changes
-  require a coordinated producer-first deployment from PalomarDatabase before
-  the matching Web deployment. Do not add an old-shape or per-entry fallback;
-  invalid projections are supposed to fail closed.
+- `recent.json` has a strict document envelope and independently validated
+  landing rows. Browser validation is limited to fields needed to render and
+  link safely; PalomarDatabase owns policy such as classification cardinality,
+  uniqueness, and exact additive shape. An unusable row is omitted with private
+  diagnostics and a visible count, while deployment health still rejects any
+  omission so producer drift is caught without taking down valid siblings.
 
 - The subject surfaces—`subjects/<kind>/<code>.json`, its `<year>.json`, and its
   `<day>/<page>.json`—are the same closed contract, and are the same document

@@ -3,6 +3,7 @@ import {
   REPOSITORY_ROLE_LABELS,
   isLoopbackHostname,
   pinnedRepositoryDirectoryUrl,
+  recentValidationIssues,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
@@ -21,6 +22,8 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
+import { mathematicalSourceUrl } from "./bibliography.mjs";
+import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
@@ -126,9 +129,10 @@ function theoremNames(entry) {
 }
 
 function classification(entry) {
+  const distinct = (value) => Array.isArray(value) ? [...new Set(value)] : [];
   return {
-    arxiv: Array.isArray(entry.classification?.arxiv) ? entry.classification.arxiv : [],
-    msc2020: Array.isArray(entry.classification?.msc2020) ? entry.classification.msc2020 : [],
+    arxiv: distinct(entry.classification?.arxiv),
+    msc2020: distinct(entry.classification?.msc2020),
   };
 }
 
@@ -392,6 +396,32 @@ function entryCard(
 let landingSuppressed = false;
 let landingStatusHidden = document.querySelector("#status")?.hidden ?? true;
 
+function registryWarningNode() {
+  let warning = document.querySelector("#registry-warning");
+  if (warning) return warning;
+  const status = document.querySelector("#status");
+  if (!status) return null;
+  warning = el("div", "status warning");
+  warning.id = "registry-warning";
+  warning.hidden = true;
+  warning.setAttribute("role", "status");
+  status.before(warning);
+  return warning;
+}
+
+function showRecentIssues(issues) {
+  const warning = registryWarningNode();
+  if (!warning) return;
+  warning.hidden = issues.omitted === 0;
+  warning.textContent = issues.omitted === 1
+    ? "1 registry entry could not be displayed."
+    : `${issues.omitted} registry entries could not be displayed.`;
+  for (const issue of issues.details) {
+    const identity = issue.id ? ` (${issue.id})` : "";
+    console.warn(`Recent registry row ${issue.position}${identity}: ${issue.reason}`);
+  }
+}
+
 function setLandingStatusHidden(hidden) {
   landingStatusHidden = hidden;
   const status = document.querySelector("#status");
@@ -426,7 +456,9 @@ function setLandingSuppressed(suppressed) {
 async function renderIndex() {
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
+  const warning = registryWarningNode();
   try {
+    if (warning) warning.hidden = true;
     status.className = "status";
     status.textContent = "Reading the Palomar database…";
     setLandingStatusHidden(false);
@@ -437,6 +469,7 @@ async function renderIndex() {
     // entries into this bounded newest-first document. Rendering the selection
     // therefore costs one summary read, not one record read per card.
     const recent = await loadRecent(databaseBase);
+    const issues = recentValidationIssues(recent);
     const entries = recent.entries;
     landingMatches = entries.map((entry) => ({ entry, blob: searchBlob(entry) }));
     // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
@@ -448,11 +481,21 @@ async function renderIndex() {
     );
     if (!entries.length) {
       setLandingStatusHidden(false);
-      status.textContent =
-        "The telescope is ready. No entries have been registered yet; the first registered result will appear here automatically.";
-      status.classList.add("empty");
+      if (issues.omitted) {
+        status.textContent = issues.omitted === 1
+          ? "1 registry entry could not be displayed."
+          : `${issues.omitted} registry entries could not be displayed.`;
+        status.classList.add("warning");
+      } else {
+        status.textContent =
+          "The telescope is ready. No entries have been registered yet; the first registered result will appear here automatically.";
+        status.classList.add("empty");
+      }
+      showRecentIssues(issues);
+      if (warning) warning.hidden = true;
       return true;
     }
+    showRecentIssues(issues);
     setLandingStatusHidden(true);
     status.textContent = "";
     status.className = "status";
@@ -645,6 +688,7 @@ async function renderIndex() {
     update();
     return true;
   } catch (error) {
+    if (warning) warning.hidden = true;
     setLandingStatusHidden(false);
     status.textContent = `The registry could not be loaded: ${error.message}`;
     status.className = "status error";
@@ -1076,6 +1120,7 @@ const {
   versionHistory,
   versionNotice,
 } = createEntryHistoryPresentation({ document, localPageUrl, window });
+const { citationSection } = createCitationPresentation({ document, navigator, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
 function assurance(kind, ...content) {
@@ -1195,6 +1240,15 @@ function classificationSection(entry) {
   return section;
 }
 
+function mathematicalSourceIdentifier(identifier, sourceLabel) {
+  if (!identifier) return null;
+  const resolved = mathematicalSourceUrl(identifier);
+  if (!resolved) return el("code", "", identifier);
+  const link = externalLink(resolved.kind === "url" ? "Source link" : identifier, resolved.href);
+  if (resolved.kind === "url") link.setAttribute("aria-label", `Open source for ${sourceLabel}`);
+  return link;
+}
+
 function provenanceSection(entry, sourceAvailability) {
   const provenance = entry.provenance;
   const section = el("section", "entry-provenance");
@@ -1267,11 +1321,9 @@ function provenanceSection(entry, sourceAvailability) {
       const label = source.authors.length
         ? `${source.authors.map((author) => author.name).join(", ")}: ${source.title}`
         : source.title;
-      if (source.identifier?.startsWith("https://")) {
-        item.append(externalLink(label, source.identifier));
-      } else {
-        item.append(el("span", "", label));
-      }
+      item.append(el("span", "source-citation", label));
+      const identifier = mathematicalSourceIdentifier(source.identifier, label);
+      if (identifier) item.append(" · ", identifier);
       if (source.contributors?.length) {
         item.append(el(
           "span",
@@ -1282,9 +1334,6 @@ function provenanceSection(entry, sourceAvailability) {
         ));
       }
       item.append(el("span", "source-relationship", ` — ${source.relationship}`));
-      if (source.identifier && !source.identifier.startsWith("https://")) {
-        item.append(el("code", "", source.identifier));
-      }
       sources.append(item);
     }
     disclosure.append(sources);
@@ -1524,6 +1573,7 @@ async function renderEntry(
     externalLink,
   });
   const versionNoticeNode = versionNotice(entry, currentVersion);
+  const citation = citationSection(entry);
   const history = versionHistory(entry, versions, currentVersion);
   content.append(heading);
   // A broken or degraded source affects every link on the page and remains a
@@ -1543,6 +1593,7 @@ async function renderEntry(
     solutionMetadata(entry, challenge.metadata, sourceAvailability),
     provenanceSection(entry, sourceAvailability),
     classificationSection(entry),
+    citation,
     editorial,
     history,
   );

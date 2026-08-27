@@ -257,42 +257,38 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
   ]);
 });
 
-test("old, partial, and malformed recent summaries fail closed before rendering", async ({ page }) => {
-  let variant = "old";
-  const entryRequests = [];
-  page.on("request", (request) => {
-    const path = new URL(request.url()).pathname;
-    if (path.startsWith("/database/entries/")) entryRequests.push(path);
-  });
+test("an unusable recent row is omitted without hiding its valid siblings", async ({ page }) => {
   await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
     const document = await response.json();
-    if (variant === "old") {
-      document.entries = document.entries.map((row) => ({
-        id: row.id,
-        version: row.version,
-        title: row.title,
-        status: row.status,
-        path: row.path,
-        published_at: row.published_at,
-        versions: row.versions,
-      }));
-    } else if (variant === "partial") {
-      delete document.entries[0].abstract;
-    } else {
-      document.entries[0].preservation.repositories[0].commit = "2".repeat(40);
-    }
+    document.entries[0].preservation.repositories[0].commit = "2".repeat(40);
     await route.fulfill({ response, json: document });
   });
 
-  for (const selected of ["old", "partial", "malformed"]) {
-    variant = selected;
-    await page.goto(`/?database=${database}&contract-case=${selected}`);
-    await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
-    await expect(page.locator("#status")).toHaveClass(/error/);
-    await expect(page.locator("#status")).toContainText("The registry could not be loaded");
-  }
-  expect(entryRequests).toEqual([]);
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(1);
+  await expect(page.locator("#registry-warning")).toBeVisible();
+  await expect(page.locator("#registry-warning")).toHaveText(
+    "1 registry entry could not be displayed.",
+  );
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
+  await page.locator("#arxiv-query").fill("math.NT");
+  await expect(page.locator("#registry-warning")).toBeVisible();
+});
+
+test("an entirely unusable recent projection is not reported as an empty registry", async ({ page }) => {
+  await page.route("**/database/recent.json", async (route) => {
+    const response = await route.fetch();
+    const document = await response.json();
+    for (const row of document.entries) row.status = "draft";
+    await route.fulfill({ response, json: document });
+  });
+
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
+  await expect(page.locator("#status")).toHaveClass(/warning/);
+  await expect(page.locator("#status")).toContainText("registry entries could not be displayed");
+  await expect(page.locator("#status")).not.toContainText("No entries have been registered");
 });
 
 test("an unavailable recent summary reports failure instead of emptiness", async ({ page }) => {
@@ -663,33 +659,92 @@ test("a thin wrapper says where the mathematics is before anything else", async 
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
-test("mathematical sources show non-author contributor roles", async ({ page }) => {
+test("mathematical sources format known identifiers and preserve unknown ones", async ({ page }) => {
   await page.route(
     "**/database/entries/PALOMAR-2026-07-29-000123-v2.json",
     async (route) => {
       const response = await route.fetch();
       const entry = await response.json();
       entry.provenance.result_origin = "source-based";
-      entry.provenance.mathematical_sources = [{
-        title: "Kourovka Notebook",
-        authors: [{ name: "Solution Author" }],
-        contributors: [
-          { name: "Wilhelm Magnus", role: "problem-proposer" },
-          { name: "Evgenii Khukhro", role: "editor" },
-        ],
-        relationship: "formalizes",
-      }];
+      entry.provenance.mathematical_sources = [
+        {
+          title: "Kourovka Notebook",
+          authors: [{ name: "Solution Author" }],
+          contributors: [
+            { name: "Wilhelm Magnus", role: "problem-proposer" },
+            { name: "Evgenii Khukhro", role: "editor" },
+          ],
+          identifier: "arXiv:2605.20695",
+          relationship: "formalizes",
+        },
+        {
+          title: "A journal source",
+          authors: [],
+          identifier: "doi:10.1000/a?#b",
+          relationship: "background",
+        },
+        {
+          title: "An older arXiv source",
+          authors: [],
+          identifier: "arXiv:math.AG/0211159",
+          relationship: "background",
+        },
+        {
+          title: "A DOI preserved without normalization",
+          authors: [],
+          identifier: "doi:10.1000/../10.9999/other",
+          relationship: "background",
+        },
+        {
+          title: "A preserved custom source",
+          authors: [],
+          identifier: "bibliographic:custom-reference",
+          relationship: "background",
+        },
+        {
+          title: "An unsafe link preserved as text",
+          authors: [],
+          identifier: "https://reader:secret@example.invalid/source",
+          relationship: "background",
+        },
+        {
+          title: "A linked web source",
+          authors: [],
+          identifier: "https://example.invalid/a/very/long/source/url",
+          relationship: "background",
+        },
+        {
+          title: "A source without an identifier",
+          authors: [],
+          relationship: "background",
+        },
+      ];
       await route.fulfill({ response, json: entry });
     },
   );
 
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
-  await expect(page.locator(".provenance-sources li")).toContainText(
+  await expect(page.locator(".provenance-sources li").first()).toContainText(
     "Solution Author: Kourovka Notebook",
   );
   await expect(page.locator(".source-contributors")).toHaveText(
     " — Wilhelm Magnus (problem-proposer); Evgenii Khukhro (editor)",
   );
+  await expect(page.getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/2605.20695");
+  await expect(page.getByRole("link", { name: "doi:10.1000/a?#b", includeHidden: true }))
+    .toHaveAttribute("href", "https://doi.org/10.1000/a%3F%23b");
+  await expect(page.getByRole("link", { name: "arXiv:math.AG/0211159", includeHidden: true }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/math.AG/0211159");
+  await expect(page.getByRole("link", {
+    name: "Open source for A linked web source",
+    includeHidden: true,
+  })).toHaveAttribute("href", "https://example.invalid/a/very/long/source/url");
+  await expect(page.locator(".provenance-sources code")).toHaveText([
+    "doi:10.1000/../10.9999/other",
+    "bibliographic:custom-reference",
+    "https://reader:secret@example.invalid/source",
+  ]);
 });
 
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
@@ -894,7 +949,7 @@ test("entry schema v1 fails closed before rendering", async ({ page }) => {
   await expect(page.locator("#status")).toContainText("unsupported entry schema_version 1");
 });
 
-test("a recent row without the required preservation mapping fails closed", async ({ page }) => {
+test("a recent row without the required preservation mapping is omitted", async ({ page }) => {
   await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
     const recent = await response.json();
@@ -903,9 +958,11 @@ test("a recent row without the required preservation mapping fails closed", asyn
   });
   await page.goto(`/?database=${database}`);
 
-  await expect(page.locator(".entry-card")).toHaveCount(0);
-  await expect(page.locator("#status")).toHaveClass(/error/);
-  await expect(page.locator("#status")).toContainText("preservation must be an object");
+  await expect(page.locator(".entry-card")).toHaveCount(1);
+  await expect(page.locator("#registry-warning")).toHaveText(
+    "1 registry entry could not be displayed.",
+  );
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
 });
 
 test("a card says the original is unavailable exactly when the manifest says so", async ({ page }) => {
@@ -1011,6 +1068,35 @@ test("entry pages list immutable versions and flag superseded snapshots", async 
     "href",
     "https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1",
   );
+});
+
+test("entry pages offer a version-pinned BibTeX citation that can be copied", async ({ context, page }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(
+    `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+  );
+
+  const citation = page.locator(".entry-citation");
+  await expect(citation.getByRole("heading", { name: "Cite this" })).toBeVisible();
+  await expect(citation.locator("pre")).toHaveAttribute("tabindex", "0");
+  await expect(citation.locator("pre")).toHaveAttribute("role", "group");
+  await expect(citation.locator("pre")).toHaveAttribute("aria-labelledby", "citation-heading");
+  await expect(citation.locator("code")).toHaveText(
+    `@misc{palomar-2026-07-29-000123-v1,
+  author = {{Example}},
+  title = {{Fixture PALOMAR-2026-07-29-000123 version 1}},
+  year = {2026},
+  howpublished = {Palomar, PALOMAR-2026-07-29-000123 v1},
+  url = {https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1},
+}`,
+  );
+
+  await citation.getByRole("button", { name: "Copy BibTeX" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(
+    "@misc{palomar-2026-07-29-000123-v1,",
+  );
+  await expect(citation.getByRole("status")).toHaveText("Copied BibTeX citation.");
+  await expect(citation.getByRole("button", { name: "Copied!" })).toHaveClass(/copied/);
 });
 
 test("a single current version has no supersession treatment", async ({ page }) => {

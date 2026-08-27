@@ -1,0 +1,52 @@
+# Palomar
+
+> A public registry of Lean 4 formalizations whose proofs were machine-checked
+> at one pinned GitHub commit. This site is the human explorer. Machines read
+> JSON; they do not scrape these pages.
+
+## Read and search
+
+Use https://data.palomar-registry.org (CORS `*`, CC0, no query strings).
+
+- Newest results: https://data.palomar-registry.org/recent.json
+- RSS: https://data.palomar-registry.org/feed.xml
+- Record schema: https://data.palomar-registry.org/schema-v3.json
+- Search stopwords: https://data.palomar-registry.org/search/stopwords.json
+- Browse head: https://data.palomar-registry.org/browse/index.json
+- Licence: https://data.palomar-registry.org/LICENSE
+- Policy: https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md
+
+Path grammar on that origin, substituting the braces. These are not documents
+to fetch as written:
+
+- `/versions/PALOMAR-YYYY-MM-DD-NNNNNN.json`
+- `/entries/PALOMAR-YYYY-MM-DD-NNNNNN-vN.json`
+- `/repositories/{owner}/{repo}.json` (lowercase)
+- `/subjects/arxiv/{code}.json` and `/subjects/msc/{code}.json`
+- `/search/t/{word}/head.json` after dropping stopwords
+- `/registration-identities/{sha256}.json`
+
+Cite `id` and integer `version`. An unversioned URL floats to latest. Human
+permalink: `/entry?id=PALOMAR-…&version=N`.
+
+## Submit, watch, register
+
+Do not drive the browser form or GitHub OAuth. The agent protocol is
+https://submit.palomar-registry.org/llms.txt
+
+Sketch: `POST /api/submit` → lightweight tag `palomar-verify-{challenge}` at
+the commit → secret gist carrying the challenge → `POST /api/verify` → Bearer
+token → delete the temporary tag and gist.
+
+With that token:
+
+- Watch: `GET /api/submission` (`run.url` is the public Actions run;
+  `registered_url` is the final registry permalink)
+- Review: `GET /api/review` (private until registered)
+- Register: `POST /register` with `{"review_sha256":"..."}` only after showing
+  your user the review, explaining what registration permanently publishes,
+  and receiving their explicit instruction to register
+- Withdraw: `POST /withdraw`
+
+Lost token: hand the human https://submit.palomar-registry.org/ (Find my
+submissions).

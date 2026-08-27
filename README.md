@@ -1,6 +1,8 @@
 # Palomar Web
 
 The read-only human view of Palomar's machine-readable public registry.
+A short machine-facing map of how to read, search, and submit is served at
+[`/llms.txt`](https://palomar-registry.org/llms.txt).
 
 The site is static and deployed with GitHub Pages. It reads
 <https://data.palomar-registry.org/> at runtime, so publishing a database change
@@ -95,18 +97,16 @@ to the newest matching version in the bounded candidate set, so a result is not
 repeated. A posting still says neither that a version is current nor how many
 active versions exist, so search cards make neither claim; landing cards get
 both facts from `recent.json`.
-Each `recent.json` row is the exact landing-card projection built from a
-validated canonical entry: identity, current/history count, registration time,
-title, abstract, authors, classifications, theorem names, trust, source commit
-and project path, and the source's preservation mapping. The browser validates
-that complete closed shape and renders it directly. A normal landing load is
-therefore exactly two dynamic data requests—`recent.json` and the optional
-source-availability manifest—with no per-card entry reads. Invalid or partial
-projections fail closed before any card is rendered.
-This is one exact closed producer/consumer contract, not an extensible summary:
-a shape change must be published by PalomarDatabase first and followed by the
-matching website deployment. The consumer deliberately has no old-row fallback
-or per-entry recovery path.
+Each `recent.json` row projects the fields a landing card needs from a canonical
+entry: identity, current/history count, registration time, title, abstract,
+authors, classifications, theorem names, trust, source commit and project path,
+and the source's preservation mapping. The browser checks the envelope and the
+fields needed to render and link safely, but leaves schema policy such as
+classification cardinality to PalomarDatabase. A normal landing load is still
+exactly two dynamic data requests—`recent.json` and the optional
+source-availability manifest—with no per-card entry reads. An unusable row is
+omitted with a visible count while valid siblings continue to render; transport
+and unsupported-schema failures still fail the page.
 The `browse/index.json`, `browse/<year>.json`, and
 `browse/<day>/<page>.json` hierarchy is another exact, closed contract owned by
 PalomarDatabase and consumed by Web. Its head declares years and aggregate
