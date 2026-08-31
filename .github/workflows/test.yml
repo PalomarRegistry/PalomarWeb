@@ -71,9 +71,20 @@ jobs:
       - run: npm test
         env:
           PALOMAR_DATABASE_CHECKOUT: ${{ github.workspace }}/palomar-database
+      - name: Cost publication changes only its generated page
+        if: github.event_name == 'push'
+        run: |
+          git fetch --depth=1 origin main
+          changed=$(git diff --name-only origin/main...HEAD)
+          if [ "$changed" != costs.html ]; then
+            echo "Cost publication may change only costs.html; found:" >&2
+            echo "$changed" >&2
+            exit 1
+          fi
       # This is intentionally broader than a page load: traverse browse and
       # every per-ID history, then validate every active public permalink.
       - name: Can Web read every currently published entry version
+        if: github.event_name == 'pull_request'
         run: node scripts/check-published.mjs --data "$PUBLIC_DATA_ORIGIN"
         env:
           PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
@@ -81,6 +92,7 @@ jobs:
       # registry document or the one Policy document selected for link health
       # still exists. A removed document answers 404 to a reader.
       - name: Do monitored linked documents still resolve
+        if: github.event_name == 'pull_request'
         run: node scripts/check-published.mjs --links
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
