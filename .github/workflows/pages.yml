@@ -23,6 +23,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Classify a protected cost-only update
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          cost_only=false
+          if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$BEFORE"...HEAD)
+            if [ "$changed" = costs.html ]; then
+              cost_only=true
+            fi
+          fi
+          echo "PALOMAR_COST_ONLY=$cost_only" >> "$GITHUB_ENV"
       # The canonical database is private. Exercise the contracts through the
       # filtered public snapshot: its schemas and the producer-owned recent
       # projection that the landing page consumes directly.
@@ -75,6 +87,10 @@ jobs:
       # version already satisfies the new consumer. Keep this before the Pages
       # artifact is built or uploaded.
       - name: Can Web read every currently published entry version
+        # A generated costs.html commit already passed the required staging
+        # check and cannot alter any live-data consumer. Do not let unrelated
+        # registry snapshot health hold back its aggregate cost update.
+        if: env.PALOMAR_COST_ONLY != 'true'
         run: node scripts/check-published.mjs --data "$PUBLIC_DATA_ORIGIN"
         env:
           PUBLIC_DATA_ORIGIN: https://data.palomar-registry.org
