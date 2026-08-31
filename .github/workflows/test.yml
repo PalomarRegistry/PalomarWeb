@@ -97,4 +97,4 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
         env:
-          PALOMAR_PREVIOUS_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PALOMAR_PREVIOUS_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
