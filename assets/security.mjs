@@ -63,6 +63,8 @@ const ARXIV_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const LICENSE_PATH_RE = /^(?:licen[cs]e|copying|unlicense|ofl)(?:\.(?:md|markdown|txt))?$/i;
 const TIMESTAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
+const LEGACY_ORCID_RE = /^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9X]{4}$/;
+const CHECKED_ORCID_RE = /^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$/;
 export const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 export const AVAILABILITY_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
@@ -163,6 +165,36 @@ function instant(value, field) {
     fail(`${field} is malformed`);
   }
   return text;
+}
+
+function validOrcidChecksum(identifier) {
+  const compact = identifier.replaceAll("-", "");
+  if (compact.length !== 16 || !/^[0-9]{15}[0-9X]$/.test(compact)) return false;
+  let total = 0;
+  for (const character of compact.slice(0, 15)) total = (total + Number(character)) * 2;
+  const result = (12 - (total % 11)) % 11;
+  return compact.at(-1) === (result === 10 ? "X" : String(result));
+}
+
+function validatePerson(value, field) {
+  const person = object(value, field);
+  string(person.name, `${field}.name`);
+  const hasOrcid = Object.hasOwn(person, "orcid");
+  const hasCheck = Object.hasOwn(person, "orcid_record_checked_at");
+  if (hasCheck && !hasOrcid) {
+    fail(`${field} carries an ORCID record check without an ORCID iD`);
+  }
+  if (hasOrcid) {
+    const identifier = string(person.orcid, `${field}.orcid`);
+    if (!LEGACY_ORCID_RE.test(identifier) ||
+        (hasCheck && (!CHECKED_ORCID_RE.test(identifier) || !validOrcidChecksum(identifier)))) {
+      fail(`${field}.orcid is malformed`);
+    }
+  }
+  if (hasCheck) {
+    instant(person.orcid_record_checked_at, `${field}.orcid_record_checked_at`);
+  }
+  return person;
 }
 
 function stringArray(value, field) {
@@ -1394,7 +1426,7 @@ export function validateEntry(entry, summary) {
   const entryAuthors = array(entry.authors, "entry.authors");
   if (!entryAuthors.length) fail("entry.authors must not be empty");
   for (const [position, value] of entryAuthors.entries()) {
-    string(object(value, `entry.authors[${position}]`).name, `entry.authors[${position}].name`);
+    validatePerson(value, `entry.authors[${position}]`);
   }
 
   validateClassification(entry.classification, "entry.classification");
@@ -1433,9 +1465,9 @@ export function validateEntry(entry, summary) {
       fail("entry.provenance.responsible_maintainers must not be empty");
     }
     for (const [position, maintainer] of maintainers.entries()) {
-      string(
-        object(maintainer, `entry.provenance.responsible_maintainers[${position}]`).name,
-        `entry.provenance.responsible_maintainers[${position}].name`,
+      validatePerson(
+        maintainer,
+        `entry.provenance.responsible_maintainers[${position}]`,
       );
     }
     const substantiveRelationships = new Set(["formalizes", "adapts", "independently-proves"]);
@@ -1443,7 +1475,15 @@ export function validateEntry(entry, summary) {
     for (const [position, sourceRecord] of sources.entries()) {
       const item = object(sourceRecord, `entry.provenance.mathematical_sources[${position}]`);
       string(item.title, `entry.provenance.mathematical_sources[${position}].title`);
-      array(item.authors, `entry.provenance.mathematical_sources[${position}].authors`);
+      for (const [authorPosition, author] of array(
+        item.authors,
+        `entry.provenance.mathematical_sources[${position}].authors`,
+      ).entries()) {
+        validatePerson(
+          author,
+          `entry.provenance.mathematical_sources[${position}].authors[${authorPosition}]`,
+        );
+      }
       if (item.identifier !== undefined) {
         boundedString(
           item.identifier,

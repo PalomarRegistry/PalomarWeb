@@ -528,6 +528,27 @@ test("registered records require authors and bounded source identifiers", () => 
   );
 });
 
+test("registered people validate ORCID identifiers and optional check evidence", () => {
+  const checked = entry();
+  assert.equal(validateEntry(checked, summary()), checked);
+
+  const legacy = entry();
+  delete legacy.authors[0].orcid_record_checked_at;
+  legacy.authors[0].orcid = "0000-0000-0000-000X";
+  assert.equal(validateEntry(legacy, summary()), legacy);
+
+  const malformed = entry();
+  malformed.authors[0].orcid = "0000-0002-1825-0098";
+  assert.throws(() => validateEntry(malformed, summary()), /authors\[0\]\.orcid is malformed/);
+
+  const unpaired = entry();
+  delete unpaired.authors[0].orcid;
+  assert.throws(
+    () => validateEntry(unpaired, summary()),
+    /record check without an ORCID iD/,
+  );
+});
+
 test("preservation must cover every immutable source", () => {
   const missing = entry();
   missing.preservation.repositories.pop();

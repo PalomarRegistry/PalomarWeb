@@ -47,7 +47,11 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "status": "registered",
         "title": f"Fixture {identifier} version {version}",
         "abstract": "A browser confinement fixture for the registry, about the quasicoherent behaviour of a synthetic result.",
-        "authors": [{"name": "Example"}],
+        "authors": [{
+            "name": "Example",
+            "orcid": "0000-0002-1825-0097",
+            "orcid_record_checked_at": "2026-08-31T12:00:00Z",
+        }],
         "classification": classification,
         "provenance": {
             "result_origin": "original",
