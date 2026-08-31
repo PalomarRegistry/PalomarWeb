@@ -709,11 +709,19 @@ html, body {{ background: var(--palomar-paper); color: var(--palomar-ink); }}
             path,
         ):
             metadata = {
-                "schema_version": 2,
+                "schema_version": 3,
                 "imports": ["Mathlib"],
                 "module_doc": "# Fixture module\n\nParsed outside the Verso renderer.",
                 "declarations": ["Example.theorem"],
                 "solution_imports": ["ExampleDependency"],
+                "audit_declarations": [
+                    {
+                        "name": "Example.theorem",
+                        "declaration": (
+                            "theorem Example.theorem : Eq Nat.zero Nat.zero"
+                        ),
+                    }
+                ],
             }
             self.send_bytes(json.dumps(metadata).encode(), "application/json")
             return
