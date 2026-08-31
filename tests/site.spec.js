@@ -45,6 +45,29 @@ async function runSearch(page, query) {
   await expect(page.locator("#search-spinner")).toBeHidden();
 }
 
+async function expectNoHorizontalOverflow(page, label) {
+  await expect.poll(
+    () => page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth),
+    { message: `${label} should not widen the page` },
+  ).toBe(0);
+}
+
+async function expectMinimumTargets(locator, label) {
+  const undersized = await locator.evaluateAll((nodes) => nodes.flatMap((node) => {
+    const box = node.getBoundingClientRect();
+    if (!box.width || !box.height || getComputedStyle(node).visibility === "hidden") return [];
+    if (box.width >= 43.5 && box.height >= 43.5) return [];
+    return [{
+      element: `${node.tagName.toLowerCase()}${node.className ? `.${String(node.className).trim().replace(/\s+/g, ".")}` : ""}`,
+      text: (node.getAttribute("aria-label") || node.textContent || "").trim().slice(0, 80),
+      width: box.width,
+      height: box.height,
+    }];
+  }));
+  expect(undersized, label).toEqual([]);
+}
+
 /**
  * Which entry schema the previous deployment's validator would accept.
  *
@@ -140,6 +163,147 @@ test("submission-guide headings expose hoverable links that copy their section U
   );
 });
 
+test("long reference pages expose an adaptive table of contents", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  for (const path of ["/about", "/how-to-submit", "/privacy"]) {
+    await page.goto(path);
+    const toc = page.locator(".page-toc");
+    await expect(toc).toBeVisible();
+    await expect(toc).toHaveAttribute("open", "");
+    await expect(toc.locator("nav")).toHaveAttribute("aria-label", "On this page");
+    await expect(toc.locator("nav a")).toHaveCount(
+      await page.locator("main.about h2, main.about h3").count(),
+    );
+  }
+  await expect(page.locator(".page-toc ol ol a")).toHaveCount(0);
+
+  await page.goto("/how-to-submit");
+  expect(await page.locator(".page-toc ol ol a").count()).toBeGreaterThan(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/about");
+  const toc = page.locator(".page-toc");
+  await expect(toc).not.toHaveAttribute("open", "");
+  await toc.locator("summary").click();
+  await expect(toc).toHaveAttribute("open", "");
+  await toc.locator('a[href="#why-now"]').click();
+  await expect(toc).not.toHaveAttribute("open", "");
+  await expect(page).toHaveURL(/\/about#why-now$/);
+  await expect(page.locator("#why-now")).toBeInViewport();
+
+  await page.goto("/privacy#how-long");
+  await expect(page.locator("#how-long")).toBeInViewport();
+  await page.goto("/statement");
+  await expect(page.locator(".page-toc")).toHaveCount(0);
+});
+
+test("search mode removes unresolved hero furniture and restores it on clear", async ({ page }) => {
+  await page.goto(`/?database=${database}&q=synthetically`);
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
+  await expect(page.locator("body")).toHaveClass(/registry-searching/);
+  await expect(page.locator(".hero-copy")).toBeHidden();
+  await expect(page.locator(".metric-row")).toBeHidden();
+  await expect(page.locator(".hero")).toHaveCSS("padding-top", "20px");
+  await expect(page.locator(".registry-section")).toHaveCSS("padding-top", "16px");
+
+  await runSearch(page, "");
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
+  await expect(page.locator("body")).not.toHaveClass(/registry-searching/);
+  await expect(page.locator(".hero-copy")).toBeVisible();
+  await expect(page.locator(".metric-row")).toBeVisible();
+  await expect(page.locator("#metric-results")).toHaveText("2");
+  await expect(page.locator("#metric-projects")).toHaveText("1");
+});
+
+test("user-facing pages do not overflow narrow mobile viewports", async ({ page }) => {
+  await page.route("**/database/recent.json", async (route) => {
+    const response = await route.fetch();
+    const recent = await response.json();
+    recent.entries[0].title =
+      "example/AnIntentionallyLongUnbrokenRepositoryNameThatMustWrapInsideTheRegistryCard";
+    recent.entries[0].abstract +=
+      " AnIntentionallyLongGeneratedDeclarationNameThatMirrorsProductionFormalizationTextWithoutChangingItsLength.";
+    await route.fulfill({ response, json: recent });
+  });
+
+  const surfaces = [
+    { name: "registry", path: `/?database=${database}`, ready: ".entry-card" },
+    { name: "search", path: `/?database=${database}&q=synthetically`, ready: "#search-results .entry-card" },
+    {
+      name: "entry",
+      path: `/entry?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+      ready: ".entry-heading",
+    },
+    {
+      name: "render",
+      path: `/render?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+      ready: "#render-content:not([hidden])",
+    },
+    {
+      name: "subject",
+      path: `/subject?kind=arxiv&code=math.AG&database=${database}`,
+      ready: ".subject-row",
+    },
+    { name: "statement", path: "/statement", ready: "main" },
+    { name: "about", path: "/about", ready: ".page-toc" },
+    { name: "how to submit", path: "/how-to-submit", ready: ".page-toc" },
+    { name: "privacy", path: "/privacy", ready: ".page-toc" },
+    { name: "404", path: "/404.html", ready: "main" },
+  ];
+
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const surface of surfaces) {
+      await page.goto(surface.path);
+      await page.locator(surface.ready).first().waitFor({ state: "visible" });
+      await expectNoHorizontalOverflow(page, `${surface.name} at ${width}px`);
+    }
+  }
+});
+
+test("navigation and action controls expose mobile-sized targets", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator(".entry-card")).toHaveCount(2);
+  await expectMinimumTargets(
+    page.locator(
+      "header nav a, .registry-search input, .filter, .category-filters input, " +
+      ".date-filters select, .date-filters input, .card-footer a, footer .footer-links a",
+    ),
+    "registry controls should have 44px targets",
+  );
+
+  await page.goto("/about");
+  await page.locator(".page-toc > summary").click();
+  await expectMinimumTargets(
+    page.locator("header nav a, .page-toc > summary, .page-toc a, .heading-anchor, .cta > a, footer a"),
+    "reference-page navigation should have 44px targets",
+  );
+
+  await page.goto(`/entry?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+  await expect(page.locator(".entry-heading")).toBeVisible();
+  await expectMinimumTargets(
+    page.locator(
+      "header nav a, main summary, .challenge-links a, .challenge-playground-button, " +
+      ".citation-copy, footer a",
+    ),
+    "entry controls should have 44px targets",
+  );
+});
+
+test("the not-found footer stays at the viewport bottom", async ({ page }) => {
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/404.html");
+    await expect.poll(() => page.locator("footer").evaluate((footer) =>
+      Math.round(window.innerHeight - footer.getBoundingClientRect().bottom))).toBe(0);
+    await expectNoHorizontalOverflow(page, `404 at ${viewport.width}px`);
+  }
+});
+
 test("every formalization.yaml mention in the submission guide links to its standard", async ({ page }) => {
   await page.goto("/how-to-submit");
   const standard = "https://github.com/mathlib-initiative/formalization.yaml";
@@ -148,6 +312,7 @@ test("every formalization.yaml mention in the submission guide links to its stan
     const unlinked = [];
     let mentions = 0;
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement.closest(".page-toc")) continue;
       const count = node.textContent.split("formalization.yaml").length - 1;
       mentions += count;
       if (count && node.parentElement.closest("a")?.href !== expected) {

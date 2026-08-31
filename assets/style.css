@@ -129,8 +129,17 @@ a:focus-visible {
 
 nav {
   display: flex;
+  align-items: center;
   gap: 1.2rem;
   font: .9rem/1.3 var(--sans);
+}
+
+nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
 }
 
 nav a.active {
@@ -231,7 +240,7 @@ h3 {
   flex: 1;
   min-width: 14rem;
   max-width: 34rem;
-  min-height: 2.1rem;
+  min-height: 2.75rem;
   padding: .3rem .45rem;
   border: 1px solid var(--field);
   border-radius: 0;
@@ -312,6 +321,19 @@ body.registry-searching #entry-grid {
   display: none;
 }
 
+body.registry-searching .hero-copy,
+body.registry-searching .metric-row {
+  display: none;
+}
+
+body.registry-searching .hero {
+  padding-block: 1.25rem;
+}
+
+body.registry-searching .registry-section {
+  padding-top: 1rem;
+}
+
 .category-filters input:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--link);
@@ -344,7 +366,7 @@ button:focus-visible {
 }
 
 .category-filters input {
-  min-height: 2rem;
+  min-height: 2.75rem;
   width: 9rem;
   padding: .25rem .4rem;
   border: 1px solid var(--field);
@@ -368,7 +390,7 @@ button:focus-visible {
 
 .date-filters select,
 .date-filters input {
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: .25rem .4rem;
   border: 1px solid var(--field);
   border-radius: 0;
@@ -429,7 +451,8 @@ button:focus-visible {
 }
 
 .filter {
-  min-height: 2rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   padding: .25rem .5rem;
   border: 1px solid var(--field);
   border-radius: 0;
@@ -504,11 +527,21 @@ button:focus-visible {
 
 .entry-card h3 {
   margin: .35rem 0 .25rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.entry-card h3 a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  overflow-wrap: anywhere;
 }
 
 .card-abstract {
   max-width: 76ch;
   margin-bottom: .75rem;
+  overflow-wrap: anywhere;
 }
 
 .card-meta {
@@ -543,6 +576,13 @@ button:focus-visible {
   font-size: .85rem;
 }
 
+.card-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
 .repo-link {
   overflow-wrap: anywhere;
 }
@@ -565,13 +605,71 @@ footer {
 
 .footer-links {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 1rem;
+  min-width: 0;
+}
+
+.footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
 }
 
 .about,
 .faq {
   max-width: 52rem;
   padding: 2.5rem 0 4rem;
+}
+
+.page-toc {
+  margin-top: 1.75rem;
+  border-block: 1px solid var(--line);
+  font: .9rem/1.35 var(--sans);
+}
+
+.page-toc > summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.page-toc > summary:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.page-toc nav {
+  display: block;
+  font: inherit;
+}
+
+.page-toc ol {
+  margin: 0;
+  padding: 0 0 .75rem 1.35rem;
+}
+
+.page-toc ol ol {
+  padding-bottom: 0;
+}
+
+.page-toc a {
+  min-height: 2.75rem;
+}
+
+@media (min-width: 701px) {
+  .page-toc > nav > ol {
+    columns: 2;
+    column-gap: 2rem;
+  }
+
+  .page-toc > nav > ol > li {
+    break-inside: avoid;
+  }
 }
 
 /* The founding statement follows the restrained, document-like typography of
@@ -627,12 +725,17 @@ footer {
 }
 
 .faq .anchored-heading {
+  max-width: 100%;
   width: fit-content;
 }
 
 .heading-anchor {
   display: inline-flex;
-  margin-left: .4rem;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: -.5rem -.7rem -.5rem .1rem;
   color: var(--muted);
   opacity: 0;
   text-decoration: none;
@@ -727,6 +830,13 @@ footer {
   border-top: 1px solid var(--line);
 }
 
+.cta > a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
 .meaning-grid article + article {
   margin-top: 1.5rem;
   padding-top: 1.5rem;
@@ -767,6 +877,7 @@ footer {
 .entry-heading h1 {
   margin-top: .5rem;
   font-size: 2rem;
+  overflow-wrap: anywhere;
 }
 
 .version-notice {
@@ -843,6 +954,8 @@ footer {
 }
 
 .citation-copy {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   padding: .4rem .65rem;
   border: 1px solid var(--line);
   background: var(--paper);
@@ -874,6 +987,10 @@ footer {
   border-top: 1px solid var(--line);
 }
 
+.entry-page summary {
+  min-height: 2.75rem;
+}
+
 /* Dense sections open on demand. The section heading is the summary, so the
    collapsed page reads as a list of section titles and the disclosure marker
    is the affordance; the verification table's toggle is the small text below
@@ -887,6 +1004,7 @@ footer {
      to a line of its own above the section title. Drawing it here keeps the
      affordance beside the words it opens. */
   list-style: none;
+  min-height: 2.75rem;
 }
 
 .section-collapse > summary::-webkit-details-marker {
@@ -928,6 +1046,16 @@ footer {
   font: .9rem/1.4 var(--sans);
 }
 
+.challenge-links a,
+.data-link,
+.standalone-action,
+body[data-page="not-found"] main a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
 .challenge-metadata {
   margin-bottom: .75rem;
   padding: .75rem;
@@ -942,6 +1070,11 @@ footer {
   margin-top: .45rem;
 }
 
+.challenge-metadata-row .token-list {
+  flex: 1;
+  min-width: 0;
+}
+
 .challenge-module-doc {
   margin-top: .7rem;
   border-top: 1px dotted var(--line);
@@ -951,6 +1084,7 @@ footer {
 .challenge-module-doc summary {
   cursor: pointer;
   font-weight: bold;
+  min-height: 2.75rem;
 }
 
 .challenge-module-doc pre {
@@ -995,6 +1129,8 @@ footer {
   background: var(--paper);
   box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
   color: var(--ink);
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   font: bold .75rem/1.2 var(--sans);
   opacity: 0;
   pointer-events: none;
@@ -1117,6 +1253,7 @@ footer {
 .solution-dependencies summary {
   cursor: pointer;
   font-weight: bold;
+  min-height: 2.75rem;
 }
 
 .dependency-list {
@@ -1189,14 +1326,17 @@ pre {
   display: flex;
   flex-wrap: wrap;
   gap: .35rem;
+  min-width: 0;
 }
 
 .statement-import-line code,
 .token-list code {
+  max-width: 100%;
   padding: .15rem .3rem;
   border: 1px solid var(--token-line);
   background: var(--shade);
   font-size: .8rem;
+  overflow-wrap: anywhere;
 }
 
 .plain-list,
@@ -1278,6 +1418,10 @@ pre {
     flex-wrap: wrap;
   }
 
+  .footer-links {
+    justify-content: flex-start;
+  }
+
   .toolbar {
     width: 100%;
   }
@@ -1305,6 +1449,12 @@ pre {
   .detail-row {
     grid-template-columns: 1fr;
     gap: .15rem;
+  }
+
+  .challenge-metadata-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: .35rem;
   }
 
   .dependency-list {
@@ -1420,6 +1570,15 @@ pre {
 .subject-row h2 {
   margin: .35rem 0 .25rem;
   font-size: 1.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.subject-row h2 a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  overflow-wrap: anywhere;
 }
 
 /* One line rather than the card's stacked label, because a subject row has
@@ -1444,7 +1603,8 @@ pre {
 }
 
 #subject-more {
-  min-height: 2rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   padding: .35rem .7rem;
   border: 1px solid var(--field);
   border-radius: 0;
@@ -1467,6 +1627,13 @@ pre {
    a button and nothing else. */
 #subject-more-status:empty {
   display: none;
+}
+
+body[data-page="not-found"] {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .exact-tombstone {
