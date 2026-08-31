@@ -1,4 +1,4 @@
-export const VERSIONS_SCHEMA_VERSION = 2;
+export const VERSIONS_SCHEMA_VERSION = 3;
 export const RECENT_SCHEMA_VERSION = 2;
 export const BROWSE_SCHEMA_VERSION = 2;
 // A result with five hundred registered versions is a bug, not a history, and
@@ -26,7 +26,13 @@ const BROWSE_MAX_PAGE = Math.ceil(999_999 / BROWSE_PAGE_SERIALS);
 const yearTemplate = (directory) => `${directory}/{year}.json`;
 const pageTemplate = (directory) => `${directory}/{day}/{page}.json`;
 const BROWSE_DIRECTORY = "browse";
-export const ENTRY_SCHEMA_VERSION = 3;
+export const ENTRY_SCHEMA_VERSION = 4;
+const SUPPORTED_ENTRY_SCHEMA_VERSIONS = new Set([3, 4]);
+const CORRECTABLE_REGISTRY_FIELDS = new Set([
+  "title", "abstract", "authors", "classification.arxiv", "classification.msc2020",
+  "provenance.responsible_maintainers", "provenance.mathematical_sources",
+  "provenance.related_formalizations",
+]);
 // The endpoint, not a document. There is no whole-registry document to name
 // any more: every surface is derived from this prefix by the function that
 // knows which one it wants.
@@ -688,10 +694,12 @@ export function availabilityRecord(manifest, repository, revision, now = Date.no
   };
 }
 
-function validateEntrySummary(value, field) {
+function validateEntrySummary(value, field, { corrections = false } = {}) {
+  const keys = ["id", "path", "status", "title", "version"];
+  if (corrections && value?.registry_correction !== undefined) keys.push("registry_correction");
   const summary = exactObject(
     value,
-    ["id", "path", "status", "title", "version"],
+    keys,
     field,
   );
   const id = string(summary.id, `${field}.id`);
@@ -701,6 +709,25 @@ function validateEntrySummary(value, field) {
   if (summary.status !== "registered") fail(`${field}.status is not registered`);
   const expectedPath = `entries/${id}-v${version}.json`;
   if (summary.path !== expectedPath) fail(`${field}.path must be ${expectedPath}`);
+  if (summary.registry_correction !== undefined) {
+    const correction = exactObject(
+      summary.registry_correction,
+      ["changed_fields", "explanation", "generated_by"],
+      `${field}.registry_correction`,
+    );
+    if (correction.generated_by !== "Palomar / Registry correction") {
+      fail(`${field}.registry_correction.generated_by is unsupported`);
+    }
+    boundedString(correction.explanation, `${field}.registry_correction.explanation`, 4000);
+    const changed = stringArray(
+      correction.changed_fields,
+      `${field}.registry_correction.changed_fields`,
+    );
+    if (!changed.length || new Set(changed).size !== changed.length ||
+        changed.some((name) => !CORRECTABLE_REGISTRY_FIELDS.has(name))) {
+      fail(`${field}.registry_correction.changed_fields is malformed`);
+    }
+  }
   return summary;
 }
 
@@ -738,7 +765,7 @@ export function versionsUrl(id, databaseBase) {
  */
 export function validateVersions(value, id) {
   const document = exactObject(value, ["schema_version", "id", "entries"], "version index");
-  if (document.schema_version !== VERSIONS_SCHEMA_VERSION) {
+  if (![2, VERSIONS_SCHEMA_VERSION].includes(document.schema_version)) {
     fail(`unsupported version index schema_version ${String(document.schema_version)}`);
   }
   if (document.id !== id) fail("version index is for a different result");
@@ -748,7 +775,9 @@ export function validateVersions(value, id) {
   let previous = 0;
   for (const [position, row] of entries.entries()) {
     const field = `version index entries[${position}]`;
-    const summary = validateEntrySummary(row, field);
+    const summary = validateEntrySummary(row, field, {
+      corrections: document.schema_version === VERSIONS_SCHEMA_VERSION,
+    });
     if (summary.id !== id) fail(`version index entries[${position}] is a different result`);
     const version = summary.version;
     if (version <= previous) fail("version index is not in increasing version order");
@@ -1394,7 +1423,7 @@ function validateCanonicalRecordLinks(entry) {
 export function validateEntry(entry, summary) {
   object(entry, "entry");
   object(summary, "entry summary");
-  if (entry.schema_version !== ENTRY_SCHEMA_VERSION) {
+  if (!SUPPORTED_ENTRY_SCHEMA_VERSIONS.has(entry.schema_version)) {
     fail(`unsupported entry schema_version ${String(entry.schema_version)}`);
   }
   if (entry.status !== "registered") fail("entry status is not registered");
@@ -1441,7 +1470,7 @@ export function validateEntry(entry, summary) {
 
   {
     const authorization = object(submission.authorization, "entry.submission.authorization");
-    if (!["maintainer", "approved"].includes(authorization.relationship)) {
+    if (!["maintainer", "approved", "palomar-maintainer"].includes(authorization.relationship)) {
       fail("entry.submission.authorization.relationship is not recognized");
     }
     if (authorization.evidence !== undefined) {
@@ -1533,6 +1562,56 @@ export function validateEntry(entry, summary) {
       }
       safeExternalUrl(substantive.tree_url);
     }
+  }
+
+  let proofVersion = version;
+  if (entry.schema_version === 4) {
+    const correction = exactObject(
+      entry.registry_correction,
+      [
+        "based_on", "changed_fields", "evidence_path", "evidence_tree_sha256",
+        "explanation", "generated_by", "kind",
+      ],
+      "entry.registry_correction",
+    );
+    if (submission.authorization.relationship !== "palomar-maintainer" ||
+        correction.kind !== "registry-metadata-correction" ||
+        correction.generated_by !== "Palomar / Registry correction") {
+      fail("entry.registry_correction authority is inconsistent");
+    }
+    const basedOn = exactObject(
+      correction.based_on, ["path", "sha256", "version"],
+      "entry.registry_correction.based_on",
+    );
+    proofVersion = integer(basedOn.version, "entry.registry_correction.based_on.version");
+    if (proofVersion < 1 || proofVersion >= version ||
+        basedOn.path !== `entries/${id}-v${proofVersion}.json`) {
+      fail("entry.registry_correction does not name an earlier baseline version");
+    }
+    digest(basedOn.sha256, "entry.registry_correction.based_on.sha256");
+    digest(correction.evidence_tree_sha256, "entry.registry_correction.evidence_tree_sha256");
+    const expectedCorrectionEvidence =
+      `evidence/${id}-v${version}/${correction.evidence_tree_sha256}/`;
+    if (correction.evidence_path !== expectedCorrectionEvidence) {
+      fail("entry.registry_correction.evidence_path is not canonical");
+    }
+    boundedString(correction.explanation, "entry.registry_correction.explanation", 4000);
+    const changed = stringArray(correction.changed_fields, "entry.registry_correction.changed_fields");
+    if (!changed.length || new Set(changed).size !== changed.length ||
+        changed.some((name) => !CORRECTABLE_REGISTRY_FIELDS.has(name))) {
+      fail("entry.registry_correction.changed_fields is malformed");
+    }
+    if (summary.registry_correction !== undefined) {
+      const projected = summary.registry_correction;
+      if (projected.generated_by !== correction.generated_by ||
+          projected.explanation !== correction.explanation ||
+          JSON.stringify(projected.changed_fields) !== JSON.stringify(changed)) {
+        fail("entry.registry_correction does not match the selected index summary");
+      }
+    }
+  } else if (entry.registry_correction !== undefined ||
+             submission.authorization.relationship === "palomar-maintainer") {
+    fail("schema-v3 entries cannot carry registry corrections");
   }
 
   const source = object(entry.source, "entry.source");
@@ -1673,7 +1752,7 @@ export function validateEntry(entry, summary) {
     const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
     if (seen.has(key)) fail(`entry.preservation.repositories[${position}] is duplicated`);
     seen.add(key);
-    const expectedRef = `refs/tags/palomar/${entry.id}-v${entry.version}/${row.commit}`;
+    const expectedRef = `refs/tags/palomar/${entry.id}-v${proofVersion}/${row.commit}`;
     if (row.ref !== expectedRef) {
       fail(`entry.preservation.repositories[${position}].ref is not canonical`);
     }
@@ -1710,7 +1789,7 @@ export function validateEntry(entry, summary) {
       "entry.verification.evidence_path",
     );
     const expectedEvidencePath =
-      `evidence/${entry.id}-v${entry.version}/${verification.evidence_tree_sha256}/`;
+      `evidence/${entry.id}-v${proofVersion}/${verification.evidence_tree_sha256}/`;
     if (evidencePath !== expectedEvidencePath) {
       fail(`entry.verification.evidence_path must be ${expectedEvidencePath}`);
     }
@@ -1759,7 +1838,7 @@ export function validateEntry(entry, summary) {
 
   const render = object(entry.challenge_render, "entry.challenge_render");
   const treeHash = string(render.artifact_tree_sha256, "entry.challenge_render.artifact_tree_sha256");
-  const expectedPath = `renders/${id}-v${version}/${treeHash}/`;
+  const expectedPath = `renders/${id}-v${proofVersion}/${treeHash}/`;
   if (
     render.format !== "verso-html" ||
     render.entrypoint !== "Challenge/index.html" ||

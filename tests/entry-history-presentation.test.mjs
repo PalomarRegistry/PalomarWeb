@@ -156,3 +156,24 @@ test("history is newest-first, identifies the selected snapshot, and leaves inpu
   ]);
   assert.deepEqual(versions, original);
 });
+
+test("registry corrections disclose their public explanation and exact changed fields", () => {
+  const document = fakeDocument();
+  const { versionHistory } = createEntryHistoryPresentation({ document, localPageUrl, window });
+  const id = "PALOMAR-2026-08-08-000001";
+  const correction = {
+    generated_by: "Palomar / Registry correction",
+    explanation: "Corrected a misspelled author name.",
+    changed_fields: ["authors"],
+  };
+  const history = versionHistory(
+    { id, version: 2 },
+    [{ id, version: 1 }, { id, version: 2, registry_correction: correction }],
+    2,
+  );
+  const disclosure = byTag(history, "details")[0];
+  assert.equal(byTag(disclosure, "summary")[0].textContent, "Registry correction");
+  assert.equal(byTag(disclosure, "summary")[0].title, correction.explanation);
+  assert.match(fullText(disclosure), /Corrected a misspelled author name/);
+  assert.match(fullText(disclosure), /Changed fields: authors/);
+});
