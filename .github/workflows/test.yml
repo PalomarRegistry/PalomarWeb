@@ -2,6 +2,12 @@ name: Test presentation
 
 on:
   pull_request:
+  # The private cost monitor has only Contents access. It stages the exact
+  # generated-page commit here, waits for this required check, then advances
+  # main to the same checked SHA; branch protection remains fully enforced.
+  push:
+    branches:
+      - automation/public-costs
 
 permissions:
   contents: read
@@ -79,4 +85,4 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
         env:
-          PALOMAR_PREVIOUS_REF: ${{ github.event.pull_request.base.sha }}
+          PALOMAR_PREVIOUS_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
