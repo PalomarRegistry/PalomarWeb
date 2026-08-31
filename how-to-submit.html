@@ -212,13 +212,23 @@
           formalization, not merely the wrapper repository. The submission form
           asks which applies; a link or note documenting approval is optional.
         </p>
+        <p>
+          In exceptional circumstances, Palomar's Technical Maintainers may
+          append a registry-correction version to repair public metadata. A
+          correction cannot change the repository, commit, project path,
+          Comparator configuration, or formalization metadata path. Its public
+          version history identifies it as a Registry correction, names the
+          fields changed, and gives the maintainer's explanation. This is an
+          administrative correction, not a new verification or an endorsement
+          of the result.
+        </p>
       </section>
 
       <section id="how-to-submit">
         <h2>How to submit</h2>
         <ol>
           <li>Push the final snapshot to a public GitHub repository and copy its full 40-character commit SHA.</li>
-          <li><a href="https://submit.palomar-registry.org/">Open the submission form</a>. Enter the repository and commit SHA. Leave the optional project, Comparator-config, and metadata paths blank for the normal root layout; fill them only for a nested or non-default layout. Record whether you maintain the substantive formalization or have approval from someone who does, and, for a correction to an existing entry, enter its Palomar ID.</li>
+          <li><a href="https://submit.palomar-registry.org/">Open the submission form</a>. Enter the repository and commit SHA. Leave the optional project, Comparator-config, and metadata paths blank for the normal root layout; fill them only for a nested or non-default layout. Record whether you maintain the substantive formalization or have approval from someone who does. To register an ordinary new version of an existing result, enter its Palomar ID.</li>
           <li>Prove that you can write to the repository you are submitting. In a browser this is a GitHub sign-in: Palomar reads whether that account can push and then discards the token, keeping the account name in its private submission state.</li>
           <li>Keep the status page you are given. Its link is the only way back to your submission: Palomar does not email, and there is no account to sign in to.</li>
         </ol>
