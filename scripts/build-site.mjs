@@ -6,6 +6,7 @@ const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const htmlFiles = [
   "404.html",
   "about.html",
+  "costs.html",
   "entry.html",
   "how-to-submit.html",
   "index.html",
