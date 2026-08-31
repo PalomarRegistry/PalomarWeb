@@ -63,7 +63,8 @@ const ARXIV_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
 const MSC2020_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
 const LICENSE_PATH_RE = /^(?:licen[cs]e|copying|unlicense|ofl)(?:\.(?:md|markdown|txt))?$/i;
 const TIMESTAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
-const ORCID_RE = /^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$/;
+const LEGACY_ORCID_RE = /^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9X]{4}$/;
+const CHECKED_ORCID_RE = /^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$/;
 export const AVAILABILITY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 export const AVAILABILITY_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
@@ -185,7 +186,8 @@ function validatePerson(value, field) {
   }
   if (hasOrcid) {
     const identifier = string(person.orcid, `${field}.orcid`);
-    if (!ORCID_RE.test(identifier) || !validOrcidChecksum(identifier)) {
+    if (!LEGACY_ORCID_RE.test(identifier) ||
+        (hasCheck && (!CHECKED_ORCID_RE.test(identifier) || !validOrcidChecksum(identifier)))) {
       fail(`${field}.orcid is malformed`);
     }
   }

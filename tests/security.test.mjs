@@ -534,6 +534,7 @@ test("registered people validate ORCID identifiers and optional check evidence",
 
   const legacy = entry();
   delete legacy.authors[0].orcid_record_checked_at;
+  legacy.authors[0].orcid = "0000-0000-0000-000X";
   assert.equal(validateEntry(legacy, summary()), legacy);
 
   const malformed = entry();
