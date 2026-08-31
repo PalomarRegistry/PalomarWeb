@@ -824,6 +824,18 @@ test("a thin wrapper says where the mathematics is before anything else", async 
     .toHaveAttribute("href", `https://github.com/${repository}/tree/${commit}`);
 });
 
+test("a checked ORCID record is linked and labelled without claiming identity", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+
+  const link = page.getByRole("link", {
+    name: "Open the ORCID record 0000-0002-1825-0097 for Example",
+  }).first();
+  await expect(link).toHaveAttribute("href", "https://orcid.org/0000-0002-1825-0097");
+  const checked = page.locator(".byline .orcid-record-checked");
+  await expect(checked).toHaveText("✓ ORCID record checked");
+  await expect(checked).toHaveAttribute("title", /does not authenticate the person or prove authorship/);
+});
+
 test("mathematical sources format known identifiers and preserve unknown ones", async ({ page }) => {
   await page.route(
     "**/database/entries/PALOMAR-2026-07-29-000123-v2.json",

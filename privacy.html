@@ -184,6 +184,15 @@
           honest, and the history comes with it.
         </p>
         <p>
+          <strong>How ORCID iDs are checked.</strong> If the repository metadata
+          declares an ORCID iD, mechanical verification sends that public iD to
+          the public ORCID Registry and checks that the same current record is
+          returned. Palomar discards the returned profile and records only the
+          declared iD and the time of the check. The public entry displays that
+          evidence as a record-existence check; it is not authentication of the
+          person, proof that anyone controls the record, or proof of authorship.
+        </p>
+        <p>
           <strong>How you are told.</strong> Not individually. Palomar does not
           write to the people a record names, and for the authors of a cited
           paper it usually has no way to. This page is the notice instead: it
@@ -364,8 +373,10 @@
           supported, handles and ORCIDs; the account that owns the repository;
           and the name and email address in every commit of the preserved fork. The
           declared part really is what a paper or a bibliography carries about
-          the same people, from a public repository, and Palomar does not
-          enrich, index, profile or contact anyone from it. The commit history
+          the same people, from a public repository. Apart from resolving each
+          declared ORCID iD to confirm that its current record exists, Palomar
+          does not enrich, index, profile or contact anyone from it. The ORCID
+          profile response is discarded. The commit history
           is not: nobody puts an email address in a commit in order to be
           catalogued by a registry. It is there because a preserved fork carries
           the history it has, and preserving the exact source is what makes the

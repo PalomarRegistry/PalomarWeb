@@ -124,6 +124,37 @@ function authorNames(entry) {
   return entry.authors.map((author) => author.name).join(", ");
 }
 
+function personPresentation(person) {
+  const content = el("span", "person");
+  content.append(el("span", "person-name", person.name));
+  if (person.orcid) {
+    const link = externalLink(
+      `ORCID ${person.orcid}`,
+      `https://orcid.org/${person.orcid}`,
+      "orcid-id",
+    );
+    link.setAttribute("aria-label", `Open the ORCID record ${person.orcid} for ${person.name}`);
+    content.append(" · ", link);
+    if (person.orcid_record_checked_at) {
+      const checked = el("span", "orcid-record-checked", "✓ ORCID record checked");
+      checked.title =
+        `Palomar found this identifier in the ORCID Registry on ${displayTimestamp(
+          person.orcid_record_checked_at,
+        )}. This checks the record exists; it does not authenticate the person or prove authorship.`;
+      content.append(" ", checked);
+    }
+  }
+  return content;
+}
+
+function appendPeople(target, people) {
+  people.forEach((person, position) => {
+    if (position) target.append(", ");
+    target.append(personPresentation(person));
+  });
+  return target;
+}
+
 function theoremNames(entry) {
   return entry.formalization.theorem_names.join(", ");
 }
@@ -1012,6 +1043,12 @@ function detailRow(label, value) {
   return row;
 }
 
+function peopleDetailRow(label, people) {
+  const row = el("div", "detail-row");
+  row.append(el("dt", "", label), appendPeople(el("dd"), people));
+  return row;
+}
+
 /**
  * A note beside a value, for facts that matter but do not deserve a row.
  *
@@ -1296,9 +1333,9 @@ function provenanceSection(entry, sourceAvailability) {
   details.append(
     detailRow("Result origin", RESULT_ORIGIN_LABELS[provenance.result_origin]),
     detailRow("Repository role", REPOSITORY_ROLE_LABELS[provenance.repository_role]),
-    detailRow(
+    peopleDetailRow(
       "Responsible maintainers",
-      provenance.responsible_maintainers.map((person) => person.name).join(", "),
+      provenance.responsible_maintainers,
     ),
     detailRow(
       "Submission basis",
@@ -1321,7 +1358,14 @@ function provenanceSection(entry, sourceAvailability) {
       const label = source.authors.length
         ? `${source.authors.map((author) => author.name).join(", ")}: ${source.title}`
         : source.title;
-      item.append(el("span", "source-citation", label));
+      const citation = el("span", "source-citation");
+      if (source.authors.length) {
+        appendPeople(citation, source.authors);
+        citation.append(`: ${source.title}`);
+      } else {
+        citation.append(source.title);
+      }
+      item.append(citation);
       const identifier = mathematicalSourceIdentifier(source.identifier, label);
       if (identifier) item.append(" · ", identifier);
       if (source.contributors?.length) {
@@ -1379,7 +1423,8 @@ async function renderEntry(
   heading.append(top, el("h1", "", entry.title));
   const abstract = presentationAbstract(entry);
   if (abstract) heading.append(el("p", "lede", abstract));
-  const byline = el("p", "byline", `By ${authorNames(entry)}`);
+  const byline = el("p", "byline", "By ");
+  appendPeople(byline, entry.authors);
   heading.append(byline);
 
   const evidence = el("section", "entry-evidence");

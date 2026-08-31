@@ -947,6 +947,24 @@ footer {
   font-style: italic;
 }
 
+.orcid-id,
+.orcid-record-checked {
+  font: .72rem/1.3 var(--sans);
+  font-style: normal;
+}
+
+.orcid-id {
+  white-space: nowrap;
+}
+
+.orcid-record-checked {
+  display: inline-block;
+  padding: .05rem .3rem;
+  border: 1px solid var(--success-line);
+  color: var(--success);
+  white-space: nowrap;
+}
+
 .citation-intro {
   margin: 0 0 .65rem;
   color: var(--muted);
