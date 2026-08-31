@@ -153,6 +153,7 @@ test("fixed public pages declare extensionless canonical URLs", async () => {
   const routes = new Map([
     ["index.html", "/"],
     ["about.html", "/about"],
+    ["costs.html", "/costs"],
     ["how-to-submit.html", "/how-to-submit"],
     ["privacy.html", "/privacy"],
     ["statement.html", "/statement"],
@@ -164,6 +165,18 @@ test("fixed public pages declare extensionless canonical URLs", async () => {
       new RegExp(`<link rel="canonical" href="https://palomar-registry\\.org${route}">`),
     );
   }
+});
+
+test("the public cost page is aggregate, fresh, and free of private identifiers", async () => {
+  const html = await readFile(new URL("../costs.html", import.meta.url), "utf8");
+  assert.match(html, /Operating cost run rate/);
+  assert.match(html, /Independent billing check/);
+  assert.match(html, /<time datetime="[^"]+">/);
+  assert.match(html, /contains no submissions, identities, API keys/);
+  assert.doesNotMatch(
+    html,
+    /OPENAI_ADMIN_KEY|CLOUDFLARE_API_TOKEN|PALOMAR_BILLING_TOKEN|proj_|sk-/,
+  );
 });
 
 // This page claimed for a while that GitHub processed for Palomar under the

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Palomar's automatically refreshed annual operating cost run rate.">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://data.palomar-registry.org; frame-src 'self' https://data.palomar-registry.org; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+    <title>Operating costs — Palomar</title>
+    <link rel="canonical" href="https://palomar-registry.org/costs">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="assets/style.css">
+  </head>
+  <body data-page="costs">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="./">Palomar</a>
+      <nav aria-label="Main navigation">
+        <a href="./">Registry</a>
+        <a href="/statement">Statement</a>
+        <a href="/about">About</a>
+        <a href="/how-to-submit">How to submit</a>
+      </nav>
+    </header>
+
+    <main id="content" class="about faq">
+      <h1>Operating cost run rate</h1>
+      <p class="subtitle">Automatically refreshed from live workload and provider billing</p>
+
+      <section id="annual-estimate">
+        <h2>$8,352.07 per year</h2>
+        <p>
+          The current incurred-cost forecast is
+          <strong>$696.01 per month</strong>.
+          It is a forward run rate at current submission volumes, not a statement
+          of cash paid or prepaid credits purchased.
+        </p>
+        <ul>
+          <li><strong>OpenAI:</strong> $7,248.19 per year</li>
+          <li><strong>GitHub Actions:</strong> $1,019.87 per year</li>
+          <li><strong>Cloudflare:</strong> $61.00 per year in projected usage charges</li>
+          <li><strong>Domains:</strong> $23.00 per year</li>
+        </ul>
+          <p>If an unconfirmed $5/month Workers plan is active, the total would be <strong>$8,412.07 per year</strong>.</p>
+      </section>
+
+      <section id="live-volume">
+        <h2>Live workload</h2>
+        <p>
+          The forecast annualizes the observed rate to
+          <strong>7,680 submissions</strong>,
+          3,957 completed reviews, and
+          1,986 registrations per year.
+        </p>
+      </section>
+
+      <section id="reconciliation">
+        <h2>Independent billing check</h2>
+        <p>
+          Retained conversation logs reprice to
+          <strong>$500.06</strong>, compared with
+          <strong>$538.49</strong> of OpenAI billed
+          model cost over the same complete-day window. The resulting
+          reconciliation coverage is <strong>92.9%</strong>.
+          Palomar refuses to publish a refreshed estimate if this falls below 90%.
+        </p>
+      </section>
+
+      <section id="freshness">
+        <h2>Freshness and method</h2>
+        <p>
+          This passing report was generated at
+          <time datetime="2026-08-31T05:58:33.298960Z">2026-08-31T05:58:33.298960Z</time> from the window
+          <time datetime="2026-08-06T00:00:00Z">2026-08-06T00:00:00Z</time> through, but excluding,
+          <time datetime="2026-08-31T00:00:00Z">2026-08-31T00:00:00Z</time>
+          (25.0 complete days).
+        </p>
+        <p>
+          Submission and conversation-token rates come from Palomar's retained
+          operational records. OpenAI, GitHub, and Cloudflare amounts come from
+          their live billing or analytics APIs. This public page contains only
+          the aggregate result; it contains no submissions, identities, API keys,
+          project identifiers, or private provider responses.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <div><span class="footer-brand">Palomar</span><span> — a registry of Lean-verified results</span></div>
+      <div class="footer-links"><a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><a href="https://data.palomar-registry.org/recent.json">Data</a><a href="https://github.com/PalomarRegistry/PalomarWeb">Source</a></div>
+    </footer>
+  </body>
+</html>
