@@ -70,9 +70,9 @@ export async function renderEntryPage({
       resolvedUrl.hash = requestedHash;
       history.replaceState(null, "", resolvedUrl);
     }
+    await renderEntry(loaded, content);
     status.hidden = true;
     content.hidden = false;
-    await renderEntry(loaded, content);
     const anchorTarget = requestedHash.startsWith("#")
       ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
       : null;
@@ -81,6 +81,9 @@ export async function renderEntryPage({
       anchorTarget.scrollIntoView();
     }
   } catch (error) {
+    content.replaceChildren();
+    content.hidden = true;
+    status.hidden = false;
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
   }
