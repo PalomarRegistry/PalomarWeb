@@ -65,6 +65,25 @@ test("artifact URL is derived only from the content-addressed registry fields", 
   assert.throws(() => challengeArtifactUrl(traversal, "https://example.test/"), /invalid/);
 });
 
+test("a maintainer correction reuses its baseline version's content-addressed render", () => {
+  const corrected = entry({
+    version: 2,
+    registry_correction: { based_on: { version: 1 } },
+  });
+  assert.equal(
+    challengeArtifactUrl(corrected, "https://data.palomar-registry.org/").href,
+    `https://data.palomar-registry.org/renders/PALOMAR-2026-07-29-000123-v1/${"a".repeat(64)}/Challenge/index.html`,
+  );
+
+  for (const version of [0, 2, 3, 1.5]) {
+    corrected.registry_correction.based_on.version = version;
+    assert.throws(
+      () => challengeArtifactUrl(corrected, "https://data.palomar-registry.org/"),
+      /invalid Palomar identifier or version/,
+    );
+  }
+});
+
 test("a content address alone resolves to the same rendering a record does", () => {
   const record = entry();
   assert.equal(

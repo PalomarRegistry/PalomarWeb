@@ -24,6 +24,9 @@ function node({ hidden = false } = {}) {
     append(...children) {
       this.children.push(...children);
     },
+    replaceChildren(...children) {
+      this.children = children;
+    },
   };
 }
 
@@ -96,7 +99,7 @@ test("entry routes reject noncanonical parameters before loading data", async ()
   assert.equal(view.content.hidden, true);
 });
 
-test("unversioned entry routes expose content progressively then preserve and scroll the fragment", async () => {
+test("unversioned entry routes reveal completed content then preserve and scroll the fragment", async () => {
   const entry = { id: "PALOMAR-2026-08-08-000001", version: 3 };
   const loaded = {
     entry,
@@ -146,8 +149,8 @@ test("unversioned entry routes expose content progressively then preserve and sc
 
   const route = renderEntryPage(settings);
   await started;
-  assert.equal(view.status.hidden, true);
-  assert.equal(view.content.hidden, false);
+  assert.equal(view.status.hidden, false);
+  assert.equal(view.content.hidden, true);
   assert.equal(scrolled, 0);
   releaseRender();
   await route;
@@ -188,6 +191,30 @@ test("entry routes preserve exact tombstones and load failures", async (t) => {
     assert.equal(view.status.textContent, "The registry entry could not be loaded: 503 Unavailable");
     assert.equal(view.status.classList.contains("error"), true);
     assert.equal(view.content.hidden, true);
+  });
+
+  await t.test("render failure remains visible and clears partial content", async () => {
+    const partial = node();
+    const { settings, view } = entryDependencies({
+      loadEntry: async () => ({
+        entry: { id: "PALOMAR-2026-08-08-000001", version: 2 },
+      }),
+      renderEntry: async (_loaded, content) => {
+        content.append(partial);
+        throw new Error("invalid Challenge render metadata");
+      },
+    });
+
+    await renderEntryPage(settings);
+
+    assert.equal(
+      view.status.textContent,
+      "The registry entry could not be loaded: invalid Challenge render metadata",
+    );
+    assert.equal(view.status.classList.contains("error"), true);
+    assert.equal(view.status.hidden, false);
+    assert.equal(view.content.hidden, true);
+    assert.deepEqual(view.content.children, []);
   });
 });
 
