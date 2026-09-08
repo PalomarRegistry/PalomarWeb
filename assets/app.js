@@ -29,7 +29,7 @@ import { createFormalizationPresentation } from "./formalization-presentation.mj
 import { createRegistryLoader } from "./registry-loading.mjs";
 import { createStatementPreview } from "./statement-preview.mjs";
 import { renderSubjectPage } from "./subject-pages.mjs";
-import { presentationAbstract } from "./presentation-text.mjs";
+import { abstractSegments, presentationAbstract } from "./presentation-text.mjs";
 import {
   DEFAULT_ORDER,
   FIRST_REGISTRATION_ORDER,
@@ -69,6 +69,27 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+/**
+ * One abstract as a paragraph, with the submitter's own code spans and the
+ * mathematics in their sentences each kept apart from the prose.
+ *
+ * Both surfaces that show an abstract build it here, so a card and an entry
+ * page mark the same runs. A span a submitter marked is `code`; an expression
+ * found by its operators is not, because this page found it rather than being
+ * told, and saying `code` would claim otherwise. Each run is appended as text
+ * or as one element, never as markup, which is what keeps a submitter's
+ * abstract unable to introduce any.
+ */
+function abstractParagraph(className, text) {
+  const paragraph = el("p", className);
+  for (const segment of abstractSegments(text)) {
+    if (segment.kind === "code") paragraph.append(el("code", "", segment.text));
+    else if (segment.kind === "math") paragraph.append(el("span", "expression", segment.text));
+    else paragraph.append(segment.text);
+  }
+  return paragraph;
 }
 
 function anchor(text, href, className) {
@@ -328,18 +349,95 @@ function dateSpans({ id, registeredAt }, order) {
 }
 
 /**
- * Date a card again after the grid is rearranged.
+ * Date a listed result again after the grid is rearranged.
  *
- * The dates are rewritten rather than the card rebuilt: a card carries a hover
+ * The dates are rewritten rather than the node rebuilt: a card carries a hover
  * preview registration and whatever the availability answer decorated it with,
- * and neither survives being replaced by an equal one.
+ * and neither survives being replaced by an equal one. A table row carries the
+ * registration too, and is dated the same way in its own cell.
  */
-function setCardDates(card, row, order) {
-  const identity = card.querySelector(".card-identity");
-  identity.replaceChildren(
-    identity.querySelector(".entry-id"),
-    ...dateSpans(row, order),
+function setListedDates(node, row, order) {
+  const identity = node.querySelector(".card-identity");
+  if (identity) {
+    identity.replaceChildren(
+      identity.querySelector(".entry-id"),
+      ...dateSpans(row, order),
+    );
+    return;
+  }
+  node.querySelector(".row-registered")?.replaceChildren(...dateSpans(row, order));
+}
+
+// The landing grid shows the same selection either as cards, which lead with
+// the abstract, or as a table, which does not. The table is the default: two
+// hundred results are a list to be scanned before any one of them is read, and
+// the cards put four hundred thousand characters of abstract on the page to
+// scroll past first. Both read the one recent.json, so neither is faster to
+// load -- this is what reaches the reader once it has arrived, not how much
+// arrives.
+const LANDING_VIEWS = new Set(["table", "cards"]);
+const DEFAULT_LANDING_VIEW = "table";
+
+/**
+ * Which view the address asks for.
+ *
+ * Carried in the URL rather than stored on the reader's device: the registry
+ * deep-links its order, its dates and its subject filters the same way, a
+ * chosen view is then a link someone can send, and this page goes on keeping
+ * nothing about whoever is reading it.
+ */
+function requestedLandingView(search) {
+  const value = new URLSearchParams(search).get("view");
+  return LANDING_VIEWS.has(value) ? value : DEFAULT_LANDING_VIEW;
+}
+
+const TABLE_COLUMNS = [
+  ["Result", "row-result"],
+  ["Authors", "row-authors"],
+  ["Subjects", "row-subjects"],
+  ["Dependencies", "row-dependencies"],
+  ["Registered", "row-registered"],
+];
+
+/**
+ * One registered result as a table row.
+ *
+ * Carries the same identity and classification data attributes the card does,
+ * because the toolbar narrows the selection by reading them off whichever node
+ * is showing rather than by asking the record again.
+ */
+function entryRow(entry, { registeredAt = entry.registered_at, order = DEFAULT_ORDER } = {}) {
+  const categories = classification(entry);
+  const row = el("tr", "entry-row");
+  row.dataset.id = entry.id;
+  row.dataset.trust = entry.trust.level;
+  row.dataset.arxiv = categories.arxiv.join(" ");
+  row.dataset.msc = categories.msc2020.join(" ");
+  row.dataset.search = searchBlob(entry);
+
+  const result = el("td", "row-result");
+  const titleLink = internalLink(entry.title, localPageUrl("/entry", entry));
+  // The same hover preview the cards carry: a row says less than a card, so
+  // the rendering behind it is worth more here, not less.
+  statementPreview.register(titleLink, entry);
+  result.append(titleLink);
+
+  const subjects = el("td", "row-subjects");
+  subjects.append(categoryTokens(entry));
+  const registered = el("td", "row-registered");
+  registered.append(...dateSpans({ id: entry.id, registeredAt }, order));
+  row.append(
+    result,
+    el("td", "row-authors", authorNames(entry)),
+    subjects,
+    el(
+      "td",
+      "row-dependencies",
+      entry.trust.level === "high" ? "Mathlib only" : "Additional libraries",
+    ),
+    registered,
   );
+  return row;
 }
 
 function entryCard(
@@ -419,7 +517,7 @@ function entryCard(
     footer.append(historyLink);
   }
   card.append(top, title);
-  if (abstract) card.append(el("p", "card-abstract", abstract));
+  if (abstract) card.append(abstractParagraph("card-abstract", abstract));
   card.append(meta, footer);
   return card;
 }
@@ -543,37 +641,76 @@ async function renderIndex() {
     // Pages, so the order is read from the control when the page has one and
     // from the link when it does not.
     let order = normalizeOrder(orderControl ? orderControl.value : params.get("order"));
-    const cards = entries.map((entry) =>
-      entryCard(entry, {
-        versionCount: entry.versions,
-        current: true,
-        registeredAt: entry.published_at,
-        order,
-      }));
-    // The rows the grid is arranged and filtered by, paired with the cards
-    // showing them, so that neither question has to read a card back.
+    let view = requestedLandingView(window.location.search);
+    const buildNodes = () => entries.map((entry) =>
+      view === "table"
+        ? entryRow(entry, { registeredAt: entry.published_at, order })
+        : entryCard(entry, {
+          versionCount: entry.versions,
+          current: true,
+          registeredAt: entry.published_at,
+          order,
+        }));
+    let nodes = buildNodes();
+    // The rows the grid is arranged and filtered by, paired with the node
+    // showing them, so that neither question has to read a node back.
     const listed = entries.map((entry, index) => ({
-      card: cards[index],
+      node: nodes[index],
       row: { id: entry.id, registeredAt: entry.published_at },
     }));
+    // A table needs a body to append into; cards go straight into the grid.
+    // Rebuilt whenever the view changes, which is also what clears the old one.
+    let mount = grid;
+    const remount = () => {
+      grid.replaceChildren();
+      grid.classList.toggle("entry-table-view", view === "table");
+      if (view !== "table") {
+        mount = grid;
+        return;
+      }
+      const table = el("table", "entry-table");
+      const headRow = el("tr");
+      for (const [label, className] of TABLE_COLUMNS) {
+        const heading = el("th", className, label);
+        heading.scope = "col";
+        headRow.append(heading);
+      }
+      const head = el("thead");
+      head.append(headRow);
+      mount = el("tbody");
+      table.append(head, mount);
+      grid.append(table);
+    };
     /**
-     * The cards, in the order asked for, dated by the day that order keys on.
+     * The listed results, in the order asked for, dated by the day that order
+     * keys on.
      *
-     * Appending a card already in the grid moves it, so this rearranges the
-     * cards rather than rebuilding them: a rebuilt card would lose its hover
+     * Appending a node already in the grid moves it, so this rearranges what is
+     * there rather than rebuilding it: a rebuilt card would lose its hover
      * preview registration and whatever the availability answer decorated it
-     * with.
+     * with, and a rebuilt row would lose the registration too. Changing view is
+     * the one thing that does rebuild, and puts both back.
      */
     const arrange = () => {
       statementPreview.close();
       const ordered = [...listed].sort((left, right) =>
         compareRows(left.row, right.row, order));
-      for (const item of ordered) setCardDates(item.card, item.row, order);
-      grid.append(...ordered.map((item) => item.card));
+      for (const item of ordered) setListedDates(item.node, item.row, order);
+      mount.append(...ordered.map((item) => item.node));
     };
+    remount();
     arrange();
+    // Held because a reader who switches to the cards after this resolves gets
+    // cards built too late to have been decorated by it.
+    let sourceAvailability = null;
+    const decorateListed = () => {
+      // A row carries no source control to decorate; the cards do.
+      if (view !== "cards" || !sourceAvailability) return;
+      decorateCardSet(nodes, entries, sourceAvailability, "Landing card");
+    };
     void availabilityPromise.then((availability) => {
-      decorateCardSet(cards, entries, availability, "Landing card");
+      sourceAvailability = availability;
+      decorateListed();
     }).catch((error) => {
       console.warn(`Landing card source availability could not be applied: ${error.message}`);
     });
@@ -636,17 +773,17 @@ async function renderIndex() {
       const dates = dayWindow({ from: fromControl?.value, to: toControl?.value });
       let shown = 0;
       let oldest = null;
-      for (const { card, row } of listed) {
+      for (const { node, row } of listed) {
         const day = orderedDay(row, order);
         if (oldest === null || day < oldest) oldest = day;
         const visible =
-          (trust === "all" || card.dataset.trust === trust) &&
-          (!arxivValue || (!arxivInvalid && card.dataset.arxiv.split(" ").includes(arxivValue))) &&
+          (trust === "all" || node.dataset.trust === trust) &&
+          (!arxivValue || (!arxivInvalid && node.dataset.arxiv.split(" ").includes(arxivValue))) &&
           (!mscValue ||
             (!mscInvalid &&
-              card.dataset.msc.split(" ").some((code) => code.startsWith(mscValue)))) &&
+              node.dataset.msc.split(" ").some((code) => code.startsWith(mscValue)))) &&
           withinWindow(day, dates);
-        card.hidden = !visible;
+        node.hidden = !visible;
         if (visible) shown += 1;
       }
       const classificationQuery = [
@@ -705,6 +842,39 @@ async function renderIndex() {
       arrange();
       update();
     });
+    // Deliberately not the .filter class the dependency buttons use: those are
+    // collected by it, and a view is not one of the things they narrow.
+    const viewButtons = [...document.querySelectorAll(".view-button")];
+    const markViewButtons = () => {
+      for (const candidate of viewButtons) {
+        const active = candidate.dataset.view === view;
+        candidate.classList.toggle("active", active);
+        candidate.setAttribute("aria-pressed", String(active));
+      }
+    };
+    markViewButtons();
+    for (const button of viewButtons) {
+      button.addEventListener("click", () => {
+        if (button.dataset.view === view) return;
+        view = button.dataset.view;
+        markViewButtons();
+        // A node cannot be carried across: a card and a row are different
+        // elements. So everything a node was given is given again -- the hover
+        // preview registration happens as each is built, and the availability
+        // answer is reapplied from the one already held.
+        statementPreview.close();
+        nodes = buildNodes();
+        for (const [index, item] of listed.entries()) item.node = nodes[index];
+        remount();
+        arrange();
+        decorateListed();
+        update();
+        const address = new URL(window.location.href);
+        if (view === DEFAULT_LANDING_VIEW) address.searchParams.delete("view");
+        else address.searchParams.set("view", view);
+        window.history.replaceState(null, "", address);
+      });
+    }
     document.querySelectorAll(".filter").forEach((button) => {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;
@@ -1422,7 +1592,7 @@ async function renderEntry(
   top.append(el("span", "entry-id", `${entry.id} v${entry.version}`), trustBadge(entry));
   heading.append(top, el("h1", "", entry.title));
   const abstract = presentationAbstract(entry);
-  if (abstract) heading.append(el("p", "lede", abstract));
+  if (abstract) heading.append(abstractParagraph("lede", abstract));
   const byline = el("p", "byline", "By ");
   appendPeople(byline, entry.authors);
   heading.append(byline);
@@ -1709,7 +1879,7 @@ function renderSubjectRows(rows, content) {
     title.append(internalLink(row.title, localPageUrl("/entry", row)));
     article.append(identity, title);
     const abstract = presentationAbstract(row);
-    if (abstract) article.append(el("p", "card-abstract", abstract));
+    if (abstract) article.append(abstractParagraph("card-abstract", abstract));
     const subjects = el("div", "card-subjects");
     subjects.append(el("small", "", "Subjects"), categoryTokens(row));
     article.append(subjects);

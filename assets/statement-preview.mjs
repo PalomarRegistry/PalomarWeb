@@ -213,8 +213,13 @@ export function createStatementPreview({
     }, openDelayMs);
   }
 
+  // What makes a link previewable is that a surface registered it, not what
+  // wraps it: the cards put their title in an h3 and the table puts it in a
+  // cell, and matching the markup meant the table's titles silently had no
+  // preview. The registration below is the check that was always doing the
+  // work -- every other link on a card is absent from it.
   function titleLink(node) {
-    const link = node?.closest?.("h3 > a");
+    const link = node?.closest?.("a");
     return link && sources.has(link) ? link : null;
   }
 
