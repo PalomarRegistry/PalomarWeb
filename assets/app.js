@@ -386,7 +386,7 @@ const DEFAULT_LANDING_VIEW = "table";
  * chosen view is then a link someone can send, and this page goes on keeping
  * nothing about whoever is reading it.
  */
-export function requestedLandingView(search) {
+function requestedLandingView(search) {
   const value = new URLSearchParams(search).get("view");
   return LANDING_VIEWS.has(value) ? value : DEFAULT_LANDING_VIEW;
 }
@@ -682,12 +682,14 @@ async function renderIndex() {
       grid.append(table);
     };
     /**
-     * The cards, in the order asked for, dated by the day that order keys on.
+     * The listed results, in the order asked for, dated by the day that order
+     * keys on.
      *
-     * Appending a card already in the grid moves it, so this rearranges the
-     * cards rather than rebuilding them: a rebuilt card would lose its hover
+     * Appending a node already in the grid moves it, so this rearranges what is
+     * there rather than rebuilding it: a rebuilt card would lose its hover
      * preview registration and whatever the availability answer decorated it
-     * with.
+     * with, and a rebuilt row would lose the registration too. Changing view is
+     * the one thing that does rebuild, and puts both back.
      */
     const arrange = () => {
       statementPreview.close();
