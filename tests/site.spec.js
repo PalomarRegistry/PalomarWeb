@@ -89,7 +89,7 @@ const currentEntrySchema = Number(
 
 test("the registry follows the browser's light and dark preference", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("html")).toHaveCSS("background-color", "rgb(16, 18, 22)");
   await expect(page.locator("body")).toHaveCSS("color", "rgb(232, 234, 238)");
   await expect(page.locator(".toolbar")).toHaveCSS("background-color", "rgb(28, 32, 39)");
@@ -198,7 +198,7 @@ test("long reference pages expose an adaptive table of contents", async ({ page 
 });
 
 test("search mode removes unresolved hero furniture and restores it on clear", async ({ page }) => {
-  await page.goto(`/?database=${database}&q=synthetically`);
+  await page.goto(`/?view=cards&database=${database}&q=synthetically`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("body")).toHaveClass(/registry-searching/);
   await expect(page.locator(".hero-copy")).toBeHidden();
@@ -215,6 +215,65 @@ test("search mode removes unresolved hero furniture and restores it on clear", a
   await expect(page.locator("#metric-projects")).toHaveText("1");
 });
 
+// Two hundred results are a list to be scanned before any one of them is read,
+// so the landing arrives as a table and the cards, which lead with the
+// abstract, are the alternative. The choice rides in the URL rather than on the
+// reader's device: the registry deep-links its order and its filters the same
+// way, and this page keeps nothing about whoever is reading it.
+test("the landing arrives as a table, and the cards are one link away", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const rows = page.locator("#entry-grid tr.entry-row");
+  await expect(rows.first()).toBeVisible();
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
+  await expect(page.locator("#entry-grid th")).toHaveText([
+    "Result", "Authors", "Subjects", "Dependencies", "Registered",
+  ]);
+  await expect(page.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+
+  // A row carries less than a card, so the rendering behind its title is worth
+  // more here, not less: the same hover preview has to reach it.
+  const listed = await rows.count();
+  await rows.first().locator("a").first().hover();
+  await expect(page.locator(".statement-preview")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Cards" }).click();
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(listed);
+  await expect(page.locator("#entry-grid tr.entry-row")).toHaveCount(0);
+  // Linkable, so a reader can send the view they are reading in.
+  expect(new URL(page.url()).searchParams.get("view")).toBe("cards");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await expect(page.locator("#entry-grid tr.entry-row")).toHaveCount(listed);
+  // The default is the bare address rather than a parameter spelling it out.
+  expect(new URL(page.url()).searchParams.has("view")).toBe(false);
+
+  await page.goto(`/?view=cards&database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
+
+  // An unknown view is not an error a reader should meet; it is the default.
+  await page.goto(`/?view=nonsense&database=${database}`);
+  await expect(page.locator("#entry-grid tr.entry-row").first()).toBeVisible();
+});
+
+// The toolbar narrows the selection by reading data attributes off whichever
+// node is showing, so the rows have to carry what the cards carry.
+test("the toolbar narrows the table as it narrows the cards", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const rows = page.locator("#entry-grid tr.entry-row:visible");
+  await expect(rows.first()).toBeVisible();
+  const all = await rows.count();
+
+  await page.getByRole("button", { name: "Mathlib only" }).click();
+  const mathlibOnly = await rows.count();
+  expect(mathlibOnly).toBeGreaterThan(0);
+  expect(mathlibOnly).toBeLessThan(all);
+
+  // And the same narrowing survives being carried into the other view.
+  await page.getByRole("button", { name: "Cards" }).click();
+  await expect(page.locator("#entry-grid .entry-card:visible")).toHaveCount(mathlibOnly);
+});
+
 test("user-facing pages do not overflow narrow mobile viewports", async ({ page }) => {
   await page.route("**/database/recent.json", async (route) => {
     const response = await route.fetch();
@@ -227,7 +286,10 @@ test("user-facing pages do not overflow narrow mobile viewports", async ({ page 
   });
 
   const surfaces = [
-    { name: "registry", path: `/?database=${database}`, ready: ".entry-card" },
+    // Both landing views: the table is the default and the likelier of the two
+    // to be pushed wide, by a long title or a long list of authors.
+    { name: "registry table", path: `/?database=${database}`, ready: "tr.entry-row" },
+    { name: "registry cards", path: `/?view=cards&database=${database}`, ready: ".entry-card" },
     { name: "search", path: `/?database=${database}&q=synthetically`, ready: "#search-results .entry-card" },
     {
       name: "entry",
@@ -263,7 +325,7 @@ test("user-facing pages do not overflow narrow mobile viewports", async ({ page 
 
 test("navigation and action controls expose mobile-sized targets", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expectMinimumTargets(
     page.locator(
@@ -334,7 +396,7 @@ test("landing cards show the registration date and dated identifier", async ({ p
   // A landing record read is a regression even if its result happens to be
   // valid, so make one fail loudly instead of letting it hide in the fixture.
   await page.route("**/database/entries/*.json", (route) => route.abort());
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const first = page.locator(".entry-card").first();
   await expect(first.locator(".entry-id")).toContainText("PALOMAR-2026-07-29-");
   await expect(first.locator(".entry-id")).toContainText("v2 · current");
@@ -382,7 +444,7 @@ test("landing cards show the registration date and dated identifier", async ({ p
 });
 
 test("card metadata is on the card, not behind a toggle", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card").first();
 
   // Titles in this registry are repository names, so the authors and the
@@ -412,7 +474,7 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
     }));
     await route.fulfill({ response, json: recent });
   });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
   // Recency and identifier order deliberately disagree. The DOM must follow
   // recent.json, whose order has already been validated as newest-first.
@@ -430,7 +492,7 @@ test("an unusable recent row is omitted without hiding its valid siblings", asyn
     await route.fulfill({ response, json: document });
   });
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(1);
   await expect(page.locator("#registry-warning")).toBeVisible();
   await expect(page.locator("#registry-warning")).toHaveText(
@@ -449,7 +511,7 @@ test("an entirely unusable recent projection is not reported as an empty registr
     await route.fulfill({ response, json: document });
   });
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveClass(/warning/);
   await expect(page.locator("#status")).toContainText("registry entries could not be displayed");
@@ -461,7 +523,7 @@ test("an unavailable recent summary reports failure instead of emptiness", async
     route.fulfill({ status: 503, body: "temporarily unavailable" }),
   );
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
   await expect(page.locator("#status")).toContainText("The registry could not be loaded: 503");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
@@ -470,7 +532,7 @@ test("an unavailable recent summary reports failure instead of emptiness", async
 });
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#arxiv-query")).toBeVisible();
   await expect(page.locator("#msc-query")).toBeVisible();
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
@@ -491,7 +553,7 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
 });
 
 test("an MSC filter matches every code beginning with what was typed", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
 
   // 000123 is 05C10, 000124 is 11N13.
@@ -522,7 +584,7 @@ test("an MSC filter matches every code beginning with what was typed", async ({ 
 });
 
 test("the registry can be ordered by when a result first entered it", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   // 000123 is a v2 registered on 2 August; 000124 is a v1 registered on 29
   // July, the same day 000123 first entered the registry.
   await expect(page.locator(".entry-card .entry-id")).toHaveText([
@@ -552,7 +614,7 @@ test("the registry can be ordered by when a result first entered it", async ({ p
 });
 
 test("a date range narrows the listing by the date it is ordered by", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator("#date-from").fill("2026-08-01");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000123");
@@ -572,7 +634,7 @@ test("a date range narrows the listing by the date it is ordered by", async ({ p
 });
 
 test("a range that cannot be read, or cannot hold a day, matches nothing and says so", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator("#date-from").fill("2026-08-13");
   await page.locator("#date-to").fill("2026-08-02");
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
@@ -587,7 +649,7 @@ test("a range that cannot be read, or cannot hold a day, matches nothing and say
 });
 
 test("a range reaching past the newest results says what the page cannot answer for", async ({ page }) => {
-  await page.goto(`/?database=${database}&from=2026-01-01`);
+  await page.goto(`/?view=cards&database=${database}&from=2026-01-01`);
   await expect(page.locator("#date-from")).toHaveValue("2026-01-01");
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
   await expect(page.locator("#status")).toHaveText(
@@ -597,28 +659,28 @@ test("a range reaching past the newest results says what the page cannot answer 
 });
 
 test("an order and a range apply from a deep link", async ({ page }) => {
-  await page.goto(`/?database=${database}&order=registered&from=2026-07-29&to=2026-07-29`);
+  await page.goto(`/?view=cards&database=${database}&order=registered&from=2026-07-29&to=2026-07-29`);
   await expect(page.locator("#order-by")).toHaveValue("registered");
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
   await expect(page.locator(".entry-card").first().locator(".entry-id"))
     .toHaveText("PALOMAR-2026-07-29-000124 v1 · current");
 
   // An order nothing offers is the default rather than an empty page.
-  await page.goto(`/?database=${database}&order=sideways`);
+  await page.goto(`/?view=cards&database=${database}&order=sideways`);
   await expect(page.locator("#order-by")).toHaveValue("updated");
   await expect(page.locator(".entry-card").first().locator(".entry-id"))
     .toHaveText("PALOMAR-2026-07-29-000123 v2 · current");
 });
 
 test("an MSC prefix applies from a deep link", async ({ page }) => {
-  await page.goto(`/?database=${database}&msc=11`);
+  await page.goto(`/?view=cards&database=${database}&msc=11`);
   await expect(page.locator("#msc-query")).toHaveValue("11");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
 });
 
 test("classification filters apply from a deep link", async ({ page }) => {
-  await page.goto(`/?database=${database}&arxiv=math.NT`);
+  await page.goto(`/?view=cards&database=${database}&arxiv=math.NT`);
   await expect(page.locator("#arxiv-query")).toBeVisible();
   await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
@@ -626,7 +688,7 @@ test("classification filters apply from a deep link", async ({ page }) => {
 });
 
 test("absent classifications produce a useful empty result", async ({ page }) => {
-  await page.goto(`/?database=${database}&arxiv=math.AG`);
+  await page.goto(`/?view=cards&database=${database}&arxiv=math.AG`);
   await expect(page.locator("#arxiv-query")).toHaveValue("math.AG");
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveText(
@@ -648,7 +710,7 @@ test("absent classifications produce a useful empty result", async ({ page }) =>
 });
 
 test("malformed classification parameters are bounded and identified", async ({ page }) => {
-  await page.goto(`/?database=${database}&arxiv=${encodeURIComponent("not a code".repeat(20))}`);
+  await page.goto(`/?view=cards&database=${database}&arxiv=${encodeURIComponent("not a code".repeat(20))}`);
   await expect(page.locator("#arxiv-query")).toHaveValue("not a codenot a codenot a codeno");
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveText(
@@ -866,7 +928,7 @@ test("the licence caveat travels with the licence evidence it qualifies", async 
 });
 
 test("the subject filters share the toolbar's line, ending at its right edge", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card").first();
 
   const toolbar = await page.locator(".toolbar").boundingBox();
@@ -1222,7 +1284,7 @@ test("a recent row without the required preservation mapping is omitted", async 
     recent.entries[0].preservation = null;
     await route.fulfill({ response, json: recent });
   });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
   await expect(page.locator(".entry-card")).toHaveCount(1);
   await expect(page.locator("#registry-warning")).toHaveText(
@@ -1240,7 +1302,7 @@ test("a card says the original is unavailable exactly when the manifest says so"
     await new Promise((resolve) => { releaseAvailability = resolve; });
     await route.continue();
   });
-  await page.goto(`/?database=${database}&availability=${missingAvailability}`);
+  await page.goto(`/?view=cards&database=${database}&availability=${missingAvailability}`);
   const card = page.locator(".entry-card").first();
   await expect(card).toHaveCount(1);
   await availabilityRequested;
@@ -1258,7 +1320,7 @@ test("a card says the original is unavailable exactly when the manifest says so"
   await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card .source-status")).toHaveCount(0);
 });
 
@@ -1283,7 +1345,7 @@ test("progressive cards never apply a stale missing claim", async ({ page }) => 
     await route.fulfill({ response, json: availability });
   });
 
-  await page.goto(`/?database=${database}&availability=${missingAvailability}`);
+  await page.goto(`/?view=cards&database=${database}&availability=${missingAvailability}`);
   const card = page.locator(".entry-card").first();
   await expect(card).toHaveCount(1);
   await availabilityRequested;
@@ -1366,7 +1428,7 @@ test("entry pages offer a version-pinned BibTeX citation that can be copied", as
 });
 
 test("a single current version has no supersession treatment", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card").nth(1);
   await expect(card.locator(".version-history-link")).toHaveCount(0);
 
@@ -1447,7 +1509,7 @@ test("unknown exact versions remain generic not-found pages", async ({ page }) =
 });
 
 test("the index version-history link reaches history loaded at runtime", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator(".entry-card").first().getByRole("link", { name: "2 versions" }).click();
 
   await expect(page).toHaveURL(/#version-history$/);
@@ -1465,7 +1527,7 @@ test("optional metric markup cannot take down the registry", async ({ page }) =>
     contentType: "text/html; charset=utf-8",
   }));
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
@@ -1797,7 +1859,7 @@ test("current HTML remains compatible with cached JavaScript from the previous d
   // fresh shared modules, which is the adjacent Pages deployment boundary this
   // regression exercises.
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 
@@ -1823,7 +1885,7 @@ test("current JavaScript preserves represented deep links with cached HTML", asy
     return route.continue();
   });
 
-  await page.goto(`/?database=${database}&arxiv=math.NT`);
+  await page.goto(`/?view=cards&database=${database}&arxiv=math.NT`);
   await expect(page.locator("#arxiv-query, #arxiv-filter")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
@@ -1869,7 +1931,7 @@ test("classification codes are spaced, and their descriptions are hovers", async
 });
 
 test("a card's classifications are muted links, glossed on hover", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000123" });
   const arxiv = card.locator(".category-token", { hasText: "math.CO" });
   const msc = card.locator(".category-token", { hasText: "MSC 05C10" });
@@ -2041,7 +2103,7 @@ test("a search reads one postings sequence per word and confirms every hit", asy
     const path = new URL(request.url()).pathname;
     if (path.startsWith("/database/")) asked.push(path);
   });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
 
   asked.length = 0;
@@ -2082,7 +2144,7 @@ test("runtime data reads reuse a fresh HTTP response", async ({ page }) => {
       transferSize: entry.transferSize,
     })), headUrl);
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.evaluate(() => performance.clearResourceTimings());
   await runSearch(page, "cacheprobe");
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
@@ -2111,7 +2173,7 @@ test("an over-limit term count is an accessible warning and can be corrected", a
     if (path.startsWith("/database/")) asked.push(path);
   });
 
-  await page.goto(`/?database=${database}&q=${encodeURIComponent(query)}`);
+  await page.goto(`/?view=cards&database=${database}&q=${encodeURIComponent(query)}`);
   await expect(page.locator("#query")).toHaveValue(query);
   await expect(page.locator("#search-status")).toHaveText(
     `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
@@ -2126,7 +2188,7 @@ test("an over-limit term count is an accessible warning and can be corrected", a
   expect(asked.filter((path) => path === "/database/recent.json")).toEqual([]);
   await expect(page.locator("#entry-grid")).toBeHidden();
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   asked.length = 0;
   await runSearch(page, query);
@@ -2158,7 +2220,7 @@ test("huge few-distinct linked and typed queries fail before I/O or history", as
   });
   page.on("pageerror", (error) => pageErrors.push(error));
 
-  await page.goto(`/?database=${database}&q=${encodeURIComponent(query)}`);
+  await page.goto(`/?view=cards&database=${database}&q=${encodeURIComponent(query)}`);
   await expect(page.locator("#search-status")).toContainText(
     `Shorten the search to at most ${SEARCH_QUERY_CHARACTER_LIMIT} characters`,
   );
@@ -2172,7 +2234,7 @@ test("huge few-distinct linked and typed queries fail before I/O or history", as
   expect(asked.filter((path) => path === "/database/recent.json")).toEqual([]);
   expect(pageErrors).toEqual([]);
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
   const before = page.url();
   asked.length = 0;
@@ -2197,7 +2259,7 @@ test("search cards retain posting order when posting pages finish out of order",
     await route.continue();
   });
 
-  await page.goto(`/?database=${database}&q=quasicoherent`);
+  await page.goto(`/?view=cards&database=${database}&q=quasicoherent`);
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
   await expect(page.locator("#search-results .entry-id")).toHaveText([
@@ -2211,7 +2273,7 @@ test("a failed posting page leaves validated search cards and reports degradatio
     route.fulfill({ status: 503, body: "temporarily unavailable" }),
   );
 
-  await page.goto(`/?database=${database}&q=quasicoherent`);
+  await page.goto(`/?view=cards&database=${database}&q=quasicoherent`);
 
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect(page.locator("#search-results .entry-id")).toHaveText([
@@ -2351,7 +2413,7 @@ test("a superseded slow search cannot repaint a newer query", async ({ page }) =
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.continue().catch(() => {});
   });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
   await startSearch(page, "quasicoherent");
   await expect.poll(() => slowHeadRequests).toBe(1);
@@ -2383,7 +2445,7 @@ test("a linked search hides landing DOM and retries one failed landing load", as
     await route.continue();
   });
 
-  await page.goto(`/?database=${database}&q=synthetically`);
+  await page.goto(`/?view=cards&database=${database}&q=synthetically`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   expect(recentRequests).toBe(0);
   expect(await page.evaluate(() => ({
@@ -2415,7 +2477,7 @@ test("a linked search hides landing DOM and retries one failed landing load", as
 });
 
 test("a search runs from a link, and says so when nothing carries the words", async ({ page }) => {
-  await page.goto(`/?database=${database}&q=quasicoherent`);
+  await page.goto(`/?view=cards&database=${database}&q=quasicoherent`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
 
   await runSearch(page, "quasicoherent unobtainium");
@@ -2430,7 +2492,7 @@ test("a search runs from a link, and says so when nothing carries the words", as
 test("a hostile query cannot construct a path outside the postings grammar", async ({ page }) => {
   const asked = [];
   page.on("request", (request) => asked.push(new URL(request.url()).pathname));
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
   asked.length = 0;
   await runSearch(page, "../../etc/passwd?x=1 <script>");
@@ -2450,7 +2512,7 @@ test("a hostile query cannot construct a path outside the postings grammar", asy
 });
 
 test("a query with no word in it leaves the listing alone", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await runSearch(page, "a !");
   await expect(page.locator("#entry-grid")).toBeVisible();
   await expect(page.locator("#search-status")).toBeHidden();
@@ -2464,7 +2526,7 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
   // that from a wrong answer nobody could diagnose into no question at all.
   const asked = [];
   page.on("request", (request) => asked.push(new URL(request.url()).pathname));
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
   asked.length = 0;
   await runSearch(page, "the quasicoherent sheaves");
@@ -2477,7 +2539,7 @@ test("a word the indexer drops leaves the query instead of failing it", async ({
 
 test("a search made only of words the indexer drops says which they were", async ({ page }) => {
   // Otherwise this is a registry that appears to hold nothing.
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await runSearch(page, "the of and");
 
   await expect(page.locator("#search-status")).toContainText("too common to be indexed");
@@ -2505,7 +2567,7 @@ test("typing runs one search at the pause, not one per keystroke", async ({ page
     const path = new URL(request.url()).pathname;
     if (path.endsWith("/head.json")) heads.push(path);
   });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
 
   // There is no button to press, so the pause is the whole of the instruction.
@@ -2525,7 +2587,7 @@ test("a keystroke abandons the answer to the query it just replaced", async ({ p
   // the two, an answer to what the reader has already typed past would arrive
   // verified and undimmed under a box that says something else.
   const held = await holdSearchHead(page, "quasicoherent");
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
 
   await startSearch(page, "quasicoherent");
@@ -2556,7 +2618,7 @@ test("confirming a result keeps the reader on the card they were standing on", a
   // The provisional cards are replaced wholesale, so without this the reader's
   // focus goes with the node that carried it and lands on the document.
   const held = await holdSearchHead(page, "quasicoherent");
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
 
   await startSearch(page, "quasicoherent");
@@ -2577,7 +2639,7 @@ test("confirming a result keeps the reader on the card they were standing on", a
 
 test("a pause shows the entries already loaded, marked as not yet the answer", async ({ page }) => {
   const held = await holdSearchHead(page, "quasicoherent");
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
 
   await startSearch(page, "quasicoherent");
@@ -2609,7 +2671,7 @@ test("nothing loaded to show leaves the wait to the spinner alone", async ({ pag
   const held = await holdSearchHead(page, "synthetically");
   // A linked search never reads the landing selection, so there is nothing in
   // hand to show, and the status must not claim otherwise.
-  await page.goto(`/?database=${database}&q=synthetically`);
+  await page.goto(`/?view=cards&database=${database}&q=synthetically`);
   await held.requested;
   await expect(page.locator("#search-spinner")).toBeVisible();
   await expect(page.locator("#search-status")).toHaveText("Searching the registry…");
@@ -2624,7 +2686,7 @@ test("a provisional match the index does not confirm is taken away", async ({ pa
   // What the dimming is for. "quasi" sits inside a word the newest entries
   // carry, so it is in hand at once, but the index knows whole words and holds
   // nothing under it. The cards go and the reader is told why.
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
 
   await runSearch(page, "quasi");
@@ -2635,7 +2697,7 @@ test("a provisional match the index does not confirm is taken away", async ({ pa
 });
 
 test("emptying the box gives the listing and its filters back", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   // Set before searching, because a search takes the toolbar off the page.
   await page.locator("#arxiv-query").fill("math.CO");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
@@ -2762,7 +2824,7 @@ for (const scheme of ["light", "dark"]) {
   test(`${scheme} text stays readable once opacity and grounds are composited`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
 
-    await page.goto(`/?database=${database}`);
+    await page.goto(`/?view=cards&database=${database}`);
     await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
     await readableTextOnly(page, `${scheme} listing`, 40);
 
@@ -2791,7 +2853,7 @@ for (const scheme of ["light", "dark"]) {
 test("resting on a landing title raises the result's rendering over the listing", async ({ page }) => {
   const asked = [];
   page.on("request", (request) => asked.push(new URL(request.url()).pathname));
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const title = page.locator(".entry-card h3 > a").first();
   const identifier = await page.locator(".entry-card .entry-id").first().textContent();
   const versioned = /(PALOMAR-[0-9-]+) v([0-9]+)/.exec(identifier);
@@ -2825,7 +2887,7 @@ test("resting on a landing title raises the result's rendering over the listing"
 });
 
 test("a search result previews from the record it already holds", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   // Runs on the typing pause now, and the provisional cards it stands in are
   // drawn like the verified ones, so wait for the spinner rather than counting.
   await runSearch(page, "quasicoherent");
@@ -2843,7 +2905,7 @@ test("a search result previews from the record it already holds", async ({ page 
 });
 
 test("a preview survives the pointer crossing into it", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator(".entry-card h3 > a").first().hover();
   const panel = page.locator(".statement-preview");
   await expect(panel).toBeVisible();
@@ -2861,7 +2923,7 @@ test("an absent or unusable render companion leaves the listing usable", async (
       body
         ? route.fulfill({ status: 200, contentType: "application/json", body })
         : route.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
-    await page.goto(`/?database=${database}`);
+    await page.goto(`/?view=cards&database=${database}`);
     const title = page.locator(".entry-card h3 > a").first();
     await title.hover();
     await page.waitForTimeout(600);
@@ -2877,7 +2939,7 @@ test("previews are not raised where a pointer cannot rest", async ({ browser }) 
   const context = await browser.newContext({ hasTouch: true, isMobile: false });
   const page = await context.newPage();
   await page.emulateMedia({ media: "screen", forcedColors: "none" });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   // The controller asks `(hover: hover)`; a coarse pointer answers no, and the
   // stylesheet refuses to show a panel even if one were somehow raised.
   const hides = await page.evaluate(() =>
