@@ -694,6 +694,45 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   );
 });
 
+// An entry page is read, not scanned, and it used to offer the reader two
+// typographies at once: an abstract held to 72 characters a line, and the
+// explanations under it running the full 1024px to 104. Both sat at the body's
+// 1.45. This measures what the page actually renders rather than checking the
+// rules that produce it, and it walks the prose it finds rather than a list
+// written here, so a paragraph added later without a measure is caught too.
+test("prose on an entry page holds one reading measure and leading", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator("p.lede")).toBeVisible();
+
+  const loose = await page.evaluate(() => {
+    const characterWidth = (node) => {
+      const probe = document.createElement("span");
+      probe.textContent = "0".repeat(100);
+      probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+      node.append(probe);
+      const width = probe.getBoundingClientRect().width / 100;
+      probe.remove();
+      return width;
+    };
+    return [...document.querySelectorAll("main p, main li")]
+      // Rows of controls are not prose, and a short line cannot be too long.
+      .filter((node) => !node.classList.contains("challenge-links"))
+      .filter((node) => (node.textContent || "").trim().length > 110)
+      .map((node) => {
+        const style = getComputedStyle(node);
+        return {
+          name: node.className || node.tagName,
+          characters: Math.round(node.getBoundingClientRect().width / characterWidth(node)),
+          leading: Number(
+            (parseFloat(style.lineHeight) / parseFloat(style.fontSize)).toFixed(2),
+          ),
+        };
+      })
+      .filter((row) => row.characters > 80 || row.leading < 1.55);
+  });
+  expect(loose, "entry prose outside a comfortable measure or leading").toEqual([]);
+});
+
 // Submitters mark identifiers in an abstract with Markdown code spans, and the
 // page used to render the abstract verbatim: the reader got the backticks as
 // punctuation, and the identifier in the same face as the sentence holding it.

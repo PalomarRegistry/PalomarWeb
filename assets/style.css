@@ -203,8 +203,17 @@ h3 {
 }
 
 .hero-copy,
+/* An abstract is the longest stretch of prose on the site and the one a
+   reader actually reads, rather than scans. At the body's 1.45 it set nine
+   tight lines under the title, and a 72ch measure left it narrower than the
+   card showing the same text at 76ch. Give it the leading long-form prose
+   wants and the measure its sibling already used: a slightly longer line is
+   comfortable exactly when the leading grows with it, which is why these two
+   move together. */
 .lede {
-  max-width: 72ch;
+  max-width: 76ch;
+  font-size: 1.05rem;
+  line-height: 1.6;
 }
 
 .metric-row {
@@ -554,6 +563,7 @@ button:focus-visible {
 .card-abstract {
   max-width: 76ch;
   margin-bottom: .75rem;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
@@ -912,7 +922,10 @@ footer {
 }
 
 .entry-heading h1 {
+  /* The global .2rem left a 2rem title sitting all but on top of the abstract,
+     so the two read as one block instead of a title and the text under it. */
   margin-top: .5rem;
+  margin-bottom: .75rem;
   font-size: 2rem;
   overflow-wrap: anywhere;
 }
@@ -1232,6 +1245,23 @@ body[data-page="not-found"] main a {
   margin-bottom: .2rem;
   padding-left: .7rem;
   border-left: 2px solid var(--caution);
+}
+
+/* Explanatory prose on an entry ran the full width of the page -- 104
+   characters to a line at the body's 1.45, twice the measure of the abstract
+   sitting above it -- so the same reader met two different typographies on one
+   page. Hold prose to a reading measure and give it the abstract's leading.
+   What is not prose keeps the width it needs: token lists, detail rows, the
+   render frame, and the row of source controls below. */
+.entry-page p,
+.entry-page .reason-list li,
+.entry-page .provenance-sources li {
+  max-width: 76ch;
+  line-height: 1.6;
+}
+
+.entry-page .challenge-links {
+  max-width: none;
 }
 
 .challenge-frame {
