@@ -31,7 +31,16 @@
   --max: 64rem;
   --serif: Georgia, "Times New Roman", Times, serif;
   --sans: Arial, Helvetica, sans-serif;
-  --mono: "Courier New", Courier, monospace;
+  /* Lean output is Unicode-dense: Greek, ℕ/ℝ, ∀ ∃ ≤ → ∘ ⊢, and ⋯ where the
+     pretty-printer elided a subterm. Courier New is missing much of that, and a
+     missing glyph is not a visible failure: the browser silently substitutes
+     another face for those characters alone, so ∀ and ⋯ arrived in a different
+     weight beside identifiers drawn by Courier New. Font matching walks this
+     list per character rather than once per element, so the families that can
+     draw those glyphs have to be named here and not left to the generic --
+     which on Windows resolves to Courier New again. */
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas,
+          "DejaVu Sans Mono", "Liberation Mono", monospace;
 }
 
 @media (prefers-color-scheme: dark) {

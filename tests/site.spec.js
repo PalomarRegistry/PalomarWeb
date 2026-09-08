@@ -1598,7 +1598,7 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   await audit.locator("summary").click();
   const auditSource = audit.locator(".challenge-audit-declaration pre");
   await expect(auditSource).toHaveText(
-    "theorem Example.theorem : Eq Nat.zero Nat.zero",
+    "theorem Example.theorem : ∀ {α : Type u_1} (a b : α), Eq a b → Eq b ⋯",
   );
   await expect(auditSource).toHaveAttribute("tabindex", "0");
   await expect(audit.locator(".challenge-audit-declaration")).toHaveAttribute(
@@ -1617,6 +1617,40 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   await expect(audit.locator(".challenge-audit-limits")).toContainText(
     "omitted subterm with ⋯",
   );
+  // The audit view is where a reader checks notation, and Lean writes it in
+  // Greek, quantifiers, arrows, and the ⋯ it leaves where it elided a subterm.
+  // A family that cannot draw those does not fail visibly: the browser quietly
+  // substitutes another face for the characters it is missing, so ∀ arrives in
+  // a different weight beside identifiers drawn by the declared font. Advance
+  // widths do not catch it, because the substitute is monospaced too. Ask
+  // Chromium which platform fonts it actually reached for instead.
+  //
+  // The fixture declaration deliberately stays inside the repertoire a
+  // monospace family is expected to carry, which is what one face here means.
+  // Published entries do reach past it -- a statement naming 𝒜 pulls in a math
+  // face no general-purpose monospace font covers -- and that is a property of
+  // the Mathematical Alphanumeric Symbols block, not a defect in the stack, so
+  // it is deliberately not what this fixture asks about.
+  const client = await page.context().newCDPSession(page);
+  await client.send("DOM.enable");
+  await client.send("CSS.enable");
+  const { root } = await client.send("DOM.getDocument");
+  const { nodeId } = await client.send("DOM.querySelector", {
+    nodeId: root.nodeId,
+    selector: ".challenge-audit-declaration pre",
+  });
+  const { fonts } = await client.send("CSS.getPlatformFontsForNode", { nodeId });
+  await client.detach();
+  // A node that rendered nothing reports nothing, which would otherwise agree
+  // with this by drawing no glyphs at all.
+  expect(
+    fonts.reduce((total, font) => total + font.glyphCount, 0),
+    "the audit view drew no glyphs to measure",
+  ).toBeGreaterThan(0);
+  expect(
+    fonts.map((font) => `${font.familyName} (${font.glyphCount} glyphs)`).sort(),
+    "the audit view was drawn from more than one face: --mono is missing glyphs Lean prints",
+  ).toHaveLength(1);
   await audit.locator("summary").click();
   await expect(audit.locator(".challenge-audit-declaration")).not.toBeVisible();
   const dependencies = page.getByRole("link", { name: "Inspect statement dependencies" });

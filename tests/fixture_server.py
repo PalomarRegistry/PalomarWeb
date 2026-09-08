@@ -718,7 +718,12 @@ html, body {{ background: var(--palomar-paper); color: var(--palomar-ink); }}
                     {
                         "name": "Example.theorem",
                         "declaration": (
-                            "theorem Example.theorem : Eq Nat.zero Nat.zero"
+                            # Carries the glyph classes core notation actually
+                            # emits and Courier New cannot draw: a Greek binder
+                            # name, the quantifier and arrow, and the marker Lean
+                            # leaves where it elided a subterm.
+                            "theorem Example.theorem : "
+                            "∀ {α : Type u_1} (a b : α), Eq a b → Eq b ⋯"
                         ),
                     }
                 ],
