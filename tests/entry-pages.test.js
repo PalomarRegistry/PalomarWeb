@@ -281,6 +281,7 @@ test("named-declaration routes validate before loading and reveal only completed
       assert.equal(selected, entry);
       assert.equal(renderBase.href, "https://render.example/");
       assert.equal(options.forceFrame, true);
+      assert.equal(options.showAudit, true);
       assert.deepEqual(await options.availabilityPromise, { repositories: [] });
       challengeStarted();
       await challenging;

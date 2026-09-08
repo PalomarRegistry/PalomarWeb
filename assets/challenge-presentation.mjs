@@ -276,6 +276,7 @@ export function createChallengePresentation({ fetchJson, document, window, local
     {
       forceFrame = false,
       dependenciesOnThisPage = false,
+      showAudit = false,
       sourceAvailability = null,
       availabilityPromise = null,
     } = {},
@@ -395,8 +396,10 @@ export function createChallengePresentation({ fetchJson, document, window, local
         ),
       );
     }
-    const audit = auditPanel(metadata);
-    if (audit) section.append(audit);
+    if (showAudit) {
+      const audit = auditPanel(metadata);
+      if (audit) section.append(audit);
+    }
     return { section, metadata };
   };
 }

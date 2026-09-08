@@ -1447,31 +1447,7 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".challenge-module-doc summary")).toHaveText("Notes from the statement file");
   await page.locator(".challenge-module-doc summary").click();
   await expect(page.locator(".challenge-module-doc pre")).toContainText("Parsed outside the Verso renderer");
-  const audit = page.locator(".challenge-audit");
-  await expect(audit.locator("summary")).toHaveText("View core-notation audit");
-  await expect(audit.locator(".challenge-audit-declaration")).not.toBeVisible();
-  await audit.locator("summary").click();
-  const auditSource = audit.locator(".challenge-audit-declaration pre");
-  await expect(auditSource).toHaveText(
-    "theorem Example.theorem : Eq Nat.zero Nat.zero",
-  );
-  await expect(auditSource).toHaveAttribute("tabindex", "0");
-  await expect(audit.locator(".challenge-audit-declaration")).toHaveAttribute(
-    "aria-labelledby",
-    "challenge-audit-declaration-0",
-  );
-  await expect(audit.locator(".challenge-audit-declaration")).toHaveAccessibleName(
-    "Example.theorem",
-  );
-  await expect(audit.locator(".challenge-audit-intro")).toContainText(
-    "without imported delaborators or unexpanders",
-  );
-  await expect(audit.locator(".challenge-audit-limits")).toContainText(
-    "misleading instances, silently inserted coercions, or definitions",
-  );
-  await expect(audit.locator(".challenge-audit-limits")).toContainText(
-    "omitted subterm with ⋯",
-  );
+  await expect(page.locator(".challenge-audit")).toHaveCount(0);
   const rendered = page.frameLocator(".challenge-presentation iframe");
   await expect(rendered.locator(".docstring")).toHaveText("The theorem doc-string.");
   await expect(rendered.locator(".skip-link")).toHaveCount(0);
@@ -1601,17 +1577,52 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   await expect(page.locator(".challenge-fallback")).toContainText(
     "This statement is too large to display here",
   );
+  await expect(page.locator(".challenge-audit")).toHaveCount(0);
   await page.getByRole("link", { name: "Open formatted statement" }).click();
   await expect(page).toHaveURL(/\/render\?id=PALOMAR-2026-07-29-000124/);
   await expect(page.locator(".challenge-presentation iframe")).toHaveAttribute(
     "sandbox",
     "allow-scripts",
   );
+  await expect(page.locator(".challenge-presentation iframe")).toHaveAttribute(
+    "data-height-adjusted",
+    "true",
+  );
   await expect(page.locator(".challenge-source")).toHaveAttribute(
     "href",
     `https://github.com/example/challenge/blob/${"1".repeat(40)}/Challenge.lean`,
   );
-  await page.getByRole("link", { name: "Inspect statement dependencies" }).click();
+  const audit = page.locator(".challenge-audit");
+  await expect(audit.locator("summary")).toHaveText("View core-notation audit");
+  await expect(audit.locator(".challenge-audit-declaration")).not.toBeVisible();
+  await audit.locator("summary").click();
+  const auditSource = audit.locator(".challenge-audit-declaration pre");
+  await expect(auditSource).toHaveText(
+    "theorem Example.theorem : Eq Nat.zero Nat.zero",
+  );
+  await expect(auditSource).toHaveAttribute("tabindex", "0");
+  await expect(audit.locator(".challenge-audit-declaration")).toHaveAttribute(
+    "aria-labelledby",
+    "challenge-audit-declaration-0",
+  );
+  await expect(audit.locator(".challenge-audit-declaration")).toHaveAccessibleName(
+    "Example.theorem",
+  );
+  await expect(audit.locator(".challenge-audit-intro")).toContainText(
+    "without imported delaborators or unexpanders",
+  );
+  await expect(audit.locator(".challenge-audit-limits")).toContainText(
+    "misleading instances, silently inserted coercions, or definitions",
+  );
+  await expect(audit.locator(".challenge-audit-limits")).toContainText(
+    "omitted subterm with ⋯",
+  );
+  await audit.locator("summary").click();
+  await expect(audit.locator(".challenge-audit-declaration")).not.toBeVisible();
+  const dependencies = page.getByRole("link", { name: "Inspect statement dependencies" });
+  await dependencies.scrollIntoViewIfNeeded();
+  await expect(dependencies).toBeInViewport();
+  await dependencies.click();
   await expect(page).toHaveURL(/\/entry\?.*#statement-dependencies$/);
   await expect(page.locator("#statement-dependencies")).toBeInViewport();
 });

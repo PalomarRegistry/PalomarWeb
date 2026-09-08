@@ -125,7 +125,7 @@ export async function renderChallengePage({
     const challenge = await challengePresentation(
       entry,
       renderBase,
-      { forceFrame: true, availabilityPromise },
+      { forceFrame: true, showAudit: true, availabilityPromise },
     );
     content.append(heading, challenge.section);
     status.hidden = true;
