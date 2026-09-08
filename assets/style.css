@@ -557,6 +557,30 @@ button:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* An abstract is the submitter's plain text, and several lay their argument
+   out over lines -- a claim, its numbered hypotheses indented under it, then
+   the conclusion. Collapsing that whitespace ran the hypotheses together into
+   one paragraph, so the structure the submitter wrote is kept rather than
+   reflowed. Which line breaks were meant as structure and which were only
+   wrapping is not decidable from the text, so neither is guessed at here. */
+.lede,
+.card-abstract {
+  white-space: pre-wrap;
+}
+
+/* Set an identifier apart from the sentence holding it, so a reader skimming
+   an abstract can see where the prose stops and a name from the formalization
+   starts. Quieter than the token lists, which are a surface of their own
+   rather than a few words inside a paragraph. */
+.lede code,
+.card-abstract code {
+  padding: .05em .3em;
+  border-radius: 3px;
+  background: var(--shade);
+  font-size: .88em;
+  overflow-wrap: anywhere;
+}
+
 .card-meta {
   display: flex;
   gap: .75rem 2rem;

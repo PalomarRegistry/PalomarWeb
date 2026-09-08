@@ -46,7 +46,16 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "version": version,
         "status": "registered",
         "title": f"Fixture {identifier} version {version}",
-        "abstract": "A browser confinement fixture for the registry, about the quasicoherent behaviour of a synthetic result.",
+        # Carries what submitters actually write: an identifier they marked
+        # as a code span, a tick they left unpaired, and a claim laid out
+        # over indented lines rather than in one paragraph.
+        "abstract": (
+            "A browser confinement fixture for the registry, about the "
+            "quasicoherent behaviour of a synthetic result.\n"
+            "  It classifies `AddCircle (1 : \u211d)` by `\u2124` and notes a 90` turn.\n"
+            "    (1) the first indented hypothesis\n"
+            "    (2) the second indented hypothesis"
+        ),
         "authors": [{
             "name": "Example",
             "orcid": "0000-0002-1825-0097",

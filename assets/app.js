@@ -29,7 +29,7 @@ import { createFormalizationPresentation } from "./formalization-presentation.mj
 import { createRegistryLoader } from "./registry-loading.mjs";
 import { createStatementPreview } from "./statement-preview.mjs";
 import { renderSubjectPage } from "./subject-pages.mjs";
-import { presentationAbstract } from "./presentation-text.mjs";
+import { abstractSegments, presentationAbstract } from "./presentation-text.mjs";
 import {
   DEFAULT_ORDER,
   FIRST_REGISTRATION_ORDER,
@@ -69,6 +69,23 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+/**
+ * One abstract as a paragraph, with the submitter's own code spans kept apart
+ * from their prose.
+ *
+ * Both surfaces that show an abstract build it here, so a card and an entry
+ * page mark the same runs. Each run is appended as text or as a `code`
+ * element, never as markup, which is what keeps a submitter's abstract unable
+ * to introduce any.
+ */
+function abstractParagraph(className, text) {
+  const paragraph = el("p", className);
+  for (const segment of abstractSegments(text)) {
+    paragraph.append(segment.code ? el("code", "", segment.text) : segment.text);
+  }
+  return paragraph;
 }
 
 function anchor(text, href, className) {
@@ -419,7 +436,7 @@ function entryCard(
     footer.append(historyLink);
   }
   card.append(top, title);
-  if (abstract) card.append(el("p", "card-abstract", abstract));
+  if (abstract) card.append(abstractParagraph("card-abstract", abstract));
   card.append(meta, footer);
   return card;
 }
@@ -1422,7 +1439,7 @@ async function renderEntry(
   top.append(el("span", "entry-id", `${entry.id} v${entry.version}`), trustBadge(entry));
   heading.append(top, el("h1", "", entry.title));
   const abstract = presentationAbstract(entry);
-  if (abstract) heading.append(el("p", "lede", abstract));
+  if (abstract) heading.append(abstractParagraph("lede", abstract));
   const byline = el("p", "byline", "By ");
   appendPeople(byline, entry.authors);
   heading.append(byline);
@@ -1709,7 +1726,7 @@ function renderSubjectRows(rows, content) {
     title.append(internalLink(row.title, localPageUrl("/entry", row)));
     article.append(identity, title);
     const abstract = presentationAbstract(row);
-    if (abstract) article.append(el("p", "card-abstract", abstract));
+    if (abstract) article.append(abstractParagraph("card-abstract", abstract));
     const subjects = el("div", "card-subjects");
     subjects.append(el("small", "", "Subjects"), categoryTokens(row));
     article.append(subjects);

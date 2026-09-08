@@ -694,6 +694,42 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
   );
 });
 
+// Submitters mark identifiers in an abstract with Markdown code spans, and the
+// page used to render the abstract verbatim: the reader got the backticks as
+// punctuation, and the identifier in the same face as the sentence holding it.
+// Several submitters also lay a claim out over indented lines, which collapsing
+// whitespace ran together into one paragraph.
+test("an abstract keeps the submitter's code spans and their line structure", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const lede = page.locator("p.lede");
+  await expect(lede).toBeVisible();
+
+  await expect(lede.locator("code")).toHaveText(["AddCircle (1 : ℝ)", "ℤ"]);
+  // The marks are read, so they are gone from what the reader sees -- but only
+  // the paired ones. A tick a submitter used for something else is their text,
+  // and stays.
+  await expect(lede).toContainText("It classifies AddCircle (1 : ℝ) by ℤ");
+  await expect(lede).toContainText("a 90` turn");
+
+  // Rendered, not merely present: an identifier that reads as prose is the
+  // defect this closes.
+  const inline = lede.locator("code").first();
+  await expect(inline).toHaveCSS("font-family", /mono/i);
+  const [codeGround, ledeGround] = await Promise.all([
+    inline.evaluate((n) => getComputedStyle(n).backgroundColor),
+    lede.evaluate((n) => getComputedStyle(n).backgroundColor),
+  ]);
+  expect(codeGround, "an inline code span sits on the same ground as the prose")
+    .not.toBe(ledeGround);
+
+  // The indented hypotheses are the submitter's structure, and each has to
+  // start its own line rather than being folded into the sentence above it.
+  await expect(lede).toHaveCSS("white-space", "pre-wrap");
+  const lines = (await lede.textContent()).split("\n").map((line) => line.trimEnd());
+  expect(lines).toContain("    (1) the first indented hypothesis");
+  expect(lines).toContain("    (2) the second indented hypothesis");
+});
+
 test("an entry answers its reader's first three questions first", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   await expect(page.locator(".entry-evidence")).toBeVisible();
