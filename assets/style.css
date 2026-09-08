@@ -582,6 +582,16 @@ button:focus-visible {
    an abstract can see where the prose stops and a name from the formalization
    starts. Quieter than the token lists, which are a surface of their own
    rather than a few words inside a paragraph. */
+/* An expression this page found by its operators, rather than one a submitter
+   marked. The face is enough to separate it from the sentence around it; the
+   ground below is kept for the spans they marked themselves, so the stronger
+   signal stays with the stronger claim. */
+.lede .expression,
+.card-abstract .expression {
+  font-family: var(--mono);
+  font-size: .92em;
+}
+
 .lede code,
 .card-abstract code {
   padding: .05em .3em;

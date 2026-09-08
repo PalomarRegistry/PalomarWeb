@@ -53,6 +53,7 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
             "A browser confinement fixture for the registry, about the "
             "quasicoherent behaviour of a synthetic result.\n"
             "  It classifies `AddCircle (1 : \u211d)` by `\u2124` and notes a 90` turn.\n"
+            "  It holds for mu \u2265 2 and every n > 3, on 2^kappa.\n"
             "    (1) the first indented hypothesis\n"
             "    (2) the second indented hypothesis"
         ),

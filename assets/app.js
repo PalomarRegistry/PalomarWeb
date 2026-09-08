@@ -72,18 +72,22 @@ function el(tag, className, text) {
 }
 
 /**
- * One abstract as a paragraph, with the submitter's own code spans kept apart
- * from their prose.
+ * One abstract as a paragraph, with the submitter's own code spans and the
+ * mathematics in their sentences each kept apart from the prose.
  *
  * Both surfaces that show an abstract build it here, so a card and an entry
- * page mark the same runs. Each run is appended as text or as a `code`
- * element, never as markup, which is what keeps a submitter's abstract unable
- * to introduce any.
+ * page mark the same runs. A span a submitter marked is `code`; an expression
+ * found by its operators is not, because this page found it rather than being
+ * told, and saying `code` would claim otherwise. Each run is appended as text
+ * or as one element, never as markup, which is what keeps a submitter's
+ * abstract unable to introduce any.
  */
 function abstractParagraph(className, text) {
   const paragraph = el("p", className);
   for (const segment of abstractSegments(text)) {
-    paragraph.append(segment.code ? el("code", "", segment.text) : segment.text);
+    if (segment.kind === "code") paragraph.append(el("code", "", segment.text));
+    else if (segment.kind === "math") paragraph.append(el("span", "expression", segment.text));
+    else paragraph.append(segment.text);
   }
   return paragraph;
 }

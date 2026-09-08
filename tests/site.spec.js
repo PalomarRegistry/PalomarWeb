@@ -750,6 +750,20 @@ test("an abstract keeps the submitter's code spans and their line structure", as
   await expect(lede).toContainText("It classifies AddCircle (1 : ℝ) by ℤ");
   await expect(lede).toContainText("a 90` turn");
 
+  // Most submitters mark nothing and write the mathematics into the sentence.
+  // Those are found by their operators and set apart too, in the face but not
+  // on the ground: this page found them rather than being told, and the
+  // stronger signal stays with the span the submitter marked themselves.
+  await expect(lede.locator(".expression")).toHaveText(["mu ≥ 2", "n > 3", "2^kappa"]);
+  const expression = lede.locator(".expression").first();
+  await expect(expression).toHaveCSS("font-family", /mono/i);
+  const [mathGround, proseGround] = await Promise.all([
+    expression.evaluate((n) => getComputedStyle(n).backgroundColor),
+    lede.evaluate((n) => getComputedStyle(n).backgroundColor),
+  ]);
+  expect(mathGround, "a found expression carries no ground of its own")
+    .toBe(proseGround);
+
   // Rendered, not merely present: an identifier that reads as prose is the
   // defect this closes.
   const inline = lede.locator("code").first();
