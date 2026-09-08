@@ -206,20 +206,7 @@ test("an inline presentation keeps links confined and accepts height only from i
   assert.equal(byClass(result.section, "challenge-metadata").length, 1);
   assert.equal(byClass(result.section, "challenge-no-module-doc").length, 1);
   assert.equal(byClass(result.section, "challenge-fallback").length, 0);
-  const [audit] = byClass(result.section, "challenge-audit");
-  assert.ok(audit);
-  assert.equal(audit.children[0].textContent, "View core-notation audit");
-  assert.match(byClass(audit, "challenge-audit-intro")[0].textContent, /same content-addressed render bundle/);
-  const auditDeclaration = byClass(audit, "challenge-audit-declaration")[0];
-  const auditSource = auditDeclaration.children[1];
-  assert.equal(auditSource.textContent, "theorem Example.theorem : Eq Nat.zero Nat.zero");
-  assert.equal(auditSource.getAttribute("tabindex"), "0");
-  assert.equal(
-    auditDeclaration.getAttribute("aria-labelledby"),
-    "challenge-audit-declaration-0",
-  );
-  assert.match(byClass(audit, "challenge-audit-limits")[0].textContent, /misleading instances/);
-  assert.match(byClass(audit, "challenge-audit-limits")[0].textContent, /printer resource limit/);
+  assert.equal(byClass(result.section, "challenge-audit").length, 0);
   const [frame] = byClass(result.section, "challenge-frame");
   const [shell] = byClass(result.section, "challenge-frame-shell");
   assert.ok(frame);
@@ -262,6 +249,38 @@ test("an inline presentation keeps links confined and accepts height only from i
   assert.equal(frame.dataset.heightAdjusted, "true");
   onMessage({ source: frame.contentWindow, data: { type: "palomar-render-height", height: 1_000 } });
   assert.equal(frame.style.height, "672px");
+});
+
+test("the dedicated render presentation includes the core-notation audit", async () => {
+  const browser = fakeBrowser("http://127.0.0.1:4173/render.html");
+  const record = acceptedEntry();
+  const metadata = renderMetadata();
+  const present = createChallengePresentation({
+    ...browser,
+    fetchJson: async () => metadata,
+    localPageUrl: () => new URL("http://127.0.0.1:4173/entry.html"),
+  });
+
+  const result = await present(
+    record,
+    new URL("http://127.0.0.1:4173/database/"),
+    { forceFrame: true, showAudit: true },
+  );
+
+  const [audit] = byClass(result.section, "challenge-audit");
+  assert.ok(audit);
+  assert.equal(audit.children[0].textContent, "View core-notation audit");
+  assert.match(byClass(audit, "challenge-audit-intro")[0].textContent, /same content-addressed render bundle/);
+  const auditDeclaration = byClass(audit, "challenge-audit-declaration")[0];
+  const auditSource = auditDeclaration.children[1];
+  assert.equal(auditSource.textContent, "theorem Example.theorem : Eq Nat.zero Nat.zero");
+  assert.equal(auditSource.getAttribute("tabindex"), "0");
+  assert.equal(
+    auditDeclaration.getAttribute("aria-labelledby"),
+    "challenge-audit-declaration-0",
+  );
+  assert.match(byClass(audit, "challenge-audit-limits")[0].textContent, /misleading instances/);
+  assert.match(byClass(audit, "challenge-audit-limits")[0].textContent, /printer resource limit/);
 });
 
 test("historical render metadata does not invent an audit view", async () => {
