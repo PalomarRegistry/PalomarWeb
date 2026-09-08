@@ -1447,6 +1447,31 @@ test("eligible Challenge renders inline without origin privilege", async ({ page
   await expect(page.locator(".challenge-module-doc summary")).toHaveText("Notes from the statement file");
   await page.locator(".challenge-module-doc summary").click();
   await expect(page.locator(".challenge-module-doc pre")).toContainText("Parsed outside the Verso renderer");
+  const audit = page.locator(".challenge-audit");
+  await expect(audit.locator("summary")).toHaveText("View core-notation audit");
+  await expect(audit.locator(".challenge-audit-declaration")).not.toBeVisible();
+  await audit.locator("summary").click();
+  const auditSource = audit.locator(".challenge-audit-declaration pre");
+  await expect(auditSource).toHaveText(
+    "theorem Example.theorem : Eq Nat.zero Nat.zero",
+  );
+  await expect(auditSource).toHaveAttribute("tabindex", "0");
+  await expect(audit.locator(".challenge-audit-declaration")).toHaveAttribute(
+    "aria-labelledby",
+    "challenge-audit-declaration-0",
+  );
+  await expect(audit.locator(".challenge-audit-declaration")).toHaveAccessibleName(
+    "Example.theorem",
+  );
+  await expect(audit.locator(".challenge-audit-intro")).toContainText(
+    "without imported delaborators or unexpanders",
+  );
+  await expect(audit.locator(".challenge-audit-limits")).toContainText(
+    "misleading instances, silently inserted coercions, or definitions",
+  );
+  await expect(audit.locator(".challenge-audit-limits")).toContainText(
+    "omitted subterm with ⋯",
+  );
   const rendered = page.frameLocator(".challenge-presentation iframe");
   await expect(rendered.locator(".docstring")).toHaveText("The theorem doc-string.");
   await expect(rendered.locator(".skip-link")).toHaveCount(0);
