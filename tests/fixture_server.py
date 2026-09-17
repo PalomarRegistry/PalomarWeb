@@ -46,7 +46,17 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "version": version,
         "status": "registered",
         "title": f"Fixture {identifier} version {version}",
-        "abstract": "A browser confinement fixture for the registry, about the quasicoherent behaviour of a synthetic result.",
+        # Carries what submitters actually write: an identifier they marked
+        # as a code span, a tick they left unpaired, and a claim laid out
+        # over indented lines rather than in one paragraph.
+        "abstract": (
+            "A browser confinement fixture for the registry, about the "
+            "quasicoherent behaviour of a synthetic result.\n"
+            "  It classifies `AddCircle (1 : \u211d)` by `\u2124` and notes a 90` turn.\n"
+            "  It holds for mu \u2265 2 and every n > 3, on 2^kappa.\n"
+            "    (1) the first indented hypothesis\n"
+            "    (2) the second indented hypothesis"
+        ),
         "authors": [{
             "name": "Example",
             "orcid": "0000-0002-1825-0097",
@@ -718,7 +728,12 @@ html, body {{ background: var(--palomar-paper); color: var(--palomar-ink); }}
                     {
                         "name": "Example.theorem",
                         "declaration": (
-                            "theorem Example.theorem : Eq Nat.zero Nat.zero"
+                            # Carries the glyph classes core notation actually
+                            # emits and Courier New cannot draw: a Greek binder
+                            # name, the quantifier and arrow, and the marker Lean
+                            # leaves where it elided a subterm.
+                            "theorem Example.theorem : "
+                            "∀ {α : Type u_1} (a b : α), Eq a b → Eq b ⋯"
                         ),
                     }
                 ],

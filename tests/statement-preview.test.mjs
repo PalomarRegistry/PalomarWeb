@@ -143,7 +143,18 @@ function fakeBrowser({ hover = true } = {}) {
 
 function titleLink(browser) {
   const link = browser.createElement("a");
-  link.matches = "h3 > a";
+  // What the preview asks for. It resolves the nearest anchor and lets the
+  // registration decide, rather than requiring the markup a card happens to
+  // use, because the table shows the same titles from a cell.
+  link.matches = "a";
+  link.isConnected = true;
+  return link;
+}
+
+/** An anchor on a listing that is not a title: never registered, never framed. */
+function plainLink(browser) {
+  const link = browser.createElement("a");
+  link.matches = "a";
   link.isConnected = true;
   return link;
 }
@@ -396,4 +407,20 @@ test("a lookup refuses a companion document that was never validated", () => {
   const validated = validateRecentRenders(recentRenders());
   assert.equal(recentRenderRow(validated, "PALOMAR-2026-07-29-000123").version, 1);
   assert.equal(recentRenderRow(validated, "PALOMAR-2026-07-29-000999"), null);
+});
+
+// Resolving the nearest anchor rather than a card's own markup puts every link
+// on a listing in front of the check, not just the titles. The registration is
+// what keeps the rest of them out -- a card carries a repository link, a record
+// link and an archive link beside the title it registers.
+test("an anchor that was never registered raises nothing", async () => {
+  const browser = fakeBrowser();
+  const { preview, grid, reads } = build(browser);
+  preview.register(titleLink(browser), recentRow());
+
+  grid.emit("mouseover", { target: plainLink(browser) });
+  await browser.tick(OPEN_MS);
+
+  assert.equal(panels(browser).length, 0, "an unregistered anchor framed something");
+  assert.equal(reads(), 0, "an unregistered anchor started a read");
 });

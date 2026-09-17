@@ -51,6 +51,11 @@
         <div id="search-results" class="entry-grid" aria-live="polite"></div>
 
         <div class="toolbar">
+          <div class="view-switch" role="group" aria-label="Result view">
+            <span>View:</span>
+            <button class="view-button active" type="button" data-view="table" aria-pressed="true">Table</button>
+            <button class="view-button" type="button" data-view="cards" aria-pressed="false">Cards</button>
+          </div>
           <div class="filters" role="group" aria-label="Statement dependency filters">
             <span>Show:</span>
             <button class="filter active" type="button" data-trust="all" aria-pressed="true">All</button>
