@@ -1081,6 +1081,12 @@ test("user documentation names current examples and iframe height units", async 
   assert.doesNotMatch(guide, /first registered result/);
   assert.doesNotMatch(guide, /entry\.html\?id=PALOMAR-2026-07-29-000001/);
 
+  // Empty-registry landing copy used to claim a first result was still ahead.
+  const app = await readFile(new URL("../assets/app.js", import.meta.url), "utf8");
+  assert.match(app, /No current registry entries are available to display/);
+  assert.doesNotMatch(app, /The telescope is ready/);
+  assert.doesNotMatch(app, /first registered result will appear/);
+
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   const presentation = await readFile(
     new URL("../assets/challenge-presentation.mjs", import.meta.url),
