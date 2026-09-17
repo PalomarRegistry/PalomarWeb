@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   expandDetailsForTarget,
+  fragmentTargetId,
   renderChallengePage,
   renderEntryPage,
 } from "../assets/entry-pages.mjs";
@@ -160,6 +161,50 @@ test("unversioned entry routes reveal completed content then preserve and scroll
   assert.equal(replaced.title, "");
   assert.equal(replaced.url.href, `https://palomar-registry.org/entry?id=${entry.id}&version=3#version-history`);
   assert.equal(scrolled, 1);
+});
+
+test("malformed entry fragments do not wipe a successfully loaded entry", async () => {
+  const entry = { id: "PALOMAR-2026-08-08-000001", version: 2 };
+  const loaded = {
+    entry,
+    canonicalUrl: new URL("https://data.example/entry.json"),
+    renderBase: new URL("https://render.example/"),
+    versions: [{ version: 2 }],
+    currentVersion: 2,
+  };
+  let scrolled = 0;
+  let rendered = false;
+  const { settings, view } = entryDependencies({
+    location: { hash: "#%E0%A4%A" },
+    loadEntry: async () => loaded,
+    renderEntry: async (_loaded, content) => {
+      rendered = true;
+      content.append(node());
+    },
+  });
+  view.targets.set("version-history", { scrollIntoView: () => { scrolled += 1; } });
+
+  await renderEntryPage(settings);
+
+  assert.equal(rendered, true);
+  assert.equal(view.content.hidden, false);
+  assert.equal(view.content.children.length, 1);
+  assert.equal(view.status.hidden, true);
+  assert.equal(view.status.classList.contains("error"), false);
+  assert.notEqual(
+    view.status.textContent.startsWith("The registry entry could not be loaded:"),
+    true,
+  );
+  assert.equal(scrolled, 0);
+});
+
+test("fragmentTargetId decodes valid hashes and rejects malformed encoding", () => {
+  assert.equal(fragmentTargetId("#version-history"), "version-history");
+  assert.equal(fragmentTargetId("#caf%C3%A9"), "café");
+  assert.equal(fragmentTargetId("#%E0%A4%A"), null);
+  assert.equal(fragmentTargetId("#"), null);
+  assert.equal(fragmentTargetId(""), null);
+  assert.equal(fragmentTargetId("version-history"), null);
 });
 
 test("entry routes preserve exact tombstones and load failures", async (t) => {
