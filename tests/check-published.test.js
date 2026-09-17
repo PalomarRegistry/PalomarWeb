@@ -12,6 +12,7 @@ const page = (version) =>
   `<html><head><script type="module" src="assets/app.js?v=${version}"></script></head></html>`;
 
 const registryValidators = {
+  validateChallengeMetadata: (value) => value,
   validateRecent: (value) => value,
   validateRecentRenders: (value) => value,
   validateBrowseHead: (value) => value,
@@ -23,6 +24,15 @@ const registryValidators = {
 };
 
 const CLASSIFICATION = { arxiv: ["math.CO"], msc2020: ["05C10"] };
+
+function challengeRender(id, version, digest) {
+  return {
+    format: "verso-html",
+    artifact_path: `renders/${id}-v${version}/${digest}/`,
+    entrypoint: "Challenge/index.html",
+    artifact_tree_sha256: digest,
+  };
+}
 
 function subjectHead(kind, code, rows, registeredAt = "2026-08-08T12:00:00Z") {
   return {
@@ -67,10 +77,12 @@ function oneEntryRegistry() {
   const digest = "a".repeat(64);
   const entry = {
     id,
+    version: 1,
     registered_at: registeredAt,
     classification: CLASSIFICATION,
-    challenge_render: { artifact_tree_sha256: digest },
+    challenge_render: challengeRender(id, 1, digest),
   };
+  const metadata = { schema_version: 2, declarations: ["Example.theorem"] };
   const renders = { renders: [{ id, version: 1, artifact_tree_sha256: digest }] };
   return {
     entry,
@@ -89,17 +101,22 @@ function oneEntryRegistry() {
       ["https://data.example/browse/2026-08-08/1.json", browsePage],
       [`https://data.example/versions/${id}.json`, history],
       [`https://data.example/entries/${id}-v1.json`, entry],
+      [`https://data.example/renders/${id}-v1/${digest}/challenge-metadata.json`, metadata],
       ["https://data.example/subjects/arxiv/math.CO.json", subjectHead("arxiv", "math.CO", [row])],
       ["https://data.example/subjects/msc/05C10.json", subjectHead("msc", "05C10", [row])],
     ]),
   };
 }
 
-const responseFrom = (responses) => async (url) => ({
-  ok: true,
-  status: 200,
-  async json() { return responses.get(String(url)); },
-});
+const responseFrom = (responses) => async (url) => {
+  const href = String(url);
+  const found = responses.has(href);
+  return {
+    ok: found,
+    status: found ? 200 : 404,
+    async json() { return responses.get(href); },
+  };
+};
 
 test("a page built from the expected commit is fresh", () => {
   const state = publishState(page(sha), sha);
@@ -183,16 +200,26 @@ test("live-data health traverses browse and history to validate every public per
       entries: [first, second],
     }],
     ["https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json", {
-      id: "one-v1",
+      id: first.id,
+      version: 1,
+      fixture_name: "one-v1",
       registered_at: "2026-08-08T11:00:00Z",
       classification: CLASSIFICATION,
-      challenge_render: { artifact_tree_sha256: "b".repeat(64) },
+      challenge_render: challengeRender(first.id, 1, "b".repeat(64)),
     }],
     ["https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json", {
-      id: "one-v2",
+      id: first.id,
+      version: 2,
+      fixture_name: "one-v2",
       registered_at: registeredAt,
       classification: CLASSIFICATION,
-      challenge_render: { artifact_tree_sha256: "a".repeat(64) },
+      challenge_render: challengeRender(first.id, 2, "a".repeat(64)),
+    }],
+    [`https://data.example/renders/${first.id}-v1/${"b".repeat(64)}/challenge-metadata.json`, {
+      fixture_name: "audit-v1",
+    }],
+    [`https://data.example/renders/${first.id}-v2/${"a".repeat(64)}/challenge-metadata.json`, {
+      fixture_name: "audit-v2",
     }],
     ["https://data.example/recent-renders.json", {
       renders: [{ id: first.id, version: 2, artifact_tree_sha256: "a".repeat(64) }],
@@ -234,7 +261,10 @@ test("live-data health traverses browse and history to validate every public per
       return page;
     },
     validateEntry(value, summary) {
-      validated.push(`${value.id}:${summary.path}`);
+      validated.push(`${value.fixture_name}:${summary.path}`);
+    },
+    validateChallengeMetadata(entry, metadata) {
+      validated.push(`${metadata.fixture_name}:${entry.version}`);
     },
     validateSubjectHead(page, kind, code) {
       validated.push(`subject:${kind}/${code}`);
@@ -252,6 +282,8 @@ test("live-data health traverses browse and history to validate every public per
     "https://data.example/versions/PALOMAR-2026-08-08-000001.json",
     "https://data.example/entries/PALOMAR-2026-08-08-000001-v1.json",
     "https://data.example/entries/PALOMAR-2026-08-08-000001-v2.json",
+    `https://data.example/renders/${first.id}-v1/${"b".repeat(64)}/challenge-metadata.json`,
+    `https://data.example/renders/${first.id}-v2/${"a".repeat(64)}/challenge-metadata.json`,
     "https://data.example/subjects/arxiv/math.CO.json",
     "https://data.example/subjects/msc/05C10.json",
   ]);
@@ -264,6 +296,8 @@ test("live-data health traverses browse and history to validate every public per
     `versions:${first.id}`,
     `one-v1:${first.path}`,
     `one-v2:${second.path}`,
+    "audit-v1:1",
+    "audit-v2:2",
     "subject:arxiv/math.CO",
     "subject:msc/05C10",
   ]);
@@ -271,6 +305,42 @@ test("live-data health traverses browse and history to validate every public per
     state.reason,
     /all 2 active entry versions across 1 results and 2 classification codes/,
   );
+});
+
+test("live-data health validates every available render metadata document", async () => {
+  const fixture = oneEntryRegistry();
+  const state = await publicDataState(
+    "https://data.example",
+    responseFrom(fixture.responses),
+    {
+      ...registryValidators,
+      validateChallengeMetadata() {
+        throw new Error("Challenge render metadata contains invalid audit declarations");
+      },
+    },
+  );
+
+  assert.equal(state.healthy, false);
+  assert.match(state.reason, /invalid audit declarations/);
+});
+
+test("live-data health retains the historical missing-render fallback", async () => {
+  const fixture = oneEntryRegistry();
+  for (const href of fixture.responses.keys()) {
+    if (href.endsWith("/challenge-metadata.json")) fixture.responses.delete(href);
+  }
+  const state = await publicDataState(
+    "https://data.example",
+    responseFrom(fixture.responses),
+    {
+      ...registryValidators,
+      validateChallengeMetadata() {
+        assert.fail("missing historical metadata must not be validated");
+      },
+    },
+  );
+
+  assert.equal(state.healthy, true, state.reason);
 });
 
 test("live-data health refuses a subject page naming what is not a current version", async () => {

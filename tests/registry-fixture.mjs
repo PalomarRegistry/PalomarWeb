@@ -122,7 +122,11 @@ export function entry(overrides = {}) {
     status: "registered",
     title: "Fixture theorem",
     abstract: "A security fixture.",
-    authors: [{ name: "Example" }],
+    authors: [{
+      name: "Example",
+      orcid: "0000-0002-1825-0097",
+      orcid_record_checked_at: "2026-08-31T12:00:00Z",
+    }],
     classification: { arxiv: ["math.CO"], msc2020: ["05C10"] },
     submission: {
       submission_id: "a1b2c3d4e5f6",

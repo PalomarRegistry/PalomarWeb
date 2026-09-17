@@ -15,6 +15,7 @@ Use https://data.palomar-registry.org (CORS `*`, CC0, no query strings).
 - Browse head: https://data.palomar-registry.org/browse/index.json
 - Licence: https://data.palomar-registry.org/LICENSE
 - Policy: https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md
+- Current aggregate operating-cost run rate: https://palomar-registry.org/costs
 
 Path grammar on that origin, substituting the braces. These are not documents
 to fetch as written:

@@ -38,11 +38,67 @@ function announce(message) {
   announceClipboard(status, message);
 }
 
-for (const heading of document.querySelectorAll("main.about h2, main.about h3")) {
-  const target = anchorTarget(heading);
-  if (!target) continue;
+const headings = [...document.querySelectorAll("main.about h2, main.about h3")]
+  .map((heading) => ({
+    heading,
+    target: anchorTarget(heading),
+    label: heading.textContent.replace(/\s+/g, " ").trim(),
+    level: Number(heading.tagName.slice(1)),
+  }))
+  .filter(({ target }) => target);
 
-  const label = heading.textContent.replace(/\s+/g, " ").trim();
+function contentsLink({ target, label }) {
+  const link = document.createElement("a");
+  link.href = `#${encodeURIComponent(target)}`;
+  link.textContent = label;
+  return link;
+}
+
+function tableOfContents(entries) {
+  const details = document.createElement("details");
+  details.className = "page-toc";
+  const desktop = window.matchMedia("(min-width: 701px)");
+  details.open = desktop.matches;
+
+  const summary = document.createElement("summary");
+  summary.textContent = "On this page";
+  const navigation = document.createElement("nav");
+  navigation.setAttribute("aria-label", "On this page");
+  const list = document.createElement("ol");
+  let currentSection;
+
+  for (const entry of entries) {
+    const item = document.createElement("li");
+    item.append(contentsLink(entry));
+    if (entry.level === 2 || !currentSection) {
+      list.append(item);
+      currentSection = item;
+      continue;
+    }
+    let children = currentSection.querySelector(":scope > ol");
+    if (!children) {
+      children = document.createElement("ol");
+      currentSection.append(children);
+    }
+    children.append(item);
+  }
+
+  navigation.append(list);
+  details.append(summary, navigation);
+  details.addEventListener("click", (event) => {
+    if (!desktop.matches && event.target.closest?.("a[href^='#']")) details.open = false;
+  });
+  return details;
+}
+
+const main = document.querySelector("main.about");
+const firstSection = main?.querySelector(":scope > section[id]");
+if (main && firstSection && headings.length) {
+  main.insertBefore(tableOfContents(headings), firstSection);
+}
+
+for (const { heading, target, label } of headings) {
+
   const anchor = document.createElement("a");
   anchor.className = "heading-anchor";
   anchor.href = `#${encodeURIComponent(target)}`;
@@ -74,5 +130,15 @@ for (const heading of document.querySelectorAll("main.about h2, main.about h3"))
       anchor.title = "Copy link to this section";
       status.textContent = "";
     }, CLIPBOARD_RESET_DELAY_MS);
+  });
+}
+
+// The generated contents sits above every fragment target. Re-apply an initial
+// fragment after that insertion so a deep link cannot stop at the target's old
+// pre-enhancement position.
+if (window.location.hash) {
+  window.requestAnimationFrame(() => {
+    const fragment = decodeURIComponent(window.location.hash.slice(1));
+    document.getElementById(fragment)?.scrollIntoView();
   });
 }

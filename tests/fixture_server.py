@@ -47,7 +47,11 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "status": "registered",
         "title": f"Fixture {identifier} version {version}",
         "abstract": "A browser confinement fixture for the registry, about the quasicoherent behaviour of a synthetic result.",
-        "authors": [{"name": "Example"}],
+        "authors": [{
+            "name": "Example",
+            "orcid": "0000-0002-1825-0097",
+            "orcid_record_checked_at": "2026-08-31T12:00:00Z",
+        }],
         "classification": classification,
         "provenance": {
             "result_origin": "original",
@@ -705,11 +709,19 @@ html, body {{ background: var(--palomar-paper); color: var(--palomar-ink); }}
             path,
         ):
             metadata = {
-                "schema_version": 2,
+                "schema_version": 3,
                 "imports": ["Mathlib"],
                 "module_doc": "# Fixture module\n\nParsed outside the Verso renderer.",
                 "declarations": ["Example.theorem"],
                 "solution_imports": ["ExampleDependency"],
+                "audit_declarations": [
+                    {
+                        "name": "Example.theorem",
+                        "declaration": (
+                            "theorem Example.theorem : Eq Nat.zero Nat.zero"
+                        ),
+                    }
+                ],
             }
             self.send_bytes(json.dumps(metadata).encode(), "application/json")
             return

@@ -106,6 +106,20 @@ export function createEntryHistoryPresentation({ document, localPageUrl, window 
       if (summary.version === entry.version) {
         item.append(el("span", "viewing-version", "Viewing"));
       }
+      if (summary.registry_correction) {
+        const correction = summary.registry_correction;
+        const disclosure = el("details", "registry-correction-disclosure");
+        const badge = el("summary", "registry-correction-badge", "Registry correction");
+        badge.title = correction.explanation;
+        const explanation = el("p", "registry-correction-explanation", correction.explanation);
+        const fields = el(
+          "p",
+          "registry-correction-fields",
+          `Changed fields: ${correction.changed_fields.join(", ")}`,
+        );
+        disclosure.append(badge, explanation, fields);
+        item.append(disclosure);
+      }
       list.append(item);
     }
     section.append(list);

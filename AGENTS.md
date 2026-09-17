@@ -65,6 +65,16 @@
   schema-v2 protocols. Source availability and independent render/evidence
   metadata retain their own versioned contracts.
 
+- Challenge render metadata is versioned independently inside each immutable,
+  content-addressed render bundle. A version widening deploys the Web consumer
+  first; PalomarSubmission may emit the new metadata version only after that
+  consumer is live, because the previous consumer rejects unknown versions.
+  This is different from replacing the shape of a closed projection at one
+  version, which remains producer-first. `check-published.mjs --data` must read
+  and validate every available render metadata document in its advertised
+  entry traversal; a missing historical render retains the pinned-source
+  fallback, but malformed metadata fails the deployment.
+
 - `source-availability.json` is normalized by PalomarDatabase's executable
   source-availability contract and consumed under the same per-endpoint
   freshness rules here. A known answer is authoritative only from five minutes

@@ -79,9 +79,23 @@ export function renderArtifactUrl(id, version, treeHash, renderBase) {
 
 export function challengeArtifactUrl(entry, renderBase) {
   const id = entry?.id;
-  const version = entry?.version;
+  const entryVersion = entry?.version;
+  // A maintainer correction is a new immutable registry snapshot of the
+  // earlier mechanically checked result. Its render therefore remains under
+  // the baseline version's content address, just like its verification
+  // evidence. Do not silently accept an arbitrary alternate version: the
+  // correction must point backwards from a valid current version.
+  const correctionVersion = entry?.registry_correction?.based_on?.version;
+  const version = correctionVersion ?? entryVersion;
   const render = entry?.challenge_render;
-  if (!ID.test(id || "") || !Number.isInteger(version) || version < 1) {
+  if (
+    !ID.test(id || "") ||
+    !Number.isInteger(entryVersion) ||
+    entryVersion < 1 ||
+    !Number.isInteger(version) ||
+    version < 1 ||
+    (correctionVersion !== undefined && correctionVersion >= entryVersion)
+  ) {
     throw new Error("entry has an invalid Palomar identifier or version");
   }
   const treeHash = render?.artifact_tree_sha256;

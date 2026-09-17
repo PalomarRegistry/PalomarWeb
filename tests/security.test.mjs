@@ -528,6 +528,27 @@ test("registered records require authors and bounded source identifiers", () => 
   );
 });
 
+test("registered people validate ORCID identifiers and optional check evidence", () => {
+  const checked = entry();
+  assert.equal(validateEntry(checked, summary()), checked);
+
+  const legacy = entry();
+  delete legacy.authors[0].orcid_record_checked_at;
+  legacy.authors[0].orcid = "0000-0000-0000-000X";
+  assert.equal(validateEntry(legacy, summary()), legacy);
+
+  const malformed = entry();
+  malformed.authors[0].orcid = "0000-0002-1825-0098";
+  assert.throws(() => validateEntry(malformed, summary()), /authors\[0\]\.orcid is malformed/);
+
+  const unpaired = entry();
+  delete unpaired.authors[0].orcid;
+  assert.throws(
+    () => validateEntry(unpaired, summary()),
+    /record check without an ORCID iD/,
+  );
+});
+
 test("preservation must cover every immutable source", () => {
   const missing = entry();
   missing.preservation.repositories.pop();
@@ -797,7 +818,7 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 test("entry schema, registration state, verdict, and selected identity fail closed", () => {
   const unsupportedSchemas = [
     entry({ schema_version: 2 }),
-    entry({ schema_version: 4 }),
+    entry({ schema_version: 5 }),
     entry({ schema_version: true }),
     entry({ schema_version: "2" }),
   ];
@@ -1311,7 +1332,7 @@ test("every provenance value the schema allows has an explicit label", async () 
   // registry down, so an unavailable schema is a failure, not a skip.
   const checkout = databaseCheckout();
   const schema = JSON.parse(
-    await readFile(join(checkout, "schema-v3.json"), "utf8"),
+    await readFile(join(checkout, "schema-v4.json"), "utf8"),
   );
   const provenance = schema.properties.provenance.properties;
   for (const [field, labels] of [
@@ -1329,7 +1350,7 @@ test("every provenance value the schema allows has an explicit label", async () 
 test("the site requires the Database entry version and exact preservation shape", async () => {
   const checkout = databaseCheckout();
   const schema = JSON.parse(
-    await readFile(join(checkout, "schema-v3.json"), "utf8"),
+    await readFile(join(checkout, "schema-v4.json"), "utf8"),
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
   assert.ok(schema.required.includes("preservation"));
@@ -1401,7 +1422,17 @@ test("a version index must be every version of the result it names", () => {
     /increasing version order/,
   );
   assert.throws(() => validateVersions({ ...document, entries: [] }, id), /carries no versions/);
-  assert.throws(() => validateVersions({ ...document, schema_version: 3 }, id), /schema_version/);
+  const correction = {
+    generated_by: "Palomar / Registry correction",
+    explanation: "Corrected metadata.",
+    changed_fields: ["title"],
+  };
+  assert.equal(validateVersions({
+    ...document,
+    schema_version: 3,
+    entries: [row(1), { ...row(2), registry_correction: correction }],
+  }, id).entries[1].registry_correction, correction);
+  assert.throws(() => validateVersions({ ...document, schema_version: 4 }, id), /schema_version/);
 
   const foreign = { id: "PALOMAR-2026-07-29-000999", version: 3, title: "t", status: "registered",
     path: "entries/PALOMAR-2026-07-29-000999-v3.json" };
@@ -1419,7 +1450,7 @@ test("a version index URL cannot leave the database origin", () => {
 
 test("browse enumerates every schema-v2 history row without becoming an entry schema", () => {
   assert.equal(RECENT_SCHEMA_VERSION, 2);
-  assert.equal(VERSIONS_SCHEMA_VERSION, 2);
+  assert.equal(VERSIONS_SCHEMA_VERSION, 3);
   assert.equal(BROWSE_SCHEMA_VERSION, 2);
   const row = {
     id: "PALOMAR-2026-07-29-000123",
