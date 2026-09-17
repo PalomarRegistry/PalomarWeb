@@ -702,7 +702,8 @@ button:focus-visible {
 }
 
 .card-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
   gap: .75rem 2rem;
   margin-bottom: .65rem;
   color: var(--muted);
