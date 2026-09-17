@@ -519,7 +519,7 @@ async function renderIndex() {
         status.classList.add("warning");
       } else {
         status.textContent =
-          "The telescope is ready. No entries have been registered yet; the first registered result will appear here automatically.";
+          "No current registry entries are available to display.";
         status.classList.add("empty");
       }
       showRecentIssues(issues);
