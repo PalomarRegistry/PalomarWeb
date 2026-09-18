@@ -290,7 +290,18 @@ test("user-facing pages do not overflow narrow mobile viewports", async ({ page 
     // to be pushed wide, by a long title or a long list of authors.
     { name: "registry table", path: `/?database=${database}`, ready: "tr.entry-row" },
     { name: "registry cards", path: `/?view=cards&database=${database}`, ready: ".entry-card" },
-    { name: "search", path: `/?database=${database}&q=synthetically`, ready: "#search-results .entry-card" },
+    // The search answers to the same switch the landing listing does, so both of
+    // its views are checked here for the same reason both of theirs are.
+    {
+      name: "search table",
+      path: `/?database=${database}&q=synthetically`,
+      ready: "#search-results tr.entry-row",
+    },
+    {
+      name: "search cards",
+      path: `/?view=cards&database=${database}&q=synthetically`,
+      ready: "#search-results .entry-card",
+    },
     {
       name: "entry",
       path: `/entry?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
@@ -329,8 +340,9 @@ test("navigation and action controls expose mobile-sized targets", async ({ page
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expectMinimumTargets(
     page.locator(
-      "header nav a, .registry-search input, .filter, .category-filters input, " +
-      ".date-filters select, .date-filters input, .card-footer a, footer .footer-links a",
+      "header nav a, .registry-search input, .filter, .view-button, " +
+      ".category-filters input, .date-filters select, .date-filters input, " +
+      ".card-footer a, footer .footer-links a",
     ),
     "registry controls should have 44px targets",
   );
@@ -927,24 +939,181 @@ test("the licence caveat travels with the licence evidence it qualifies", async 
   await expect(collapse.locator("dl.details")).toContainText("Repository licence");
 });
 
-test("the subject filters share the toolbar's line, ending at its right edge", async ({ page }) => {
+// The toolbar's groups drifted apart as the viewport changed because
+// `space-between` handed each of them a gap that grew with it. They share their
+// lines under one fixed gap now, which is what this holds still. Sharing a line
+// is also what keeps the toolbar short: a line per group pushed the listing a
+// screen down the page.
+test("the toolbar's groups sit on a shared line under one fixed gap", async ({ page }) => {
   await page.goto(`/?view=cards&database=${database}`);
-  const card = page.locator(".entry-card").first();
+  await expect(page.locator(".entry-card").first()).toBeVisible();
 
-  const toolbar = await page.locator(".toolbar").boundingBox();
-  const trust = await page.locator(".filters").boundingBox();
-  const inputs = await page.locator(".category-filters").boundingBox();
-  const listed = await card.boundingBox();
+  const measured = await page.evaluate(() => {
+    const toolbar = document.querySelector(".toolbar");
+    const groups = [...toolbar.children]
+      .filter((node) => node.checkVisibility())
+      .map((node) => node.getBoundingClientRect());
+    const style = getComputedStyle(toolbar);
+    // Gaps between groups that share a line, which is the measurement that
+    // `space-between` used to make vary.
+    const gaps = [];
+    for (let index = 1; index < groups.length; index += 1) {
+      const previous = groups[index - 1];
+      const current = groups[index];
+      if (Math.abs(current.top - previous.top) > 4) continue;
+      gaps.push(Math.round(current.left - previous.right));
+    }
+    return {
+      gaps,
+      columnGap: Math.round(parseFloat(style.columnGap)),
+      contentLeft: Math.round(toolbar.getBoundingClientRect().left +
+        parseFloat(style.paddingLeft)),
+      firstLeft: Math.round(groups[0].left),
+      height: Math.round(toolbar.getBoundingClientRect().height),
+      rows: new Set(groups.map((box) => Math.round(box.top))).size,
+    };
+  });
 
-  // One line: the subject inputs start after the trust filters end, and their
-  // vertical centres agree.
-  expect(inputs.x).toBeGreaterThan(trust.x + trust.width);
-  expect(Math.abs((inputs.y + inputs.height / 2) - (trust.y + trust.height / 2)))
-    .toBeLessThan(4);
-  // Justified right, and still clear of the list below.
-  expect(Math.abs((inputs.x + inputs.width) - (toolbar.x + toolbar.width)))
-    .toBeLessThan(16);
-  expect(inputs.y + inputs.height).toBeLessThanOrEqual(listed.y);
+  // Every gap on a line is the one the toolbar declares, not a share of
+  // whatever width was left over.
+  expect(measured.gaps.length).toBeGreaterThan(0);
+  for (const gap of measured.gaps) {
+    expect(Math.abs(gap - measured.columnGap)).toBeLessThanOrEqual(1);
+  }
+  // The set starts at the toolbar's own left edge rather than being spread.
+  expect(Math.abs(measured.firstLeft - measured.contentLeft)).toBeLessThanOrEqual(1);
+  // Two lines of controls at the page's full measure, not one line per group.
+  expect(measured.height).toBeLessThan(130);
+});
+
+// The controls are what the reader came for, but the results are what they came
+// to read. A toolbar that grows a line per group puts them below the fold.
+test("the toolbar does not push the listing down the page", async ({ page }) => {
+  for (const width of [1440, 1200, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/?database=${database}`);
+    await expect(page.locator("#entry-grid tr.entry-row").first()).toBeVisible();
+    const listing = await page.locator("#entry-grid").boundingBox();
+    // The first row is on the first screen, on a laptop, without scrolling.
+    expect(listing.y).toBeLessThan(560);
+  }
+});
+
+// The switch was hidden along with the rest of the toolbar while a search was
+// running, and the search drew cards whatever had been chosen. So choosing the
+// table and then searching handed back cards, with no visible control saying so.
+test("a search is answered in the view that was chosen", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid tr.entry-row").first()).toBeVisible();
+
+  await page.locator("#query").fill("synthetically");
+  await expect(page.locator("#search-results tr.entry-row").first()).toBeVisible();
+  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
+  // The switch stays reachable, so the view can still be changed mid-search.
+  await expect(page.getByRole("button", { name: "Cards" })).toBeVisible();
+  // The controls that narrow the landing selection have nothing to answer for.
+  await expect(page.locator(".filters")).toBeHidden();
+  await expect(page.locator(".date-filters")).toBeHidden();
+
+  await page.getByRole("button", { name: "Cards" }).click();
+  await expect(page.locator("#search-results .entry-card").first()).toBeVisible();
+  await expect(page.locator("#search-results tr.entry-row")).toHaveCount(0);
+
+  // And a search entered while the cards are chosen stays on the cards.
+  await page.locator("#query").fill("synthetic");
+  await expect(page.locator("#search-results .entry-card").first()).toBeVisible();
+  await expect(page.locator("#search-results tr.entry-row")).toHaveCount(0);
+});
+
+// Rows were simply hidden as the filters narrowed them, with nothing saying how
+// many were left or how to get them back.
+test("the toolbar says what it is showing and offers the way back", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const rows = page.locator("#entry-grid tr.entry-row:visible");
+  await expect(rows.first()).toBeVisible();
+  const all = await rows.count();
+
+  const count = page.locator("#filter-count");
+  const clear = page.locator("#clear-filters");
+  // Nothing narrowed yet: a plain total, and no way out to offer.
+  await expect(count).toHaveText(`${all} results`);
+  await expect(clear).toBeHidden();
+
+  await page.getByRole("button", { name: "Mathlib only" }).click();
+  const narrowed = await rows.count();
+  expect(narrowed).toBeLessThan(all);
+  await expect(count).toHaveText(`Showing ${narrowed} of ${all} results`);
+  await expect(clear).toBeVisible();
+
+  // A second control narrows it further, and the count follows it down.
+  await page.locator("#arxiv-query").fill("math.AG");
+  await expect(count).toHaveText(`Showing 0 of ${all} results`);
+
+  await clear.click();
+  await expect(count).toHaveText(`${all} results`);
+  await expect(clear).toBeHidden();
+  await expect(rows).toHaveCount(all);
+  await expect(page.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#arxiv-query")).toHaveValue("");
+  // Clearing hides the button that was clicked, so focus is handed somewhere
+  // usable rather than dropped to the top of the document.
+  await expect(page.getByRole("button", { name: "All" })).toBeFocused();
+});
+
+// Ordering is not narrowing, so it is not part of what "clear" answers for.
+test("clearing the filters leaves the chosen order alone", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid tr.entry-row").first()).toBeVisible();
+
+  await page.locator("#order-by").selectOption("registered");
+  await page.getByRole("button", { name: "Mathlib only" }).click();
+  await page.locator("#clear-filters").click();
+
+  await expect(page.locator("#order-by")).toHaveValue("registered");
+});
+
+// Above its breakpoint the table stops being its own scrollport so that the
+// column headings can be sticky against the page. That only holds while the
+// table still fits, so the width it needs is checked rather than assumed: a
+// column that outgrew it would put a horizontal scrollbar on the whole page.
+test("the table fits the page at the width where it stops scrolling itself", async ({ page }) => {
+  for (const width of [1056, 1200, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/?database=${database}`);
+    await expect(page.locator("#entry-grid tr.entry-row").first()).toBeVisible();
+
+    const measured = await page.evaluate(() => {
+      const grid = document.querySelector("#entry-grid");
+      const root = document.documentElement;
+      return {
+        overflowX: getComputedStyle(grid).overflowX,
+        needed: document.querySelector(".entry-table").scrollWidth,
+        available: grid.clientWidth,
+        pageOverflows: root.scrollWidth > root.clientWidth,
+      };
+    });
+
+    expect(measured.overflowX).toBe("visible");
+    expect(measured.needed).toBeLessThanOrEqual(measured.available);
+    expect(measured.pageOverflows).toBe(false);
+  }
+});
+
+// Choosing a view or a filter must not move the controls beside it. Marking the
+// chosen one in bold did exactly that, because bold is wider than regular.
+test("choosing a filter does not move the controls beside it", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  await expect(page.locator("#entry-grid tr.entry-row").first()).toBeVisible();
+
+  const settled = page.locator(".filters .filter").last();
+  const before = await settled.boundingBox();
+  await page.getByRole("button", { name: "Mathlib only" }).click();
+  await expect(page.getByRole("button", { name: "Mathlib only" }))
+    .toHaveAttribute("aria-pressed", "true");
+  const after = await settled.boundingBox();
+
+  expect(Math.abs(after.x - before.x)).toBeLessThan(1);
+  expect(Math.abs(after.width - before.width)).toBeLessThan(1);
 });
 
 test("a thin wrapper says where the mathematics is before anything else", async ({ page }) => {
@@ -2296,7 +2465,7 @@ test("search availability decorates the existing focused card in place", async (
   });
 
   await page.goto(
-    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
+    `/?view=cards&database=${database}&availability=${missingAvailability}&q=synthetically`,
   );
   const card = page.locator("#search-results .entry-card");
   await expect(card).toHaveCount(1);
@@ -2326,7 +2495,7 @@ test("search cards do not publish a stale source-unavailable claim", async ({ pa
   });
 
   await page.goto(
-    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
+    `/?view=cards&database=${database}&availability=${missingAvailability}&q=synthetically`,
   );
   const card = page.locator("#search-results .entry-card");
   await expect(card.locator(".repo-link")).toHaveText("example/challenge");
@@ -2358,7 +2527,7 @@ test("transient and invalid availability responses are both retried", async ({ p
   });
 
   await page.goto(
-    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
+    `/?view=cards&database=${database}&availability=${missingAvailability}&q=synthetically`,
   );
 
   const card = page.locator("#search-results .entry-card");
@@ -2396,7 +2565,7 @@ test("a missing availability manifest is cached for the page", async ({ page }) 
   );
 
   await page.goto(
-    `/?database=${database}&availability=${absentAvailability}&q=synthetically`,
+    `/?view=cards&database=${database}&availability=${absentAvailability}&q=synthetically`,
   );
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   await expect.poll(() => availabilityRequests).toBe(1);
@@ -2448,11 +2617,14 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   await page.goto(`/?view=cards&database=${database}&q=synthetically`);
   await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
   expect(recentRequests).toBe(0);
+  // The toolbar stays, because the view switch it holds applies to the results
+  // on the page. The groups that narrow the landing selection are what go.
   expect(await page.evaluate(() => ({
     grid: document.querySelector("#entry-grid").hidden,
     status: document.querySelector("#status").hidden,
-    toolbar: document.querySelector(".toolbar").hidden,
-  }))).toEqual({ grid: true, status: true, toolbar: true });
+    switchShown: document.querySelector(".view-switch").checkVisibility(),
+    trustShown: document.querySelector(".filters").checkVisibility(),
+  }))).toEqual({ grid: true, status: true, switchShown: true, trustShown: false });
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
 
   await runSearch(page, "");
@@ -2460,8 +2632,9 @@ test("a linked search hides landing DOM and retries one failed landing load", as
   expect(await page.evaluate(() => ({
     grid: document.querySelector("#entry-grid").hidden,
     status: document.querySelector("#status").hidden,
-    toolbar: document.querySelector(".toolbar").hidden,
-  }))).toEqual({ grid: false, status: false, toolbar: false });
+    switchShown: document.querySelector(".view-switch").checkVisibility(),
+    trustShown: document.querySelector(".filters").checkVisibility(),
+  }))).toEqual({ grid: false, status: false, switchShown: true, trustShown: true });
 
   // Clearing again while the first landing request is pending shares it.
   await page.locator("#query").press("Enter");
