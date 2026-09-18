@@ -165,6 +165,70 @@ test("every shipped page carries a footer link to llms.txt", async () => {
   }
 });
 
+// The header and the footer are written out in every page rather than composed
+// at build time, which is how index.html came to ship seven footer links while
+// the other nine shipped five, and how 404.html came to ship no navigation at
+// all. Nothing but the marker on the current page may differ between them.
+test("every shipped page carries the same navigation and footer links", async () => {
+  const chrome = async (file) => {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    const region = (open, close) => {
+      const start = html.indexOf(open);
+      assert.notEqual(start, -1, `${file} has no ${open}`);
+      return html.slice(start, html.indexOf(close, start));
+    };
+    const links = (markup) =>
+      [...markup.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/g)]
+        .map(([, href, label]) => `${label} -> ${href}`);
+    return {
+      nav: links(region("<nav", "</nav>")),
+      footer: links(region('<div class="footer-links">', "</div>")),
+    };
+  };
+
+  const [first, ...rest] = htmlFiles;
+  const expected = await chrome(first);
+  assert.equal(expected.nav.length, 4, `${first} should carry four navigation links`);
+  assert.ok(
+    expected.footer.includes("Costs -> /costs"),
+    "the public cost page is reachable only from the footer, so it has to be there",
+  );
+
+  for (const file of rest) {
+    const actual = await chrome(file);
+    assert.deepEqual(actual.nav, expected.nav, `${file} navigates differently from ${first}`);
+    assert.deepEqual(
+      actual.footer,
+      expected.footer,
+      `${file} carries different footer links from ${first}`,
+    );
+  }
+});
+
+// Every page marks where the reader is, and no page claims to be somewhere it
+// is not. A page outside the navigation marks nothing.
+test("each shipped page marks its own place in the navigation, and only its own", async () => {
+  const routes = new Map([
+    ["index.html", "/"],
+    ["statement.html", "/statement"],
+    ["about.html", "/about"],
+    ["how-to-submit.html", "/how-to-submit"],
+  ]);
+  for (const file of htmlFiles) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    const nav = html.slice(html.indexOf("<nav"), html.indexOf("</nav>"));
+    const current = [...nav.matchAll(/<a\b[^>]*>/g)]
+      .map(([tag]) => tag)
+      .filter((tag) => tag.includes('aria-current="page"'))
+      .map((tag) => /href="([^"]+)"/.exec(tag)[1]);
+    assert.deepEqual(
+      current,
+      routes.has(file) ? [routes.get(file)] : [],
+      `${file} marks the wrong navigation entry as current`,
+    );
+  }
+});
+
 test("shipped navigation exposes routes rather than HTML filenames", async () => {
   for (const file of htmlFiles) {
     const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");

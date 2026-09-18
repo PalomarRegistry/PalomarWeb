@@ -29,6 +29,11 @@
   --unrecoverable: #b42318;
   --unrecoverable-paper: #fff1f0;
   --max: 64rem;
+  /* The width a page is set to. The header's rule and the footer's rule are
+     drawn this wide, so a page whose text stops short of the registry's full
+     measure narrows this rather than letting those two rules hang a fifth of
+     the page past the last word under them. */
+  --page-measure: var(--max);
   --serif: Georgia, "Times New Roman", Times, serif;
   --sans: Arial, Helvetica, sans-serif;
   /* Lean output is Unicode-dense: Greek, ℕ/ℝ, ∀ ∃ ≤ → ∘ ⊢, and ⋯ where the
@@ -122,11 +127,22 @@ a:focus-visible {
   top: 1rem;
 }
 
+/* The reference pages set their text to a narrower measure than the registry.
+   Keying both rules off that measure is what puts the brand, the first word of
+   the page, and the footer on one left edge and one right edge. */
+body[data-page="about"],
+body[data-page="costs"],
+body[data-page="how-to-submit"],
+body[data-page="privacy"],
+body[data-page="statement"] {
+  --page-measure: 52rem;
+}
+
 .site-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  width: min(calc(100% - 2rem), var(--max));
+  width: min(calc(100% - 2rem), var(--page-measure));
   margin: 0 auto;
   padding: 1rem 0 .7rem;
   border-bottom: 3px double var(--ink);
@@ -163,7 +179,7 @@ nav a.active {
 
 main,
 footer {
-  width: min(calc(100% - 2rem), var(--max));
+  width: min(calc(100% - 2rem), var(--page-measure));
   margin-inline: auto;
 }
 
@@ -320,23 +336,92 @@ h3 {
  * contrast a reader is owed, and shifting the box would make the whole set jump
  * when the verified cards land in their place.
  */
-#search-results.preview .entry-card {
+#search-results.preview .entry-card,
+#search-results.preview .entry-row td {
   background: var(--shade);
 }
 
+/* Four groups of controls that narrow one list, sharing as few lines as they
+   fit on. What made the set drift apart as it was read was `space-between`,
+   which handed every group a gap that changed with the viewport: it is one
+   fixed gap now, and the groups sit against the start of the line. Sharing a
+   line is not what was wrong with it, and giving each group a line of its own
+   cost the listing a screen of height it could not spare. */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: .75rem;
+  gap: .4rem 1.3rem;
+  padding: .5rem .75rem;
   border-block: 1px solid var(--line);
   background: var(--shade);
   font: .85rem/1.3 var(--sans);
 }
 
-body.registry-searching .toolbar,
+/* Each group holds together as one thing on that line, and wraps inside itself
+   before it breaks across the gap between groups. */
+.toolbar > * {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .3rem .45rem;
+}
+
+.toolbar-label {
+  color: var(--muted);
+  font-weight: bold;
+}
+
+/* What the filters have done, and the way out of it. Rows were being hidden by
+   four separate controls with nothing saying how many were left. It ends the
+   toolbar rather than taking a rule and a row of its own: pushed to the end of
+   whichever line it lands on, it reads as the result of the controls before it
+   without costing the listing any more height. */
+.toolbar > .toolbar-summary {
+  margin-left: auto;
+  gap: .4rem .9rem;
+}
+
+.filter-count {
+  margin: 0;
+  color: var(--muted);
+  font: .8rem var(--sans);
+}
+
+.toolbar-clear {
+  min-height: 2.75rem;
+  padding: .25rem .7rem;
+  border: 1px solid var(--field);
+  border-radius: 0;
+  background: var(--control);
+  color: var(--ink);
+  cursor: pointer;
+  font: .8rem var(--sans);
+}
+
+.toolbar-clear:hover {
+  background: var(--control-hover);
+}
+
+/* A label and the field it names wrap as one thing. Left as separate items they
+   broke across the line independently, which put "MSC" at the end of one row
+   and the box it names at the start of the next. */
+.toolbar-field {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+/* Searching puts the question to the whole registry, so the controls that
+   narrow the landing selection have nothing to answer for and go away. The view
+   switch is not one of them: it is a choice about how a list is drawn, and the
+   search results are a list. Hiding it along with the rest is how choosing the
+   table and then searching used to hand back cards, with no visible control
+   saying why. */
+body.registry-searching .filters,
+body.registry-searching .category-filters,
+body.registry-searching .date-filters,
+body.registry-searching .toolbar-summary,
 body.registry-searching #status,
 body.registry-searching #registry-warning,
 body.registry-searching #entry-grid {
@@ -357,35 +442,12 @@ body.registry-searching .registry-section {
 }
 
 .category-filters input:focus-visible,
+.entry-table-view:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 2px;
 }
 
-.filters {
-  display: flex;
-  align-items: center;
-  gap: .35rem;
-}
-
-/* The subject inputs are small enough to sit beside the trust filters, so they
-   stay on the toolbar's line rather than behind a disclosure. Aligning them to
-   the end keeps that line readable when the toolbar is wider than its
-   contents. */
-.category-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: .45rem .75rem;
-  font: .8rem var(--sans);
-}
-
-.category-filters label {
-  display: flex;
-  align-items: center;
-  gap: .3rem;
-}
 
 .category-filters input {
   min-height: 2.75rem;
@@ -396,18 +458,6 @@ button:focus-visible {
   background: var(--paper);
   color: var(--ink);
   font: .9rem var(--sans);
-}
-
-/* The dates read as one sentence — order by this, from here, to here — so they
-   take the toolbar's second line rather than competing with the filters above
-   for the end of the first. */
-.date-filters {
-  display: flex;
-  flex-basis: 100%;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .45rem .5rem;
-  font: .8rem var(--sans);
 }
 
 .date-filters select,
@@ -472,10 +522,21 @@ button:focus-visible {
   color: var(--faint);
 }
 
-.filter {
+/* The view switch and the dependency filters are one row of choices each, side
+   by side in the same strip, and were built as two different controls: one
+   44rem-tall and outlined when chosen, one two thirds that height and filled
+   solid. They are the same kind of thing to whoever is reading them, so they
+   are one control here.
+
+   Chosen is marked by doubling the border rather than by setting the label in
+   bold. Bold is wider than regular, so the button grew as it was picked and
+   pushed the rest of the row along with it, which is the flinch the toolbar had
+   every time it was used. An inset shadow draws outside the layout entirely. */
+.filter,
+.view-button {
   min-width: 2.75rem;
   min-height: 2.75rem;
-  padding: .25rem .5rem;
+  padding: .25rem .7rem;
   border: 1px solid var(--field);
   border-radius: 0;
   background: var(--control);
@@ -484,14 +545,16 @@ button:focus-visible {
   font: .8rem var(--sans);
 }
 
-.filter:hover {
+.filter:hover,
+.view-button:hover {
   background: var(--control-hover);
 }
 
-.filter.active {
+.filter.active,
+.view-button.active {
   border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
   background: var(--paper);
-  font-weight: bold;
 }
 
 .status {
@@ -521,13 +584,30 @@ button:focus-visible {
 }
 
 /* The table view. Two hundred results are a list to be scanned before any one
-   of them is read, so a row carries what tells them apart and nothing else --
-   the abstract is what the cards are for. It scrolls inside its own container
-   rather than widening the page, because a long title and a long author list
-   are both ordinary here. */
+   of them is read, so a row carries what tells them apart and nothing else:
+   the abstract is what the cards are for. Below the page's full measure it
+   scrolls inside its own container rather than widening the page, because a
+   long title and a long author list are both ordinary here. */
 .entry-table-view {
   display: block;
   overflow-x: auto;
+}
+
+/* A sticky heading sticks to the nearest scrollport, and `overflow-x: auto`
+   makes the container above one. That container is only ever as tall as its
+   rows, so it never scrolls vertically, and the heading had nothing to stick
+   to at any width. The table's own minimum is a little under 59rem and `main`
+   stops widening at 64rem, so once the page is at its full measure the
+   container has no scrolling left to do and can stop being a scrollport. The
+   heading is then sticky against the page, which is what actually scrolls.
+   Narrower than that, the headings scroll away with their rows, as before.
+   The breakpoint is where `main` reaches that cap rather than the width where
+   the table merely fits, which is what leaves the margin for a longer
+   dependency or date cell than the ones measured. */
+@media (min-width: 66rem) {
+  .entry-table-view {
+    overflow-x: visible;
+  }
 }
 
 .entry-table {
@@ -571,6 +651,12 @@ button:focus-visible {
   color: var(--muted);
 }
 
+/* The one column that had no rule of its own, so it took whatever width the
+   other four left over and changed width as the listing was filtered. */
+.row-subjects {
+  min-width: 8rem;
+}
+
 .row-dependencies,
 .row-registered {
   color: var(--muted);
@@ -595,30 +681,6 @@ button:focus-visible {
   font-size: .92em;
 }
 
-.view-switch {
-  display: flex;
-  gap: .4rem;
-  align-items: baseline;
-}
-
-.view-button {
-  padding: .25rem .7rem;
-  border: 1px solid var(--line);
-  background: var(--control);
-  color: var(--ink);
-  font: .8rem var(--sans);
-  cursor: pointer;
-}
-
-.view-button:hover {
-  background: var(--control-hover);
-}
-
-.view-button.active {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-}
 
 .entry-card {
   padding: 1.15rem .2rem 1.25rem;
@@ -747,6 +809,7 @@ button:focus-visible {
 
 footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 2rem;
   padding: 1.2rem 0 2rem;
@@ -778,7 +841,6 @@ footer {
 
 .about,
 .faq {
-  max-width: 52rem;
   padding: 2.5rem 0 4rem;
 }
 
@@ -833,7 +895,6 @@ footer {
 /* The founding statement follows the restrained, document-like typography of
    its original PDF while remaining fluid on small screens. */
 .statement-page {
-  max-width: 52rem;
   padding: 3.5rem 0 5rem;
   font-family: var(--sans);
   font-size: 1.05rem;
@@ -1677,11 +1738,21 @@ pre {
 @media (max-width: 700px) {
   .site-header,
   .section-heading,
-  .toolbar,
   .cta,
   footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  /* Nothing fits beside anything here, so the groups stack. A little more room
+     between them than between the controls inside one, so that what wrapped
+     and what is a separate group stay tellable apart. */
+  .toolbar {
+    gap: .55rem 1rem;
+  }
+
+  .toolbar > .toolbar-summary {
+    margin-left: 0;
   }
 
   .site-header {
@@ -1694,19 +1765,6 @@ pre {
 
   .footer-links {
     justify-content: flex-start;
-  }
-
-  .toolbar {
-    width: 100%;
-  }
-
-  .filters {
-    flex-wrap: wrap;
-  }
-
-  .category-filters {
-    justify-content: flex-start;
-    width: 100%;
   }
 
   .card-top,
@@ -1903,9 +1961,14 @@ pre {
   display: none;
 }
 
+/* Three rows now that this page carries the same header as its siblings: the
+   header takes what it needs, the message takes the slack, and the footer sits
+   on the bottom of the viewport however short the message is. With two rows the
+   header was the one that stretched, and it held its brand halfway down an
+   otherwise empty screen. */
 body[data-page="not-found"] {
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: auto 1fr auto;
   min-height: 100vh;
   min-height: 100dvh;
 }
