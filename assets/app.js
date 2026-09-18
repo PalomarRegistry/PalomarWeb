@@ -18,6 +18,7 @@ import {
 } from "./searching.mjs";
 import {
   expandDetailsForTarget,
+  fragmentTargetId,
   renderChallengePage,
   renderEntryPage,
 } from "./entry-pages.mjs";
@@ -1924,9 +1925,9 @@ if (document.body.dataset.page === "entry") {
     if (!href) return;
     const fragmentIndex = href.indexOf("#");
     if (fragmentIndex === -1) return;
-    const fragment = href.slice(fragmentIndex);
-    if (fragment === "#") return;
-    const target = document.getElementById(decodeURIComponent(fragment.slice(1)));
+    const targetId = fragmentTargetId(href.slice(fragmentIndex));
+    if (!targetId) return;
+    const target = document.getElementById(targetId);
     if (target) expandDetailsForTarget(target);
   });
   // The click above covers links on this page and the initial render covers a
@@ -1935,9 +1936,9 @@ if (document.body.dataset.page === "entry") {
   // browser has already scrolled to a collapsed heading, so the section is
   // opened and the target brought back into view.
   window.addEventListener("hashchange", () => {
-    const fragment = window.location.hash.slice(1);
-    if (!fragment) return;
-    const target = document.getElementById(decodeURIComponent(fragment));
+    const targetId = fragmentTargetId(window.location.hash);
+    if (!targetId) return;
+    const target = document.getElementById(targetId);
     if (!target) return;
     expandDetailsForTarget(target);
     target.scrollIntoView();
