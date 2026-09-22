@@ -336,9 +336,12 @@
           provenance with the append-only registry record. Those
           entries record the SHA-256 digest of the report and the exact workflow
           revision, alongside the statement and proof digests, Lean toolchain,
-          and exact Comparator,
+          and the exact verification tools used (for records verified by the
+          Lean toolchain's own <code>lake comparator</code>, the toolchain
+          commit and the digests of the tools it bundles; for earlier records,
+          the Comparator,
           <a href="https://github.com/leanprover/lean4export">lean4export</a>,
-          and Landrun revisions used, which together are enough to reproduce the
+          and Landrun revisions), which together are enough to reproduce the
           run from the published record. One caveat: Mathlib’s build cache is
           fetched from a mutable store, so a later re-run may not retrieve
           identical artifacts. Building Mathlib from source removes that
@@ -351,8 +354,10 @@
           both environments with <code>lean4export</code>, checks that the
           declarations the statement depends on are identical in each. Palomar
           then requires the exported proof to be accepted from scratch by both
-          Lean’s kernel and <code>nanoda</code>, an independent kernel
-          implementation. A proof that survives those checks cannot have relied
+          Lean’s kernel and independent kernel implementations
+          (<code>nanoda</code>, and <code>con-ron</code> for records verified
+          by the toolchain’s <code>lake comparator</code>). A proof that
+          survives those checks cannot have relied
           on a metaprogram tampering with the elaborator’s state or misreporting
           its result.
         </p>
@@ -369,9 +374,11 @@
           Lean’s replay is a second pass rather than a second implementation: it
           guards against a proof that manipulated the elaborator, not against a
           bug in Lean’s kernel itself. Palomar therefore always requires
-          <code>nanoda</code> as a genuinely independent check and publishes the
-          exact NanoDa commit with every registry entry. We encourage readers to
-          reproduce either check themselves:
+          <code>nanoda</code> as a genuinely independent check and publishes
+          the exact kernels used with every registry entry: the NanoDa commit
+          for earlier records, the toolchain-bundled kernels and their digests
+          for records verified by <code>lake comparator</code>. We encourage
+          readers to reproduce either check themselves:
         </p>
         <ul class="checkers">
           <li>

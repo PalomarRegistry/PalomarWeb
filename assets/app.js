@@ -9,6 +9,7 @@ import {
   safeInternalUrl,
   subjectHeadUrl,
   workflowRunId,
+  hasToolchainProvenance,
 } from "./security.mjs";
 import {
   SEARCH_RESULT_LIMIT,
@@ -1673,7 +1674,9 @@ async function renderEntry(
     detailRow("Theorems checked", theoremNames(entry)),
     detailRow("Permitted axioms", entry.formalization.permitted_axioms.join(", ") || "none"),
     detailRow("Statement file size", `${entry.trust.challenge_lines} lines · ${entry.trust.challenge_bytes} bytes`),
-    detailRow("Comparator commit", entry.verification.comparator_commit),
+    hasToolchainProvenance(entry)
+      ? detailRow("Lean toolchain commit", entry.verification.toolchain_commit)
+      : detailRow("Comparator commit", entry.verification.comparator_commit),
     externalDetailRow(
       "Verification workflow",
       `Actions run ${workflowRunId(entry.verification.workflow_url)}`,
@@ -1699,7 +1702,14 @@ async function renderEntry(
       ),
     );
   }
-  details.append(detailRow("NanoDa commit", entry.verification.nanoda_commit));
+  details.append(
+    hasToolchainProvenance(entry)
+      ? detailRow(
+        "Independent kernels",
+        entry.verification.kernels.map((kernel) => kernel.name).join(", "),
+      )
+      : detailRow("NanoDa commit", entry.verification.nanoda_commit),
+  );
   {
     details.append(
       dataDetailRow(

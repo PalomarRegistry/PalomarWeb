@@ -26,8 +26,19 @@ const BROWSE_MAX_PAGE = Math.ceil(999_999 / BROWSE_PAGE_SERIALS);
 const yearTemplate = (directory) => `${directory}/{year}.json`;
 const pageTemplate = (directory) => `${directory}/{day}/{page}.json`;
 const BROWSE_DIRECTORY = "browse";
-export const ENTRY_SCHEMA_VERSION = 4;
-const SUPPORTED_ENTRY_SCHEMA_VERSIONS = new Set([3, 4]);
+export const ENTRY_SCHEMA_VERSION = 5;
+const SUPPORTED_ENTRY_SCHEMA_VERSIONS = new Set([3, 4, 5]);
+// Schema 5 records are verified by the Lean toolchain's own `lake comparator`
+// and name the toolchain and its bundled tools; earlier records name the four
+// separately built tools.
+const TOOLCHAIN_PROVENANCE_VERSIONS = new Set([5]);
+const BUNDLED_TOOLS = ["lake", "lean", "leanexport", "leanchecker", "nanoda_bin", "con-ron", "bwrap"];
+const RELEASE_TAG_RE = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
+const KERNEL_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
+
+export function hasToolchainProvenance(entry) {
+  return TOOLCHAIN_PROVENANCE_VERSIONS.has(entry?.schema_version);
+}
 const CORRECTABLE_REGISTRY_FIELDS = new Set([
   "title", "abstract", "authors", "classification.arxiv", "classification.msc2020",
   "provenance.responsible_maintainers", "provenance.mathematical_sources",
@@ -1565,7 +1576,8 @@ export function validateEntry(entry, summary) {
   }
 
   let proofVersion = version;
-  if (entry.schema_version === 4) {
+  // A correction is a schema-4 record, or a schema-5 record carrying the block.
+  if (entry.schema_version === 4 || entry.registry_correction !== undefined) {
     const correction = exactObject(
       entry.registry_correction,
       [
@@ -1766,10 +1778,34 @@ export function validateEntry(entry, summary) {
   const verification = object(entry.verification, "entry.verification");
   string(verification.verified_at, "entry.verification.verified_at");
   string(verification.workflow_url, "entry.verification.workflow_url");
-  commit(verification.comparator_commit, "entry.verification.comparator_commit");
-  commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
-  commit(verification.landrun_commit, "entry.verification.landrun_commit");
-  commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  if (hasToolchainProvenance(entry)) {
+    commit(verification.toolchain_commit, "entry.verification.toolchain_commit");
+    const digests = exactObject(verification.tool_digests, BUNDLED_TOOLS, "entry.verification.tool_digests");
+    for (const tool of BUNDLED_TOOLS) digest(digests[tool], `entry.verification.tool_digests.${tool}`);
+    const kernels = array(verification.kernels, "entry.verification.kernels");
+    if (kernels.length === 0 || kernels.length > 8) fail("entry.verification.kernels is not a bounded list");
+    for (const [position, value] of kernels.entries()) {
+      const kernel = exactObject(value, ["argv", "name"], `entry.verification.kernels[${position}]`);
+      if (!KERNEL_NAME_RE.test(string(kernel.name, `entry.verification.kernels[${position}].name`))) {
+        fail(`entry.verification.kernels[${position}].name is malformed`);
+      }
+      const argv = array(kernel.argv, `entry.verification.kernels[${position}].argv`);
+      if (argv.length === 0 || argv.length > 16) fail(`entry.verification.kernels[${position}].argv is not bounded`);
+      for (const word of argv) boundedString(word, `entry.verification.kernels[${position}].argv`, 400);
+    }
+    digest(verification.protected_config_sha256, "entry.verification.protected_config_sha256");
+    if (!RELEASE_TAG_RE.test(string(verification.bwrap_source_tag, "entry.verification.bwrap_source_tag"))) {
+      fail("entry.verification.bwrap_source_tag is malformed");
+    }
+    for (const retired of ["comparator_commit", "lean4export_commit", "landrun_commit", "nanoda_commit"]) {
+      if (verification[retired] !== undefined) fail(`entry.verification.${retired} is not part of schema 5`);
+    }
+  } else {
+    commit(verification.comparator_commit, "entry.verification.comparator_commit");
+    commit(verification.lean4export_commit, "entry.verification.lean4export_commit");
+    commit(verification.landrun_commit, "entry.verification.landrun_commit");
+    commit(verification.nanoda_commit, "entry.verification.nanoda_commit");
+  }
   digest(verification.challenge_sha256, "entry.verification.challenge_sha256");
   digest(verification.solution_sha256, "entry.verification.solution_sha256");
   {
@@ -1849,7 +1885,14 @@ export function validateEntry(entry, summary) {
   }
   commit(render.verso_commit, "entry.challenge_render.verso_commit");
   commit(render.renderer_commit, "entry.challenge_render.renderer_commit");
-  commit(render.landrun_commit, "entry.challenge_render.landrun_commit");
+  if (hasToolchainProvenance(entry)) {
+    if (!RELEASE_TAG_RE.test(string(render.bwrap_source_tag, "entry.challenge_render.bwrap_source_tag"))) {
+      fail("entry.challenge_render.bwrap_source_tag is malformed");
+    }
+    if (render.landrun_commit !== undefined) fail("entry.challenge_render.landrun_commit is not part of schema 5");
+  } else {
+    commit(render.landrun_commit, "entry.challenge_render.landrun_commit");
+  }
   string(render.rendered_at, "entry.challenge_render.rendered_at");
 
   validateCanonicalRecordLinks(entry);

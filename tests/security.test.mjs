@@ -18,6 +18,7 @@ import {
   renderRow,
   secondVersion,
   summary,
+  toolchainEntry,
 } from "./registry-fixture.mjs";
 
 import {
@@ -818,7 +819,7 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 test("entry schema, registration state, verdict, and selected identity fail closed", () => {
   const unsupportedSchemas = [
     entry({ schema_version: 2 }),
-    entry({ schema_version: 5 }),
+    entry({ schema_version: 6 }),
     entry({ schema_version: true }),
     entry({ schema_version: "2" }),
   ];
@@ -1350,7 +1351,7 @@ test("every provenance value the schema allows has an explicit label", async () 
 test("the site requires the Database entry version and exact preservation shape", async () => {
   const checkout = databaseCheckout();
   const schema = JSON.parse(
-    await readFile(join(checkout, "schema-v4.json"), "utf8"),
+    await readFile(join(checkout, `schema-v${ENTRY_SCHEMA_VERSION}.json`), "utf8"),
   );
   assert.strictEqual(schema.properties.schema_version.const, ENTRY_SCHEMA_VERSION);
   assert.ok(schema.required.includes("preservation"));
@@ -1937,4 +1938,37 @@ test("the published stopword list is read, and refused if it becomes a dictionar
     () => validateStopwords({ schema_version: 3, stopwords: [] }),
     /schema_version/,
   );
+});
+
+test("a schema-5 record names the toolchain and its kernels instead of the four tools", () => {
+  const record = toolchainEntry();
+  assert.equal(validateEntry(record, summary()).schema_version, 5);
+  assert.throws(
+    () => validateEntry(toolchainEntry({ verification: { ...record.verification, landrun_commit: "4".repeat(40) } }), summary()),
+    /landrun_commit is not part of schema 5/,
+  );
+  assert.throws(
+    () => validateEntry(toolchainEntry({ verification: { ...record.verification, kernels: [] } }), summary()),
+    /kernels/,
+  );
+  assert.throws(
+    () => validateEntry(toolchainEntry({ verification: { ...record.verification, bwrap_source_tag: "0.12.0" } }), summary()),
+    /bwrap_source_tag/,
+  );
+  const { toolchain_commit, ...withoutToolchain } = record.verification;
+  assert.throws(
+    () => validateEntry(toolchainEntry({ verification: withoutToolchain }), summary()),
+    /toolchain_commit/,
+  );
+  assert.throws(
+    () => validateEntry(toolchainEntry({ challenge_render: { ...record.challenge_render, landrun_commit: "4".repeat(40) } }), summary()),
+    /challenge_render\.landrun_commit is not part of schema 5/,
+  );
+});
+
+test("an older record still names the four tools and nothing of schema 5", () => {
+  const record = entry();
+  assert.equal(validateEntry(record, summary()).schema_version, 3);
+  const { nanoda_commit, ...withoutNanoda } = record.verification;
+  assert.throws(() => validateEntry(entry({ verification: withoutNanoda }), summary()), /nanoda_commit/);
 });
