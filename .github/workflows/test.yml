@@ -45,6 +45,16 @@ jobs:
                 | .properties.schema_version.const = 4' \
               palomar-database/schema-v3.json > palomar-database/schema-v4.json
           fi
+          if ! curl --fail --silent --show-error --retry 3 \
+              "$PUBLIC_DATA_ORIGIN/schema-v5.json" \
+              --output palomar-database/schema-v5.json; then
+            # Same publication lag as above. Schema 5 changes only the tool
+            # provenance fields, which these cross-repo assertions do not read;
+            # the provenance and preservation shapes are v4's.
+            jq '.["$id"] = "https://data.palomar-registry.org/schema-v5.json"
+                | .properties.schema_version.const = 5' \
+              palomar-database/schema-v4.json > palomar-database/schema-v5.json
+          fi
           curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/recent.json" \
             --output palomar-database/tests/fixtures/recent.json
