@@ -46,27 +46,12 @@ jobs:
           curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/schema-v3.json" \
             --output palomar-database/schema-v3.json
-          if ! curl --fail --silent --show-error --retry 3 \
-              "$PUBLIC_DATA_ORIGIN/schema-v4.json" \
-              --output palomar-database/schema-v4.json; then
-            # The serialized Database publisher can lag an already merged,
-            # additive schema transition. The fields Web reads from the schema
-            # are unchanged from v3; deploy the compatible reader first, then
-            # return automatically to the real v4 document when it is public.
-            jq '.["$id"] = "https://data.palomar-registry.org/schema-v4.json"
-                | .properties.schema_version.const = 4' \
-              palomar-database/schema-v3.json > palomar-database/schema-v4.json
-          fi
-          if ! curl --fail --silent --show-error --retry 3 \
-              "$PUBLIC_DATA_ORIGIN/schema-v5.json" \
-              --output palomar-database/schema-v5.json; then
-            # Same publication lag as above. Schema 5 changes only the tool
-            # provenance fields, which these cross-repo assertions do not read;
-            # the provenance and preservation shapes are v4's.
-            jq '.["$id"] = "https://data.palomar-registry.org/schema-v5.json"
-                | .properties.schema_version.const = 5' \
-              palomar-database/schema-v4.json > palomar-database/schema-v5.json
-          fi
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/schema-v4.json" \
+            --output palomar-database/schema-v4.json
+          curl --fail --silent --show-error --retry 3 \
+            "$PUBLIC_DATA_ORIGIN/schema-v5.json" \
+            --output palomar-database/schema-v5.json
           curl --fail --silent --show-error --retry 3 \
             "$PUBLIC_DATA_ORIGIN/recent.json" \
             --output palomar-database/tests/fixtures/recent.json
