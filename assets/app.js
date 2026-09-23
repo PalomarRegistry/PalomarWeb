@@ -286,6 +286,11 @@ function categoryTokens(entry) {
   return tokens;
 }
 
+/** A count of results, in words a reader can read aloud. */
+function countResults(total) {
+  return `${total} ${total === 1 ? "result" : "results"}`;
+}
+
 function displayDate(value) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
@@ -399,6 +404,50 @@ const TABLE_COLUMNS = [
   ["Dependencies", "row-dependencies"],
   ["Registered", "row-registered"],
 ];
+
+/**
+ * Mount a set of result nodes into `container`, in the view they were built for,
+ * and answer with the element later nodes should be appended to.
+ *
+ * Rows need a table around them and cards do not, and a table narrow enough to
+ * scroll sideways has to be reachable by a keyboard, which a plain div holding
+ * cards does not. The landing listing and the search results are the same kind
+ * of list and answer to the same switch, so both are mounted through here
+ * rather than each growing its own copy of this.
+ */
+function mountResultNodes(container, nodes, view) {
+  container.replaceChildren();
+  container.classList.toggle("entry-table-view", view === "table");
+  if (view !== "table") {
+    // A list of cards is read by reading its links, so it is not a region and
+    // there is nothing in it to reach by scrolling it.
+    for (const name of ["tabindex", "role", "aria-label"]) container.removeAttribute(name);
+    container.append(...nodes);
+    return container;
+  }
+  // Narrow enough and the columns past the viewport are reachable only by
+  // scrolling this container, which a pointer can do and a keyboard could not:
+  // it takes focus to scroll, and a plain div cannot hold any. Named as well as
+  // focusable, because arriving somewhere focusable that announces nothing is
+  // its own dead end.
+  container.tabIndex = 0;
+  container.setAttribute("role", "region");
+  container.setAttribute("aria-label", "Registered results");
+  const table = el("table", "entry-table");
+  const headRow = el("tr");
+  for (const [label, className] of TABLE_COLUMNS) {
+    const heading = el("th", className, label);
+    heading.scope = "col";
+    headRow.append(heading);
+  }
+  const head = el("thead");
+  head.append(headRow);
+  const body = el("tbody");
+  body.append(...nodes);
+  table.append(head, body);
+  container.append(table);
+  return body;
+}
 
 /**
  * One registered result as a table row.
@@ -575,10 +624,13 @@ function setLandingSuppressed(suppressed) {
   // it. The same goes for the redraws below.
   statementPreview.close();
   document.body.classList.toggle("registry-searching", suppressed);
-  const toolbar = document.querySelector(".toolbar");
   const status = document.querySelector("#status");
   const grid = document.querySelector("#entry-grid");
-  if (toolbar) toolbar.hidden = suppressed;
+  // The toolbar itself stays. What it holds does not all apply to a search, and
+  // the class above is what decides which parts of it go: the groups that
+  // narrow the landing selection have nothing to narrow, but the view switch is
+  // a choice about how a list is drawn and the results are a list. Hiding the
+  // whole strip from here is what used to take the switch away with them.
   if (grid) grid.hidden = suppressed;
   if (status) status.hidden = suppressed || landingStatusHidden;
 }
@@ -663,24 +715,7 @@ async function renderIndex() {
     // Rebuilt whenever the view changes, which is also what clears the old one.
     let mount = grid;
     const remount = () => {
-      grid.replaceChildren();
-      grid.classList.toggle("entry-table-view", view === "table");
-      if (view !== "table") {
-        mount = grid;
-        return;
-      }
-      const table = el("table", "entry-table");
-      const headRow = el("tr");
-      for (const [label, className] of TABLE_COLUMNS) {
-        const heading = el("th", className, label);
-        heading.scope = "col";
-        headRow.append(heading);
-      }
-      const head = el("thead");
-      head.append(headRow);
-      mount = el("tbody");
-      table.append(head, mount);
-      grid.append(table);
+      mount = mountResultNodes(grid, [], view);
     };
     /**
      * The listed results, in the order asked for, dated by the day that order
@@ -716,6 +751,8 @@ async function renderIndex() {
       console.warn(`Landing card source availability could not be applied: ${error.message}`);
     });
     let trust = "all";
+    const countControl = document.querySelector("#filter-count");
+    const clearControl = document.querySelector("#clear-filters");
     // The fallback selectors keep new JavaScript compatible with cached HTML
     // from the previous GitHub Pages deployment.
     const arxiv = document.querySelector("#arxiv-query, #arxiv-filter");
@@ -825,16 +862,38 @@ async function renderIndex() {
         ? `No registry entries match the current filters. ${reasons.join(" ")}`
         : "No registry entries match those filters.";
       setLandingStatusHidden(Boolean(shown) && !boundReason);
+      // Four controls narrow this listing and each of them simply hid rows, so
+      // a reader watching results disappear had nothing telling them how many
+      // were left or which control had taken them. Ordering is not narrowing,
+      // so it is neither counted here nor cleared below.
+      const narrowed = trust !== "all" || Boolean(arxivValue) || Boolean(mscValue) ||
+        Boolean(fromControl?.value) || Boolean(toControl?.value);
+      if (clearControl) clearControl.hidden = !narrowed;
+      if (countControl) {
+        countControl.textContent = narrowed
+          ? `Showing ${shown} of ${countResults(listed.length)}`
+          : countResults(listed.length);
+      }
     };
     let updateTimer;
     const scheduleUpdate = () => {
       window.clearTimeout(updateTimer);
       updateTimer = window.setTimeout(update, FILTER_UPDATE_DELAY_MS);
     };
-    for (const control of [arxiv, msc, fromControl, toControl]) {
+    for (const control of [arxiv, msc]) {
       for (const eventName of ["input", "change", "search"]) {
         control?.addEventListener(eventName, scheduleUpdate);
       }
+    }
+    // A date arrives whole from the picker, so it is answered at once, like an
+    // order and unlike a word being typed a letter at a time. Typing one by
+    // hand still arrives a character at a time, which is what the delay is for.
+    for (const control of [fromControl, toControl]) {
+      control?.addEventListener("input", scheduleUpdate);
+      control?.addEventListener("change", () => {
+        window.clearTimeout(updateTimer);
+        update();
+      });
     }
     // Not on the delay the text fields use. Choosing an order is one act on a
     // list, not a word being typed a letter at a time.
@@ -874,18 +933,38 @@ async function renderIndex() {
         if (view === DEFAULT_LANDING_VIEW) address.searchParams.delete("view");
         else address.searchParams.set("view", view);
         window.history.replaceState(null, "", address);
+        // The address is what the search reads the chosen view from, so the
+        // results already on the page are redrawn only once it has been
+        // written. The landing listing above is hidden while they are showing.
+        redrawSearchResults();
       });
     }
-    document.querySelectorAll(".filter").forEach((button) => {
+    const trustButtons = [...document.querySelectorAll(".filter")];
+    const markTrustButtons = () => {
+      for (const candidate of trustButtons) {
+        const active = candidate.dataset.trust === trust;
+        candidate.classList.toggle("active", active);
+        candidate.setAttribute("aria-pressed", String(active));
+      }
+    };
+    for (const button of trustButtons) {
       button.addEventListener("click", () => {
         trust = button.dataset.trust;
-        document.querySelectorAll(".filter").forEach((candidate) => {
-          const active = candidate === button;
-          candidate.classList.toggle("active", active);
-          candidate.setAttribute("aria-pressed", String(active));
-        });
+        markTrustButtons();
         update();
       });
+    }
+    clearControl?.addEventListener("click", () => {
+      trust = "all";
+      markTrustButtons();
+      for (const control of [arxiv, msc, fromControl, toControl]) {
+        if (control) control.value = "";
+      }
+      update();
+      // `update` has just hidden this button, and hiding the element holding
+      // focus drops it to the top of the document. The reader was working in
+      // these controls, so focus goes back to the first of them.
+      trustButtons[0]?.focus();
     });
     update();
     return true;
@@ -919,7 +998,11 @@ function ensureLanding() {
 function searchPageUrlFor(query) {
   const target = new URL("index.html", window.location.href);
   target.search = "";
-  for (const [name, value] of params.entries()) {
+  // Read from the address as it stands rather than from the one the page was
+  // opened at. The view switch writes its choice there after load, and building
+  // this from the opening parameters dropped that choice every time a search
+  // rewrote the address: the switch said cards and the next search drew rows.
+  for (const [name, value] of new URLSearchParams(window.location.search).entries()) {
     if (name !== "q") target.searchParams.set(name, value);
   }
   if (query) target.searchParams.set("q", query);
@@ -928,12 +1011,53 @@ function searchPageUrlFor(query) {
 
 let searchGeneration = 0;
 let activeSearchController = null;
+// The entries the search results are currently drawn from, held so that the
+// view switch can redraw them in the other view without asking the registry a
+// second time for an answer it already has.
+let shownSearchEntries = null;
 
-function renderSearchCards(results, entries) {
+/**
+ * The results of a search, drawn in whichever view the reader chose.
+ *
+ * The switch writes its choice to the address, which is what lets a search read
+ * it from out here. Without that, choosing the table and then searching handed
+ * back cards, with the switch itself hidden behind the searching state.
+ */
+function renderSearchResults(results, entries) {
   statementPreview.close();
-  const cards = entries.map((entry) => entryCard(entry));
-  results.replaceChildren(...cards);
-  return cards;
+  const view = requestedLandingView(window.location.search);
+  const nodes = entries.map((entry) =>
+    view === "table" ? entryRow(entry) : entryCard(entry));
+  mountResultNodes(results, nodes, view);
+  shownSearchEntries = entries;
+  return { nodes, view };
+}
+
+/**
+ * Draw the results already on the page again, in the view now chosen.
+ *
+ * Called when the switch is used while a search is showing. The answer is the
+ * one already in hand, so nothing is asked for again; the source availability
+ * is reapplied from the page-scoped read, which is the same thing the landing
+ * listing does when its own view changes.
+ */
+function redrawSearchResults() {
+  const results = document.querySelector("#search-results");
+  if (!results || !shownSearchEntries?.length) return;
+  const entries = shownSearchEntries;
+  const wasOn = focusedEntryId(results);
+  const { nodes, view } = renderSearchResults(results, entries);
+  restoreFocusAfterSwap(results, wasOn);
+  if (view !== "cards") return;
+  const { availabilityUrl } = dataSource();
+  const generation = searchGeneration;
+  void loadAvailabilityBounded(availabilityUrl).then((availability) => {
+    if (availability !== null && generation === searchGeneration) {
+      decorateCardSet(nodes, entries, availability, "Search card");
+    }
+  }).catch((error) => {
+    console.warn(`Search card source availability could not be applied: ${error.message}`);
+  });
 }
 
 /**
@@ -963,15 +1087,19 @@ function previewEntries(query) {
   return matches;
 }
 
-function renderPreviewCards(results, entries) {
-  // Drawn like the search cards that will replace them, down to leaving out
-  // which version is current: the landing rows do carry that, but showing it
-  // here would mean every card quietly lost a claim when the results arrived.
-  const cards = entries.map((entry) =>
-    entryCard(entry, { registeredAt: entry.published_at }));
-  results.replaceChildren(...cards);
+function renderPreviewResults(results, entries) {
+  // Drawn like the search results that will replace them, down to the view they
+  // are drawn in and to leaving out which version is current: the landing rows
+  // do carry that, but showing it here would mean every one of them quietly
+  // lost a claim when the verified results arrived.
+  const view = requestedLandingView(window.location.search);
+  const nodes = entries.map((entry) =>
+    view === "table"
+      ? entryRow(entry, { registeredAt: entry.published_at })
+      : entryCard(entry, { registeredAt: entry.published_at }));
+  mountResultNodes(results, nodes, view);
   results.classList.add("preview");
-  return cards;
+  return nodes;
 }
 
 function setSearchBusy(results, busy) {
@@ -988,7 +1116,7 @@ function setSearchBusy(results, busy) {
 function focusedEntryId(results) {
   const active = document.activeElement;
   if (!active || !results.contains(active)) return null;
-  return active.closest(".entry-card")?.dataset.id || null;
+  return active.closest(".entry-card, .entry-row")?.dataset.id || null;
 }
 
 /**
@@ -999,10 +1127,13 @@ function focusedEntryId(results) {
  */
 function restoreFocusAfterSwap(results, entryId) {
   if (!entryId) return;
-  // Matched by walking the cards rather than by building a selector out of a
-  // value that came from data, which is the rule everywhere else here.
-  const card = [...results.children].find((node) => node.dataset.id === entryId);
-  const link = card?.querySelector("a");
+  // Matched by walking the results rather than by building a selector out of a
+  // value that came from data, which is the rule everywhere else here. A table
+  // keeps its rows a further two levels down, so the walk is over whichever of
+  // the two shapes is mounted rather than over the container's own children.
+  const listed = results.querySelectorAll(".entry-card, .entry-row");
+  const found = [...listed].find((node) => node.dataset.id === entryId);
+  const link = found?.querySelector("a");
   if (link) link.focus();
   else document.querySelector("#query")?.focus();
 }
@@ -1069,7 +1200,7 @@ async function renderSearch(query, { ask = true } = {}) {
   // for an answer.
   const preview = previewEntries(query);
   if (preview.length) {
-    renderPreviewCards(results, preview);
+    renderPreviewResults(results, preview);
     status.textContent =
       `Showing ${preview.length} match${preview.length === 1 ? "" : "es"} from the ` +
       `newest ${landingMatches.length} entries while the registry search runs…`;
@@ -1095,12 +1226,13 @@ async function renderSearch(query, { ask = true } = {}) {
     // Read immediately before the swap, not when the search began: the reader
     // had the whole wait in which to go and stand on one of these cards.
     const wasOn = focusedEntryId(results);
-    const cards = renderSearchCards(results, found.entries);
+    const { nodes, view } = renderSearchResults(results, found.entries);
     restoreFocusAfterSwap(results, wasOn);
     if (found.entries.length) {
       void loadAvailabilityBounded(availabilityUrl).then((availability) => {
-        if (availability !== null && generation === searchGeneration) {
-          decorateCardSet(cards, found.entries, availability, "Search card");
+        // A row carries no source control to decorate; the cards do.
+        if (availability !== null && generation === searchGeneration && view === "cards") {
+          decorateCardSet(nodes, found.entries, availability, "Search card");
         }
       }).catch((error) => {
         if (generation === searchGeneration) {

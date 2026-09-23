@@ -1,309 +1,141 @@
 # Palomar Web
 
-The read-only human view of Palomar's machine-readable public registry.
-A short machine-facing map of how to read, search, and submit is served at
-[`/llms.txt`](https://palomar-registry.org/llms.txt).
-
-The site is static and deployed with GitHub Pages. It reads
+The read-only human view of Palomar's machine-readable public registry. The site
+is static, deployed with GitHub Pages, and reads
 <https://data.palomar-registry.org/> at runtime, so publishing a database change
-does not require a coordinated website deployment. There is no whole-registry
-document there any more, and the pages are shaped by that: the landing page
-reads one self-contained `recent.json` projection, an entry page reads
+needs no coordinated website deployment.
+
+There is no whole-registry document to fetch. Each page reads only what it
+shows: the landing page reads one `recent.json` projection, an entry page reads
 `versions/<id>.json` and then the one record it wants, a search reads
-`search/stopwords.json` and a word's postings, and a withdrawn version reads its
-tombstone. Fetching the index and filtering it in a browser meant every visitor
-paid for the whole registry to see a couple of hundred rows, and paid more every
-time somebody else published anything.
+`search/stopwords.json` and a word's postings. The machine-facing map of this
+origin is [`/llms.txt`](https://palomar-registry.org/llms.txt).
 
-The landing page and entry pages also load the current source-availability
-manifest. When an original pinned commit has been confirmed missing and the
-recorded archive is not itself known to be missing, source links automatically
-switch to the `PalomarArchive` copy while still displaying the original
-location. Missing archives are shown as degraded; the notice says the original
-still works only when its own observation confirms that, and otherwise describes
-the recorded original neutrally. The manifest and every known endpoint
-observation independently have an inclusive eighteen-hour maximum age and
-five-minute future-clock allowance. The producer declares that maximum in
-`coverage.freshness_max_age_seconds`, and the browser rejects a document that
-disagrees. An endpoint whose `checked_at` is missing, malformed, too far in the
-future, or one second older is treated as unknown without discarding fresh
-sibling rows; a stale or unavailable whole manifest is likewise never believed.
-`last_attempt_at` may be null when the bounded producer has never attempted that
-endpoint.
-Registry cards display the identifier, registration date, title, abstract,
-authors, theorems, arXiv and MSC2020 classifications, and source links, all
-without opening anything: a title here is a repository name, so the authors and
-the theorem are what identify a row while scanning. Every classification code is
-a link to `/subject?kind=<arxiv|msc>&code=<code>`, glossed with its
-description on hover and in the accessibility tree: a code is not a subject, and
-neither `52C10` nor `math.MG` says what it is. The two taxonomy tables are
-vendored under `assets/data/` from the snapshot PalomarSubmission validates
-against, and a page whose fetch of one fails still renders. The codes are muted
-rather than link-coloured, and grow a dotted underline on hover and on keyboard
-focus.
+JavaScript is required for registry and entry content. The static shells say so
+and point a reader without it at the bounded newest-results or browse documents
+on the data origin.
 
-A subject page reads `subjects/<kind>/<code>.json` and the day-paged archive
-behind it, so it answers for the whole registry rather than for what one page
-happens to hold. The front page is the newest 50 current versions under the
-code; "Show earlier results" walks the archive newest first, one day at a time,
-skipping days it has already shown. A page range is inclusive of its ends and
-not of everything between them, since a code's pages are seeded by the results
-ever classified under it, so an absent page inside a range is read as empty and
-each day is reconciled against the counts it declares. A code the registry has
-ever used keeps answering after its last classifier is superseded, so an empty
-page is an answer and not a 404.
-
-The toolbar also filters the rows the landing page holds by text or trust, with
-the arXiv and MSC2020 subject inputs on its line, at its right edge, and a deep
-link such as `?arxiv=math.AG` fills them in. The classification fields suggest codes represented by those rows but also accept
-any exact code, so such a deep link produces a useful empty result even before
-that classification has an entry. The MSC2020 field takes the beginning of a
-code as well as a whole one, in either case: `11` keeps every code in number
-theory, `11P` narrows that to additive number theory, and `11P32` names one
-section.
-
-A result has two dates and the toolbar's second line says which one it means. A
-result's identifier carries the day its version 1 was registered and every later
-version inherits it, while the card's own date is the instant that version was
-registered, so a new version of an old result is new by one date and old by the
-other. "Order by: latest version" arranges the page by the second, which is the
-publisher's own newest-first order; "first registration" arranges it by the
-first, which is what a reader looking for results that are new to the registry
-means. The `from` and `to` fields bound the same date, inclusively at both ends,
-and `?order=registered&from=2026-08-01` fills all three in from a link. A card
-leads with the day its listing is arranged by and names the other underneath
-when they differ, so the leading dates run down the page in the page's order.
-
-Those filters are over `recent.json`, which is
-the newest 200 current versions and not the registry, so they narrow what is on
-the page rather than searching everything: a range reaching back before the
-oldest row says so rather than answering for days the page does not hold. The
-search box searches everything, a
-word at a time, over titles, abstracts and author names, and the subject pages
-answer a code exactly.
-Search accepts at most 4,096 characters and 20 distinct normalized words. The
-word limit is checked before the stopword list is loaded, so common words that
-the index later drops still count. An over-limit linked or typed query is
-rejected before any registry-data request or browser-history update. At most 20
-search heads, 16 posting pages and 60 candidate records are then read with
-concurrency at most eight under one 30-second deadline. Including the stopword
-list and optional source-availability manifest, that is at most 98 dynamic data
-requests per search; at most 20 results are displayed. A failed page or record
-leaves already validated results visible with an incomplete-search warning. The
-record loader advances as a bounded sliding window, keeps publisher order
-however requests finish, and stops at the result limit with at most seven
-speculative result groups. Multiple matching versions of one Palomar ID collapse
-to the newest matching version in the bounded candidate set, so a result is not
-repeated. A posting still says neither that a version is current nor how many
-active versions exist, so search cards make neither claim; landing cards get
-both facts from `recent.json`.
-Each `recent.json` row projects the fields a landing card needs from a canonical
-entry: identity, current/history count, registration time, title, abstract,
-authors, classifications, theorem names, trust, source commit and project path,
-and the source's preservation mapping. The browser checks the envelope and the
-fields needed to render and link safely, but leaves schema policy such as
-classification cardinality to PalomarDatabase. A normal landing load is still
-exactly two dynamic data requests—`recent.json` and the optional
-source-availability manifest—with no per-card entry reads. An unusable row is
-omitted with a visible count while valid siblings continue to render; transport
-and unsupported-schema failures still fail the page.
-The `browse/index.json`, `browse/<year>.json`, and
-`browse/<day>/<page>.json` hierarchy is another exact, closed contract owned by
-PalomarDatabase and consumed by Web. Its head declares years and aggregate
-counts, each year declares its days and page ranges, and each page carries exact
-entry-history rows. Changes to any of those three shapes are producer-first
-contract changes, even though these documents intentionally remain
-`schema_version: 1`.
-Landing and verified search cards render before the source-availability
-manifest; if it arrives, their existing source controls are decorated in place.
-A linked `?q=` search does not also load the hidden recent listing; clearing the
-search starts one landing attempt, and a failed attempt can be retried.
-Entry and named-declarations pages follow the same rule: verified content and
-its recorded source links render immediately, then a validated availability
-result updates only those source controls in place. Each active entry or
-named-declarations page makes exactly one availability attempt; an unknown or
-withdrawn record makes none. Landing and search consumers share one
-in-flight/settled read. Each attempt has one 30-second deadline. A 404 is a
-stable page-scoped absence, while a timeout, transport failure, or invalid
-document is evicted so a later explicit consumer attempt can issue one retry.
-Validation builds a private lookup for the `R` availability rows, and source
-presentation builds one private lookup for each registered record's preservation
-rows—`D` rows in total across the page. Decorating its source controls therefore
-takes `O(R + D)` work for the page, with constant-time repository/revision
-lookups afterward, rather than rescanning both arrays for every dependency.
-These lookups and the exact fields they consume are captured in private
-`WeakMap` receipts at successful validation, so later mutation cannot change
-validated presentation data. They do not alter the public JSON and are available
-only to documents that passed the current validators.
-
-The browser code keeps the data boundary separate from presentation:
-`security.mjs` validates registry and availability documents, owns endpoint
-freshness, and privately indexes validated availability rows;
-`source-preservation.mjs` privately indexes each validated preservation receipt,
-matches its manifest observations, resolves repository locations, publishes the
-progressive entry result, and decorates existing source controls,
-`entry-pages.mjs` owns entry-route input and page-state
-transitions, `challenge-presentation.mjs` owns the named-declarations artifact's
-entry correspondence, source and Mathlib playground controls, core-notation
-audit disclosure, and presentation states. Render-metadata schema v3 carries an
-`audit_declarations` row for every compared declaration, in the same order as
-`declarations`; each row has exactly `name` and `declaration`, and the browser
-refuses a v3 document whose rows do not correspond to the accepted entry.
-Historical v1/v2 render metadata remains readable but does not claim to provide
-an audit view. A render-metadata version widening deploys Web first and the
-Submission producer may emit the new version only after that consumer is live;
-this is the reverse of a closed projection's producer-first shape replacement,
-because the existing Web consumer rejects a version it does not know.
-`check-published.mjs --data` reads and validates every available render metadata
-document in the advertised entry traversal before deployment. The audit view
-closes author-defined notation and macro spoofing, but it does not expose
-misleading instances, inserted coercions, or definitions whose names hide the
-wrong meaning. If Lean reaches a pretty-printer resource limit, it marks the
-omitted subterm with `⋯` rather than silently inventing text.
-`formalization-presentation.mjs`
-owns statement trust labels and the statement/proof dependency presentation,
-`entry-history-presentation.mjs` owns the entry page's canonical link,
-supersession notice, and immutable version-history section;
-`registry-loading.mjs` composes selected endpoints, JSON transport, the one
-bounded page-scoped source-availability cache, and exact recent/entry-history/
-record/tombstone loading; and `app.js` composes the remaining page-level views.
-
-Runtime reads use the browser's normal HTTP cache behavior. The public data
-service gives successful documents a 60-second browser/shared-cache lifetime,
-so repeat reads can be reused for that interval; missing and error responses are
-not stored. A withdrawn object can consequently remain visible from an already
-populated client or shared cache for at most 60 seconds.
-
-Local preview:
+## Quickstart
 
 ```bash
-python -m http.server 8000
+npm install
+
+# The tests read schema-v3.json and tests/fixtures/recent.json out of a
+# PalomarDatabase checkout, found at $PALOMAR_DATABASE_CHECKOUT or at a sibling
+# ../PalomarDatabase/. An unavailable contract is a hard failure rather than a
+# skip, deliberately: these tests exist to show that this repository's
+# validators agree with the Database outputs they read, and a version of them
+# that quietly does nothing agrees with everything. Check this first.
+npm test                 # node:test, unit and appearance suites
+npm run test:browser     # Playwright, starts its own fixture server on 4173
+
+# The asset version is required: it is what the build stamps onto every asset
+# URL, so a deployment cannot serve a stale one from a cache. CI passes the
+# commit SHA. Any short token works locally.
+npm run build -- --version dev --output .site
 ```
 
-Then open <http://localhost:8000>. Note that a bare static server reads live
-production data: the overrides below are what point it somewhere else. The
-browser suite needs a different server, `python3 tests/fixture_server.py` on
-port 4173, which `playwright.config.js` starts for it.
+To preview by hand:
 
-`?database=` overrides the endpoint, and it is an endpoint rather than a
-document: `?database=/fixtures/` names the directory every read surface is
-resolved against. The matching render tree is resolved beside it by default; use
-`&render-base=/fixtures/render-root/` to override it. These overrides are
-honored only when the site itself runs on localhost or another loopback address.
-Use `&availability=/fixtures/source-availability.json` to supply a local health
-manifest.
-The deployed site always reads the canonical public-data and render origins;
-it never reads the private canonical database repository directly.
+```bash
+python -m http.server 8000   # then open http://localhost:8000
+```
 
-Entry pages embed a rendered Challenge when the comparator names exactly one
-declaration and the recorded Challenge source is at most 100 lines and 32 KiB. Larger
-Challenges link to a dedicated rendered view. The pinned GitHub source link is
-always present. Rendered HTML is loaded in an iframe with
-`sandbox="allow-scripts"` (deliberately without `allow-same-origin`) and no
-referrer. The frame sizes itself from a height the document posts back, clamped
-between 160 and 672 pixels, so an untrusted render can ask for a sensible height
-without being able to take the page over.
+A bare static server reads live production data. The overrides below are what
+point it somewhere else, and they are honored only when the site itself is on
+localhost or another loopback address. The deployed site always reads the
+canonical public-data and render origins, and never the private database
+repository.
 
-The frame follows the browser's light and dark preference, and nothing is sent
-across the origin boundary to make it. A media query is answered by whichever
-browser lays the document out, and that is the same browser either side of the
-frame, so the render bundle carries its own palette and reads
-`prefers-color-scheme` for itself. There is no theme message to look for. The
-palettes are held level by a browser test that asserts the page and the framed
-document land on the same background in both modes; the bundle side is generated
-by PalomarSubmission's `render_challenge.py`. Renders published before that
-palette existed are immutable and stay light, because a bundle's bytes are what
-its recorded hash is of.
+| Parameter | Names | Example |
+| --- | --- | --- |
+| `?database=` | the endpoint every read surface resolves against, not a document | `?database=/fixtures/` |
+| `&render-base=` | the render tree, which otherwise resolves beside the database | `&render-base=/fixtures/render-root/` |
+| `&availability=` | a local source-availability manifest | `&availability=/fixtures/source-availability.json` |
+| `&view=` | `table` or `cards` for the registry listing and the search results | `&view=cards` |
 
-Resting the pointer on a result's title in the registry listing or in search
-results raises the same rendering in the same kind of frame, clamped between 120
-and 420 pixels, so the formal statement can be read without leaving the list.
-The preview is pointer-only: it is not raised by a keyboard or on a touch
-screen, where the card's own links remain the way to the statement. It frames
+On NixOS, if Playwright's bundled Chromium cannot launch, see
+[AGENTS.md](AGENTS.md) for the Nixpkgs browser invocation.
+
+## What is where
+
+The data boundary is kept separate from presentation.
+
+| Module | Owns |
+| --- | --- |
+| `security.mjs` | validates registry and availability documents, endpoint freshness, private indexes of validated availability rows |
+| `registry-loading.mjs` | endpoint composition, JSON transport, the page-scoped availability cache, recent/history/record/tombstone loading |
+| `source-preservation.mjs` | preservation receipts, manifest matching, repository locations, decoration of existing source controls |
+| `searching.mjs` | the bounded walk over search heads, posting pages and candidate records |
+| `entry-pages.mjs` | entry-route input and page-state transitions |
+| `entry-history-presentation.mjs` | canonical link, supersession notice, immutable version history |
+| `formalization-presentation.mjs` | statement trust labels, statement and proof dependency presentation |
+| `challenge-presentation.mjs` | artifact correspondence, source and playground controls, the audit disclosure |
+| `statement-preview.mjs` | the hover preview raised from a result title |
+| `registry-dates.mjs` | the two dates a result has, and the order and window a listing applies to them |
+| `subject-pages.mjs` | subject routes and the day-paged archive walk behind them |
+| `app.js` | the remaining page-level views |
+
+Deeper contracts, request budgets, freshness rules and schema-version ordering
+are in [docs/architecture.md](docs/architecture.md).
+
+## Rendered statements
+
+An entry page embeds a rendered Challenge when the comparator names exactly one
+declaration and the recorded Challenge source is at most 100 lines and 32 KiB.
+Larger Challenges link to a dedicated rendered view, and the pinned GitHub
+source link is always present.
+
+Rendered HTML loads in an iframe with `sandbox="allow-scripts"`, deliberately
+without `allow-same-origin`, and no referrer. The frame sizes itself from a
+height the document posts back, clamped between 160 and 672 pixels, so an
+untrusted render can ask for a sensible height without taking the page over.
+
+Resting the pointer on a result's title raises the same rendering in the same
+kind of frame, clamped between 120 and 420 pixels, so a formal statement can be
+read without leaving the list. The preview is pointer-only: on a keyboard or a
+touch screen the result's own links remain the way to the statement. It frames
 the immutable artifact at its published content address and does not repeat the
-entry page's check that the render's declarations match the registered record, so
-the entry page remains the place a rendering is tied to its entry.
+entry page's check that the render's declarations match the registered record,
+so the entry page remains where a rendering is tied to its entry.
 
-A record that arrives carrying review scores is refused rather than rendered.
-The scores are not published and are not in the record; a served record that had
-them would mean something upstream had gone wrong, and displaying it would be
-the worst moment to find out.
+The frame follows the browser's light and dark preference without anything
+crossing the origin boundary. A media query is answered by whichever browser
+lays the document out, and that is the same browser either side of the frame, so
+the render bundle carries its own palette. Renders published before that palette
+existed are immutable and stay light, because a bundle's bytes are what its
+recorded hash is of.
 
-The site accepts the sole current entry contract, `schema_version: 3`, and
-requires its source-preservation receipt. Superseded pre-launch drafts have no
-browser fallback; an obsolete or malformed record fails closed.
-The review-language cutover deploys this strict consumer together with the
-schema-v3 producer and rewritten public data; it does not infer an endorsement
-from a legacy positive review value.
-That ordering is gated by a complete traversal of what the producer advertises:
-CI and Pages deployment walk the browse hierarchy, reconcile every advertised
-row with its per-result version index, and run the Web entry validator over each
-advertised active permalink before an artifact is uploaded. This catches drift
-between those public surfaces; it is not an independent proof that the producer
-omitted no row from all of them.
-The hourly published-site check repeats it. This is intentionally O(A) in
-active versions and is deployment/monitoring cost, not visitor page-load cost.
-It uses at most eight concurrent reads; each read gets at most three five-second
-attempts with short backoff. The hourly job has a fifteen-minute ceiling, and a
-new observation supersedes an older queued or stuck one.
-
-The review-language cutover also moves `recent.json`, per-result version
-indexes, and browse, subject, and search projections to schema version 2.
-Source availability and independent render and evidence metadata keep their
-own versioned contracts. Only the registered-entry contract is v3-only.
-
-The website is a presentation layer only. Public data and schemas live at the
-machine-readable data origin. A permanent ID paired with an explicit integer
-version names one immutable record. An ID without a version means the latest
-record; later versions may change its theorem, source, authors, or subject, so
-stable citations must include the version.
-
-## RSS
-
-The filtered public-data deployment generates a main RSS feed and separate feeds
-for every arXiv and MSC2020 classification represented by a current entry. The
-landing page and entry pages advertise the main feed with RSS autodiscovery. A
-classification links to its subject page rather than to its category feed; the
-feed links were removed when they were all 404, and they have not been put back
-because nothing here has confirmed that they resolve. Static hosting is
-sufficient because feed XML is regenerated whenever the append-only database
-changes.
-
-## Version presentation
+## Versions and citation
 
 Palomar uses integer versions and treats the greatest active version of a
-permanent ID as current. Registry cards show only that version and link to its
-active history when older snapshots exist.
-
-An entry URL with both `id` and `version` identifies one immutable snapshot:
+permanent ID as current. An entry URL carrying both `id` and `version` names one
+immutable snapshot:
 
 ```text
 https://palomar-registry.org/entry?id={permanent-ID}&version={integer-version}
 ```
 
-Its HTML canonical link points to that same official, explicit version,
-including when a newer version exists or the site is viewed through a mirror or
-local fixture. An `id`-only entry URL is a floating convenience link: the site
-resolves it to the current version and replaces the browser URL with the
-explicit snapshot URL.
+An `id` without a version is a floating convenience link: the site resolves it to
+the current version and replaces the browser URL with the explicit snapshot URL.
+Later versions may change a result's theorem, source, authors or subject, so a
+stable citation must include the version. The HTML canonical link always points
+at the explicit version, including when a newer one exists and when the page is
+read through a mirror or a local fixture.
 
-Entry pages list all active versions. Older pages display a prominent link
-to the current version. Each page renders the selected version's own authorship,
-statement, proof, trust information, and review comments; information is never
-borrowed from a newer record. The site provides links, not computed diffs.
-The statement and the registration callout come first; the verification table,
-statement dependencies, proof, provenance, and review comments sit behind
-section disclosures that open when their heading is selected, and a fragment
-link into one (such as `#statement-dependencies`) opens it before scrolling,
-whether the fragment arrives from a link, from the address bar, or from the
-history buttons. Each collapsed section is named by its own heading, so it is
-reachable as a landmark on a browser that folds a summary's contents into the
-disclosure's name rather than exposing the heading inside it.
-The registry does not define change summaries or major/minor versions, so the
-website does not infer them. If a richer version
-scheme is adopted later, it will require a new URL contract; existing integer
-snapshot URLs remain permanent.
+Entry pages list all active versions, and an older page links prominently to the
+current one. Each page renders its own version's authorship, statement, proof,
+trust information and review comments; nothing is borrowed from a newer record.
+The site provides links, not computed diffs. The registry defines no change
+summaries and no major or minor versions, so the website infers none.
 
-This remains a runtime-JSON site: JavaScript is required for registry and entry
-content. The static shells explain this and point a no-JavaScript reader at the
-bounded newest-results or browse documents on the machine-readable data origin.
+The website is a presentation layer only. Public data and schemas live at the
+machine-readable data origin, and a record arriving with review scores is refused
+rather than rendered: the scores are not published and are not in the record, so
+a served record carrying them would mean something upstream had gone wrong.
+
+## More
+
+- [docs/architecture.md](docs/architecture.md), the data contracts and budgets
+- [AGENTS.md](AGENTS.md), notes for working in this repository
+- [`/llms.txt`](https://palomar-registry.org/llms.txt), the machine map

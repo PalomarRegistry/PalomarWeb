@@ -18,9 +18,9 @@
   <body data-page="index">
     <a class="skip-link" href="#registry">Skip to registry</a>
     <header class="site-header">
-      <a class="brand" href="./" aria-label="Palomar home">Palomar</a>
+      <a class="brand" href="/" aria-label="Palomar home">Palomar</a>
       <nav aria-label="Main navigation">
-        <a class="active" href="./" aria-current="page">Registry</a>
+        <a class="active" href="/" aria-current="page">Registry</a>
         <a href="/statement">Statement</a>
         <a href="/about">About</a>
         <a href="/how-to-submit">How to submit</a>
@@ -52,36 +52,46 @@
 
         <div class="toolbar">
           <div class="view-switch" role="group" aria-label="Result view">
-            <span>View:</span>
+            <span class="toolbar-label">View</span>
             <button class="view-button active" type="button" data-view="table" aria-pressed="true">Table</button>
             <button class="view-button" type="button" data-view="cards" aria-pressed="false">Cards</button>
           </div>
           <div class="filters" role="group" aria-label="Statement dependency filters">
-            <span>Show:</span>
+            <span class="toolbar-label">Dependencies</span>
             <button class="filter active" type="button" data-trust="all" aria-pressed="true">All</button>
             <button class="filter" type="button" data-trust="high" aria-pressed="false">Mathlib only</button>
             <button class="filter" type="button" data-trust="qualified" aria-pressed="false">Additional libraries</button>
           </div>
           <div class="category-filters" role="group" aria-label="Subject filters">
-            <label>arXiv:
+            <span class="toolbar-field">
+              <label for="arxiv-query">arXiv</label>
               <input id="arxiv-query" type="search" list="arxiv-options" maxlength="32" placeholder="e.g. math.CO" autocomplete="off" spellcheck="false">
-            </label>
+            </span>
             <datalist id="arxiv-options"></datalist>
-            <label>MSC:
+            <span class="toolbar-field">
+              <label for="msc-query">MSC</label>
               <input id="msc-query" type="search" list="msc-options" maxlength="5" placeholder="e.g. 05 or 05C10" autocomplete="off" spellcheck="false">
-            </label>
+            </span>
             <datalist id="msc-options"></datalist>
           </div>
           <div class="date-filters" role="group" aria-label="Registration date">
-            <label for="order-by">Order by:</label>
+            <label class="toolbar-label" for="order-by">Order by</label>
             <select id="order-by">
               <option value="updated">latest version</option>
               <option value="registered">first registration</option>
             </select>
-            <label for="date-from">from</label>
-            <input id="date-from" type="date">
-            <label for="date-to">to</label>
-            <input id="date-to" type="date">
+            <span class="toolbar-field">
+              <label for="date-from">from</label>
+              <input id="date-from" type="date">
+            </span>
+            <span class="toolbar-field">
+              <label for="date-to">to</label>
+              <input id="date-to" type="date">
+            </span>
+          </div>
+          <div class="toolbar-summary">
+            <p id="filter-count" class="filter-count" role="status"></p>
+            <button id="clear-filters" class="toolbar-clear" type="button" hidden>Clear filters</button>
           </div>
         </div>
 
@@ -95,7 +105,7 @@
             <a href="https://data.palomar-registry.org/recent.json">open the newest results as JSON</a>.
           </noscript>
         </div>
-        <div id="entry-grid" class="entry-grid" aria-live="polite"></div>
+        <div id="entry-grid" class="entry-grid"></div>
       </section>
     </main>
 
@@ -108,6 +118,7 @@
         <a href="https://data.palomar-registry.org/feed.xml">RSS</a>
         <a href="https://github.com/PalomarRegistry/PalomarPolicy">Policy</a>
         <a href="/privacy">Privacy</a>
+        <a href="/costs">Costs</a>
         <a href="/llms.txt">llms.txt</a>
         <a href="https://data.palomar-registry.org/recent.json">Data</a>
         <a href="https://github.com/leanprover/comparator">Comparator</a>
