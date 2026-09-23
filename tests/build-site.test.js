@@ -52,10 +52,6 @@ test("deployment build versions coupled browser assets", async () => {
       path.join(destination, "assets", "registry-loading.mjs"),
       "utf8",
     );
-    const searching = await readFile(
-      path.join(destination, "assets", "searching.mjs"),
-      "utf8",
-    );
     const notFound = await readFile(path.join(destination, "404.html"), "utf8");
     await readFile(path.join(destination, "llms.txt"), "utf8");
     assert.match(index, /assets\/style\.css\?v=0123456789abcdef/);
@@ -76,7 +72,7 @@ test("deployment build versions coupled browser assets", async () => {
     assert.match(app, /\.\/formalization-presentation\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/registry-loading\.mjs\?v=0123456789abcdef/);
-    assert.match(app, /\.\/searching\.mjs\?v=0123456789abcdef/);
+    assert.match(app, /\.\/registry-page\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/source-preservation\.mjs\?v=0123456789abcdef/);
     assert.match(preservation, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(rendering, /\.\/security\.mjs\?v=0123456789abcdef/);
@@ -100,8 +96,6 @@ test("deployment build versions coupled browser assets", async () => {
       formalizationPresentation,
       /\.\/source-preservation\.mjs\?v=0123456789abcdef/,
     );
-    assert.match(searching, /\.\/loading\.mjs\?v=0123456789abcdef/);
-    assert.match(searching, /\.\/security\.mjs\?v=0123456789abcdef/);
     await readFile(path.join(destination, "assets", "loading.mjs"), "utf8");
     await readFile(path.join(destination, "assets", "security.mjs"), "utf8");
 
@@ -144,7 +138,7 @@ test("module versioning changes imports rather than lookalike strings or package
   const source = [
     'import helpers from "./security.mjs";',
     'import rootHelpers from "/assets/rendering.js";',
-    'import parentHelpers from "../assets/searching.mjs";',
+    'import parentHelpers from "../assets/registry-page.mjs";',
     'const description = \'from "./loading.mjs";\';',
     'import packageValue from "package-name";',
     'const lazy = import("./loading.mjs");',
@@ -153,7 +147,7 @@ test("module versioning changes imports rather than lookalike strings or package
 
   assert.match(versioned, /from "\.\/security\.mjs\?v=release-1"/);
   assert.match(versioned, /from "\/assets\/rendering\.js\?v=release-1"/);
-  assert.match(versioned, /from "\.\.\/assets\/searching\.mjs\?v=release-1"/);
+  assert.match(versioned, /from "\.\.\/assets\/registry-page\.mjs\?v=release-1"/);
   assert.match(versioned, /import\("\.\/loading\.mjs\?v=release-1"\)/);
   assert.match(versioned, /const description = 'from "\.\/loading\.mjs";'/);
   assert.match(versioned, /from "package-name"/);

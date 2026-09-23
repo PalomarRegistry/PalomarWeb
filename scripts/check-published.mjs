@@ -24,6 +24,7 @@ import {
   validateBrowsePage,
   validateBrowseYear,
   validateEntry,
+  validateQueryPage,
   validateRecent,
   validateRecentRenders,
   validateSubjectHead,
@@ -144,6 +145,7 @@ const PUBLIC_VALIDATORS = {
   validateBrowsePage,
   validateBrowseYear,
   validateEntry,
+  validateQueryPage,
   validateRecent,
   validateRecentRenders,
   validateSubjectHead,
@@ -261,6 +263,34 @@ export async function publicDataState(
     });
     const entriesByPath = new Map(fetchedEntries);
     const historiesById = new Map(histories.map((history) => [history.id, history.entries]));
+    // The query projection is the listing contract. Walk bounded pages during
+    // deployment/health and compare each row with its current canonical entry.
+    if (validators.validateQueryPage) {
+      const seen = new Set();
+      let cursor = null;
+      do {
+        const url = new URL("api/v1/results", base);
+        if (cursor) url.searchParams.set("cursor", cursor);
+        const page = validators.validateQueryPage(await fetchJson(url, fetcher, policy));
+        if (page.totals.results !== identifiers.length) throw new Error("query total differs from browse");
+        for (const row of page.entries) {
+          const history = historiesById.get(row.id);
+          const current = history?.at(-1);
+          const entry = entriesByPath.get(row.path);
+          if (seen.has(row.id) || !current || row.version !== current.version ||
+              row.title !== current.title || row.versions !== history.length ||
+              row.path !== current.path || row.published_at !== entry?.registered_at ||
+              row.preview.artifact_tree_sha256 !== entry.challenge_render.artifact_tree_sha256 ||
+              row.preview.version !== (entry.registry_correction?.based_on.version ?? entry.version)) {
+            throw new Error("query row differs from its current canonical entry");
+          }
+          seen.add(row.id);
+        }
+        if (page.next && !page.entries.length) throw new Error("query cursor did not advance");
+        cursor = page.next;
+      } while (cursor);
+      if (seen.size !== identifiers.length) throw new Error("query pagination omitted current entries");
+    }
     const rendersById = new Map(recentRenders.renders.map((row) => [row.id, row]));
     for (const summary of recent.entries) {
       const history = historiesById.get(summary.id);

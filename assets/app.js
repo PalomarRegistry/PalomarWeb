@@ -3,7 +3,6 @@ import {
   REPOSITORY_ROLE_LABELS,
   isLoopbackHostname,
   pinnedRepositoryDirectoryUrl,
-  recentValidationIssues,
   safeDataUrl,
   safeExternalUrl,
   safeInternalUrl,
@@ -11,12 +10,7 @@ import {
   workflowRunId,
   hasToolchainProvenance,
 } from "./security.mjs";
-import {
-  SEARCH_RESULT_LIMIT,
-  SEARCH_TERM_LIMIT,
-  createRegistrySearch,
-  validateSearchQuery,
-} from "./searching.mjs";
+import { renderRegistryPage } from "./registry-page.mjs";
 import {
   expandDetailsForTarget,
   renderChallengePage,
@@ -33,38 +27,19 @@ import { renderSubjectPage } from "./subject-pages.mjs";
 import { abstractSegments, presentationAbstract } from "./presentation-text.mjs";
 import {
   DEFAULT_ORDER,
-  FIRST_REGISTRATION_ORDER,
   cardDates,
-  compareRows,
-  dayWindow,
-  normalizeOrder,
-  orderedDay,
   registrationDay,
-  withinWindow,
 } from "./registry-dates.mjs";
 import {
   bindSourceControl,
   createSourceAvailabilityBinding,
   createSourceAvailabilityNotice,
-  decorateCardSet,
   sourceFileUrl,
   sourceLocation,
   topSourceLocation,
 } from "./source-preservation.mjs";
 
 const params = new URLSearchParams(window.location.search);
-const ARXIV_FILTER_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
-// Every MSC2020 code is five characters: two digits for the subject, then
-// either a letter or a hyphen, then two more digits. A reader knows the
-// subject long before the section, so the filter takes any prefix of that
-// shape ("11", "11P", "11P3") and matches every code that begins with it.
-const MSC2020_FILTER_RE = /^[0-9]{1,2}$|^[0-9]{2}[A-Z-][0-9]{0,2}$/;
-const FILTER_UPDATE_DELAY_MS = 200;
-// Longer than the classification filter above, because each registry search
-// costs a stopword read, a head read per word, posting pages, and up to sixty
-// record reads. A pause is the signal; a keystroke is not.
-const SEARCH_UPDATE_DELAY_MS = 300;
-
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -120,7 +95,7 @@ const {
   dataSource,
   fetchJson,
   loadAvailabilityBounded,
-  loadRecent,
+  loadResults,
   loadRecentRenders,
   loadEntry,
   loadSubjectHead,
@@ -132,7 +107,6 @@ const {
   warn: (message) => console.warn(message),
 });
 
-const searchRegistry = createRegistrySearch(fetchJson);
 
 const statementPreview = createStatementPreview({
   document,
@@ -329,67 +303,9 @@ const {
  * and so is the card's own index. Deriving both from here is what keeps the
  * provisional set from disagreeing with the cards it is drawn from.
  */
-function searchBlob(entry) {
-  const categories = classification(entry);
-  return [
-    entry.title,
-    presentationAbstract(entry),
-    authorNames(entry),
-    theoremNames(entry),
-    entry.source.repository,
-    entry.source.project_path || "",
-    entry.id,
-    ...categories.arxiv,
-    ...categories.msc2020,
-  ].join(" ").toLowerCase();
-}
-
 function dateSpans({ id, registeredAt }, order) {
   return cardDates({ id, registeredAt }, order).map(({ className, label, day }) =>
     el("span", className, `${label} ${displayDate(day)}`));
-}
-
-/**
- * Date a listed result again after the grid is rearranged.
- *
- * The dates are rewritten rather than the node rebuilt: a card carries a hover
- * preview registration and whatever the availability answer decorated it with,
- * and neither survives being replaced by an equal one. A table row carries the
- * registration too, and is dated the same way in its own cell.
- */
-function setListedDates(node, row, order) {
-  const identity = node.querySelector(".card-identity");
-  if (identity) {
-    identity.replaceChildren(
-      identity.querySelector(".entry-id"),
-      ...dateSpans(row, order),
-    );
-    return;
-  }
-  node.querySelector(".row-registered")?.replaceChildren(...dateSpans(row, order));
-}
-
-// The landing grid shows the same selection either as cards, which lead with
-// the abstract, or as a table, which does not. The table is the default: two
-// hundred results are a list to be scanned before any one of them is read, and
-// the cards put four hundred thousand characters of abstract on the page to
-// scroll past first. Both read the one recent.json, so neither is faster to
-// load -- this is what reaches the reader once it has arrived, not how much
-// arrives.
-const LANDING_VIEWS = new Set(["table", "cards"]);
-const DEFAULT_LANDING_VIEW = "table";
-
-/**
- * Which view the address asks for.
- *
- * Carried in the URL rather than stored on the reader's device: the registry
- * deep-links its order, its dates and its subject filters the same way, a
- * chosen view is then a link someone can send, and this page goes on keeping
- * nothing about whoever is reading it.
- */
-function requestedLandingView(search) {
-  const value = new URLSearchParams(search).get("view");
-  return LANDING_VIEWS.has(value) ? value : DEFAULT_LANDING_VIEW;
 }
 
 const TABLE_COLUMNS = [
@@ -414,7 +330,6 @@ function entryRow(entry, { registeredAt = entry.registered_at, order = DEFAULT_O
   row.dataset.trust = entry.trust.level;
   row.dataset.arxiv = categories.arxiv.join(" ");
   row.dataset.msc = categories.msc2020.join(" ");
-  row.dataset.search = searchBlob(entry);
 
   const result = el("td", "row-result");
   const titleLink = internalLink(entry.title, localPageUrl("/entry", entry));
@@ -456,7 +371,6 @@ function entryCard(
   card.dataset.trust = entry.trust.level;
   card.dataset.arxiv = categories.arxiv.join(" ");
   card.dataset.msc = categories.msc2020.join(" ");
-  card.dataset.search = searchBlob(entry);
 
   const top = el("div", "card-top");
   const identity = el("div", "card-identity");
@@ -481,7 +395,7 @@ function entryCard(
   const subjects = el("div", "card-subjects");
   subjects.append(el("small", "", "Subjects"), categoryTokens(entry));
   meta.append(authors, theorems, subjects);
-  if (entry.source.project_path) {
+  if (entry.source?.project_path) {
     const project = el("div", "card-project");
     project.append(
       el("small", "", "Project directory"),
@@ -490,24 +404,16 @@ function entryCard(
     meta.append(project);
   }
   const footer = el("div", "card-footer");
-  const location = topSourceLocation(entry, null);
+  const location = entry.source ? topSourceLocation(entry, null) : null;
   const historyUrl = new URL(localPageUrl("/entry", entry));
   historyUrl.hash = "version-history";
-  footer.append(
-    externalLink(
-      entry.source.repository,
-      pinnedRepositoryDirectoryUrl(entry.source.repository, entry.source.commit),
-      "repo-link",
-    ),
-    internalLink("View record", localPageUrl("/entry", entry)),
-  );
-  footer.append(
-    externalLink(
-      "Palomar preserved copy",
-      pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit),
-      "archive-link",
-    ),
-  );
+  footer.append(internalLink("View record", localPageUrl("/entry", entry)));
+  if (entry.source && location) {
+    footer.append(
+      externalLink(entry.source.repository, pinnedRepositoryDirectoryUrl(entry.source.repository, entry.source.commit), "repo-link"),
+      externalLink("Palomar preserved copy", pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit), "archive-link"),
+    );
+  }
   if (versionCount > 1) {
     const historyLink = internalLink(
       `${versionCount} versions`,
@@ -523,689 +429,35 @@ function entryCard(
   return card;
 }
 
-let landingSuppressed = false;
-let landingStatusHidden = document.querySelector("#status")?.hidden ?? true;
-
-function registryWarningNode() {
-  let warning = document.querySelector("#registry-warning");
-  if (warning) return warning;
-  const status = document.querySelector("#status");
-  if (!status) return null;
-  warning = el("div", "status warning");
-  warning.id = "registry-warning";
-  warning.hidden = true;
-  warning.setAttribute("role", "status");
-  status.before(warning);
-  return warning;
-}
-
-function showRecentIssues(issues) {
-  const warning = registryWarningNode();
-  if (!warning) return;
-  warning.hidden = issues.omitted === 0;
-  warning.textContent = issues.omitted === 1
-    ? "1 registry entry could not be displayed."
-    : `${issues.omitted} registry entries could not be displayed.`;
-  for (const issue of issues.details) {
-    const identity = issue.id ? ` (${issue.id})` : "";
-    console.warn(`Recent registry row ${issue.position}${identity}: ${issue.reason}`);
-  }
-}
-
-function setLandingStatusHidden(hidden) {
-  landingStatusHidden = hidden;
-  const status = document.querySelector("#status");
-  if (status) status.hidden = landingSuppressed || hidden;
-}
-
-/** The day window the toolbar is holding, named by the date it applies to. */
-function describeWindow(dates, order) {
-  const subject = order === FIRST_REGISTRATION_ORDER ? "First registered" : "Registered";
-  if (dates.from && dates.to) {
-    return `${subject} between ${displayDate(dates.from)} and ${displayDate(dates.to)}`;
-  }
-  if (dates.from) return `${subject} on or after ${displayDate(dates.from)}`;
-  return `${subject} on or before ${displayDate(dates.to)}`;
-}
-
-function setLandingSuppressed(suppressed) {
-  landingSuppressed = suppressed;
-  // A panel outlives the card it was raised from unless something says so:
-  // it is over the page, not in the grid, and hiding the grid does not reach
-  // it. The same goes for the redraws below.
-  statementPreview.close();
-  document.body.classList.toggle("registry-searching", suppressed);
-  const toolbar = document.querySelector(".toolbar");
-  const status = document.querySelector("#status");
+function renderRegistryRows(entries, view, order) {
   const grid = document.querySelector("#entry-grid");
-  if (toolbar) toolbar.hidden = suppressed;
-  if (grid) grid.hidden = suppressed;
-  if (status) status.hidden = suppressed || landingStatusHidden;
-}
-
-async function renderIndex() {
-  const status = document.querySelector("#status");
-  const grid = document.querySelector("#entry-grid");
-  const warning = registryWarningNode();
-  try {
-    if (warning) warning.hidden = true;
-    status.className = "status";
-    status.textContent = "Reading the Palomar database…";
-    setLandingStatusHidden(false);
-    grid.replaceChildren();
-    const { databaseBase, availabilityUrl } = dataSource();
-    const availabilityPromise = loadAvailabilityBounded(availabilityUrl);
-    // The publisher projects every landing-card field from validated canonical
-    // entries into this bounded newest-first document. Rendering the selection
-    // therefore costs one summary read, not one record read per card.
-    const recent = await loadRecent(databaseBase);
-    const issues = recentValidationIssues(recent);
-    const entries = recent.entries;
-    landingMatches = entries.map((entry) => ({ entry, blob: searchBlob(entry) }));
-    // GitHub Pages may briefly pair HTML and JavaScript from adjacent deployments.
-    // Metrics are presentation-only, so a removed metric must not abort the registry.
-    setOptionalText("#metric-results", String(entries.length));
-    setOptionalText(
-      "#metric-projects",
-      new Set(entries.map((entry) => entry.source.repository)).size,
-    );
-    if (!entries.length) {
-      setLandingStatusHidden(false);
-      if (issues.omitted) {
-        status.textContent = issues.omitted === 1
-          ? "1 registry entry could not be displayed."
-          : `${issues.omitted} registry entries could not be displayed.`;
-        status.classList.add("warning");
-      } else {
-        status.textContent =
-          "The telescope is ready. No entries have been registered yet; the first registered result will appear here automatically.";
-        status.classList.add("empty");
-      }
-      showRecentIssues(issues);
-      if (warning) warning.hidden = true;
-      return true;
-    }
-    showRecentIssues(issues);
-    setLandingStatusHidden(true);
-    status.textContent = "";
-    status.className = "status";
-    const orderControl = document.querySelector("#order-by");
-    const fromControl = document.querySelector("#date-from");
-    const toControl = document.querySelector("#date-to");
-    if (orderControl && params.has("order")) {
-      orderControl.value = normalizeOrder(params.get("order"));
-    }
-    for (const [control, name] of [[fromControl, "from"], [toControl, "to"]]) {
-      if (control && params.has(name)) control.value = params.get(name).slice(0, 10);
-    }
-    // A deployment's HTML and its JavaScript can be a moment apart on GitHub
-    // Pages, so the order is read from the control when the page has one and
-    // from the link when it does not.
-    let order = normalizeOrder(orderControl ? orderControl.value : params.get("order"));
-    let view = requestedLandingView(window.location.search);
-    const buildNodes = () => entries.map((entry) =>
-      view === "table"
-        ? entryRow(entry, { registeredAt: entry.published_at, order })
-        : entryCard(entry, {
-          versionCount: entry.versions,
-          current: true,
-          registeredAt: entry.published_at,
-          order,
-        }));
-    let nodes = buildNodes();
-    // The rows the grid is arranged and filtered by, paired with the node
-    // showing them, so that neither question has to read a node back.
-    const listed = entries.map((entry, index) => ({
-      node: nodes[index],
-      row: { id: entry.id, registeredAt: entry.published_at },
-    }));
-    // A table needs a body to append into; cards go straight into the grid.
-    // Rebuilt whenever the view changes, which is also what clears the old one.
-    let mount = grid;
-    const remount = () => {
-      grid.replaceChildren();
-      grid.classList.toggle("entry-table-view", view === "table");
-      if (view !== "table") {
-        mount = grid;
-        return;
-      }
-      const table = el("table", "entry-table");
-      const headRow = el("tr");
-      for (const [label, className] of TABLE_COLUMNS) {
-        const heading = el("th", className, label);
-        heading.scope = "col";
-        headRow.append(heading);
-      }
-      const head = el("thead");
-      head.append(headRow);
-      mount = el("tbody");
-      table.append(head, mount);
-      grid.append(table);
-    };
-    /**
-     * The listed results, in the order asked for, dated by the day that order
-     * keys on.
-     *
-     * Appending a node already in the grid moves it, so this rearranges what is
-     * there rather than rebuilding it: a rebuilt card would lose its hover
-     * preview registration and whatever the availability answer decorated it
-     * with, and a rebuilt row would lose the registration too. Changing view is
-     * the one thing that does rebuild, and puts both back.
-     */
-    const arrange = () => {
-      statementPreview.close();
-      const ordered = [...listed].sort((left, right) =>
-        compareRows(left.row, right.row, order));
-      for (const item of ordered) setListedDates(item.node, item.row, order);
-      mount.append(...ordered.map((item) => item.node));
-    };
-    remount();
-    arrange();
-    // Held because a reader who switches to the cards after this resolves gets
-    // cards built too late to have been decorated by it.
-    let sourceAvailability = null;
-    const decorateListed = () => {
-      // A row carries no source control to decorate; the cards do.
-      if (view !== "cards" || !sourceAvailability) return;
-      decorateCardSet(nodes, entries, sourceAvailability, "Landing card");
-    };
-    void availabilityPromise.then((availability) => {
-      sourceAvailability = availability;
-      decorateListed();
-    }).catch((error) => {
-      console.warn(`Landing card source availability could not be applied: ${error.message}`);
-    });
-    let trust = "all";
-    // The fallback selectors keep new JavaScript compatible with cached HTML
-    // from the previous GitHub Pages deployment.
-    const arxiv = document.querySelector("#arxiv-query, #arxiv-filter");
-    const msc = document.querySelector("#msc-query, #msc-filter");
-    const fillCategories = (list, values) => {
-      if (!list) return;
-      for (const value of [...values].sort()) {
-        const option = el("option", "", value);
-        option.value = value;
-        list.append(option);
-      }
-    };
-    const arxivOptions = document.querySelector("#arxiv-options") ||
-      (arxiv?.tagName === "SELECT" ? arxiv : null);
-    const mscOptions = document.querySelector("#msc-options") ||
-      (msc?.tagName === "SELECT" ? msc : null);
-    fillCategories(
-      arxivOptions,
-      new Set(entries.flatMap((entry) => classification(entry).arxiv)),
-    );
-    fillCategories(
-      mscOptions,
-      new Set(entries.flatMap((entry) => classification(entry).msc2020)),
-    );
-    const applyCategoryParameter = (control, name, maximumLength) => {
-      if (!control || !params.has(name)) return;
-      const value = params.get(name).slice(0, maximumLength);
-      if (control.tagName === "SELECT" &&
-          ![...control.options].some((option) => option.value === value)) {
-        const option = el("option", "", value);
-        option.value = value;
-        control.append(option);
-      }
-      control.value = value;
-    };
-    applyCategoryParameter(arxiv, "arxiv", 32);
-    applyCategoryParameter(msc, "msc", 5);
-    // The subject inputs are always on the toolbar now. Cached HTML from a
-    // previous deployment still keeps them behind a disclosure, so a deep link
-    // that filters by subject opens it there rather than leaving the page
-    // filtered by controls the reader cannot see.
-    const advancedFilters = document.querySelector(".advanced-filters");
-    if (advancedFilters && (params.has("arxiv") || params.has("msc"))) {
-      advancedFilters.open = true;
-    }
-    // Words are the registry search's business now. What is left here narrows
-    // the landing selection by facts the cards already carry, which is why it
-    // can stay instant and local.
-    const update = () => {
-      const arxivValue = arxiv?.value.trim() || "";
-      // Codes are written in upper case in the registry, and typing one in
-      // lower case is not a mistake worth an error message.
-      const mscValue = (msc?.value.trim() || "").toUpperCase();
-      const arxivInvalid = Boolean(arxivValue && !ARXIV_FILTER_RE.test(arxivValue));
-      const mscInvalid = Boolean(mscValue && !MSC2020_FILTER_RE.test(mscValue));
-      const dates = dayWindow({ from: fromControl?.value, to: toControl?.value });
-      let shown = 0;
-      let oldest = null;
-      for (const { node, row } of listed) {
-        const day = orderedDay(row, order);
-        if (oldest === null || day < oldest) oldest = day;
-        const visible =
-          (trust === "all" || node.dataset.trust === trust) &&
-          (!arxivValue || (!arxivInvalid && node.dataset.arxiv.split(" ").includes(arxivValue))) &&
-          (!mscValue ||
-            (!mscInvalid &&
-              node.dataset.msc.split(" ").some((code) => code.startsWith(mscValue)))) &&
-          withinWindow(day, dates);
-        node.hidden = !visible;
-        if (visible) shown += 1;
-      }
-      const classificationQuery = [
-        arxivValue && `arXiv ${arxivValue}`,
-        mscValue && `MSC2020 ${mscValue}`,
-      ].filter(Boolean);
-      const invalidClassifications = [
-        arxivInvalid && "arXiv",
-        mscInvalid && "MSC2020",
-      ].filter(Boolean);
-      const classificationReason = invalidClassifications.length
-        ? `Invalid classification code format: ${invalidClassifications.join(", ")}.`
-        : classificationQuery.length
-        ? `Classification query: ${classificationQuery.join(", ")}.`
-        : "";
-      const dateReason = dates.malformed.length
-        ? `Invalid date: ${dates.malformed.join(", ")}.`
-        : dates.empty
-        ? "The date range ends before it begins."
-        : dates.active
-        ? `${describeWindow(dates, order)}.`
-        : "";
-      // This page is the newest results and not the whole registry, so a range
-      // that reaches past its oldest row reaches past what it can answer for.
-      // Said whether or not anything matched, because a reader who gets some of
-      // the range back has no way to tell that it was not all of it.
-      const reachesEarlier = Boolean(
-        dates.from && !dates.malformed.length && !dates.empty && oldest && dates.from < oldest,
-      );
-      const boundReason = reachesEarlier
-        ? `${order === FIRST_REGISTRATION_ORDER ? "Results first registered" : "Versions registered"} ` +
-          `before ${displayDate(oldest)} are not on this page.`
-        : "";
-      const reasons = [classificationReason, dateReason, boundReason].filter(Boolean);
-      status.textContent = shown
-        ? boundReason
-        : reasons.length
-        ? `No registry entries match the current filters. ${reasons.join(" ")}`
-        : "No registry entries match those filters.";
-      setLandingStatusHidden(Boolean(shown) && !boundReason);
-    };
-    let updateTimer;
-    const scheduleUpdate = () => {
-      window.clearTimeout(updateTimer);
-      updateTimer = window.setTimeout(update, FILTER_UPDATE_DELAY_MS);
-    };
-    for (const control of [arxiv, msc, fromControl, toControl]) {
-      for (const eventName of ["input", "change", "search"]) {
-        control?.addEventListener(eventName, scheduleUpdate);
-      }
-    }
-    // Not on the delay the text fields use. Choosing an order is one act on a
-    // list, not a word being typed a letter at a time.
-    orderControl?.addEventListener("change", () => {
-      order = normalizeOrder(orderControl.value);
-      arrange();
-      update();
-    });
-    // Deliberately not the .filter class the dependency buttons use: those are
-    // collected by it, and a view is not one of the things they narrow.
-    const viewButtons = [...document.querySelectorAll(".view-button")];
-    const markViewButtons = () => {
-      for (const candidate of viewButtons) {
-        const active = candidate.dataset.view === view;
-        candidate.classList.toggle("active", active);
-        candidate.setAttribute("aria-pressed", String(active));
-      }
-    };
-    markViewButtons();
-    for (const button of viewButtons) {
-      button.addEventListener("click", () => {
-        if (button.dataset.view === view) return;
-        view = button.dataset.view;
-        markViewButtons();
-        // A node cannot be carried across: a card and a row are different
-        // elements. So everything a node was given is given again -- the hover
-        // preview registration happens as each is built, and the availability
-        // answer is reapplied from the one already held.
-        statementPreview.close();
-        nodes = buildNodes();
-        for (const [index, item] of listed.entries()) item.node = nodes[index];
-        remount();
-        arrange();
-        decorateListed();
-        update();
-        const address = new URL(window.location.href);
-        if (view === DEFAULT_LANDING_VIEW) address.searchParams.delete("view");
-        else address.searchParams.set("view", view);
-        window.history.replaceState(null, "", address);
-      });
-    }
-    document.querySelectorAll(".filter").forEach((button) => {
-      button.addEventListener("click", () => {
-        trust = button.dataset.trust;
-        document.querySelectorAll(".filter").forEach((candidate) => {
-          const active = candidate === button;
-          candidate.classList.toggle("active", active);
-          candidate.setAttribute("aria-pressed", String(active));
-        });
-        update();
-      });
-    });
-    update();
-    return true;
-  } catch (error) {
-    if (warning) warning.hidden = true;
-    setLandingStatusHidden(false);
-    status.textContent = `The registry could not be loaded: ${error.message}`;
-    status.className = "status error";
-    return false;
-  }
-}
-
-// The landing selection with its text already flattened, kept so that a reader
-// who starts typing sees the entries the page holds without waiting for
-// anything. Matching happens on a keystroke pause, so the flattening is done
-// once here rather than two hundred times per pause.
-let landingMatches = [];
-
-let landingLoad = null;
-function ensureLanding() {
-  if (!landingLoad) {
-    const active = renderIndex();
-    landingLoad = active;
-    void active.then((loaded) => {
-      if (!loaded && landingLoad === active) landingLoad = null;
-    });
-  }
-  return landingLoad;
-}
-
-function searchPageUrlFor(query) {
-  const target = new URL("index.html", window.location.href);
-  target.search = "";
-  for (const [name, value] of params.entries()) {
-    if (name !== "q") target.searchParams.set(name, value);
-  }
-  if (query) target.searchParams.set("q", query);
-  return safeInternalUrl(target, window.location.href);
-}
-
-let searchGeneration = 0;
-let activeSearchController = null;
-
-function renderSearchCards(results, entries) {
   statementPreview.close();
-  const cards = entries.map((entry) => entryCard(entry));
-  results.replaceChildren(...cards);
-  return cards;
-}
-
-/**
- * The loaded entries that carry what was typed, for the wait.
- *
- * This is not the question the registry index answers. It looks for the text
- * anywhere inside the newest entries the page happens to hold; the index looks
- * for whole words, requires all of them, and covers every published version.
- * So this will show entries the search then removes, and miss ones it finds.
- * That gap is why the result of this is drawn as provisional and thrown away
- * the moment the registry answers.
- */
-function previewEntries(query) {
-  // Every word must appear, as the index requires, but a word matches anywhere
-  // inside a longer one, because half a word is what a reader has typed so far.
-  // Bounded like the index bounds itself: the query is up to four thousand
-  // characters, and this runs between two keystrokes.
-  const wanted = [...new Set(query.trim().toLowerCase().split(/\s+/).filter(Boolean))]
-    .slice(0, SEARCH_TERM_LIMIT);
-  if (!wanted.length) return [];
-  const matches = [];
-  for (const { entry, blob } of landingMatches) {
-    if (!wanted.every((word) => blob.includes(word))) continue;
-    matches.push(entry);
-    if (matches.length === SEARCH_RESULT_LIMIT) break;
+  grid.replaceChildren();
+  grid.classList.toggle("entry-table-view", view === "table");
+  let mount = grid;
+  if (view === "table") {
+    const table = el("table", "entry-table");
+    const head = el("thead");
+    const headings = el("tr");
+    for (const [label, className] of TABLE_COLUMNS) {
+      const cell = el("th", className, label);
+      cell.scope = "col";
+      headings.append(cell);
+    }
+    head.append(headings);
+    mount = el("tbody");
+    table.append(head, mount);
+    grid.append(table);
   }
-  return matches;
-}
-
-function renderPreviewCards(results, entries) {
-  // Drawn like the search cards that will replace them, down to leaving out
-  // which version is current: the landing rows do carry that, but showing it
-  // here would mean every card quietly lost a claim when the results arrived.
-  const cards = entries.map((entry) =>
-    entryCard(entry, { registeredAt: entry.published_at }));
-  results.replaceChildren(...cards);
-  results.classList.add("preview");
-  return cards;
-}
-
-function setSearchBusy(results, busy) {
-  const spinner = document.querySelector("#search-spinner");
-  if (spinner) spinner.hidden = !busy;
-  // The results grid is a polite live region. Without this it reads out the
-  // provisional cards and then reads the whole verified set again, which is
-  // two announcements for one search and the first of them not yet true.
-  if (busy) results.setAttribute("aria-busy", "true");
-  else results.removeAttribute("aria-busy");
-}
-
-/** The result a reader is standing on, so that replacing the set can put them back. */
-function focusedEntryId(results) {
-  const active = document.activeElement;
-  if (!active || !results.contains(active)) return null;
-  return active.closest(".entry-card")?.dataset.id || null;
-}
-
-/**
- * Put the reader back where they were once the provisional cards are replaced.
- *
- * Without this, confirming a result silently drops focus to the document body,
- * because the node the reader was on is one of the ones thrown away.
- */
-function restoreFocusAfterSwap(results, entryId) {
-  if (!entryId) return;
-  // Matched by walking the cards rather than by building a selector out of a
-  // value that came from data, which is the rule everywhere else here.
-  const card = [...results.children].find((node) => node.dataset.id === entryId);
-  const link = card?.querySelector("a");
-  if (link) link.focus();
-  else document.querySelector("#query")?.focus();
-}
-
-function clearSearchQueryWarning(input) {
-  input?.removeAttribute("aria-invalid");
-  input?.removeAttribute("aria-describedby");
-}
-
-function showSearchQueryWarning(input, status, error) {
-  status.hidden = false;
-  status.textContent = error.message;
-  status.classList.add("warning");
-  input?.setAttribute("aria-invalid", "true");
-  input?.setAttribute("aria-describedby", status.id);
-}
-
-/**
- * Show what this query looks like from here, and unless told otherwise, ask.
- *
- * `ask: false` is the keystroke half. A reader who has typed on has already
- * left the answer on the page behind, so the request in flight for it is
- * abandoned and the provisional set is repainted at once, without waiting out
- * the pause first. Waiting would leave one query in the box and a different
- * query's results, verified and undimmed, underneath it.
- */
-async function renderSearch(query, { ask = true } = {}) {
-  const generation = searchGeneration + 1;
-  searchGeneration = generation;
-  activeSearchController?.abort(new Error("superseded registry search"));
-  activeSearchController = null;
-  const status = document.querySelector("#search-status");
-  const results = document.querySelector("#search-results");
-  const input = document.querySelector("#query");
-  if (!status || !results) return;
-  results.replaceChildren();
-  results.classList.remove("preview");
-  setSearchBusy(results, false);
-  status.className = "status";
-  let asked;
-  try {
-    asked = validateSearchQuery(query);
-    clearSearchQueryWarning(input);
-  } catch (error) {
-    setLandingSuppressed(Boolean(query));
-    if (error instanceof RangeError) showSearchQueryWarning(input, status, error);
-    else {
-      status.hidden = false;
-      status.textContent = `The search could not be run: ${error.message}`;
-      status.classList.add("error");
+  for (const entry of entries) {
+    const node = view === "table" ? entryRow(entry, { registeredAt: entry.published_at, order })
+      : entryCard(entry, { versionCount: entry.versions, current: true, registeredAt: entry.published_at, order });
+    if (entry.abbreviated) {
+      const notice = el("small", "summary-abbreviated", "Summary abbreviated; open the record for complete metadata.");
+      (view === "table" ? node.querySelector(".row-result") : node).append(notice);
     }
-    return;
+    mount.append(node);
   }
-  const searching = Boolean(asked.length);
-  setLandingSuppressed(searching);
-  if (!searching) {
-    status.hidden = true;
-    ensureLanding();
-    return;
-  }
-  status.hidden = false;
-  // Something to read while the registry is asked. It is drawn from a smaller
-  // pool by a looser rule, so the status says so rather than letting it pass
-  // for an answer.
-  const preview = previewEntries(query);
-  if (preview.length) {
-    renderPreviewCards(results, preview);
-    status.textContent =
-      `Showing ${preview.length} match${preview.length === 1 ? "" : "es"} from the ` +
-      `newest ${landingMatches.length} entries while the registry search runs…`;
-  } else {
-    status.textContent = "Searching the registry…";
-  }
-  setSearchBusy(results, true);
-  if (!ask) return;
-  const controller = new AbortController();
-  activeSearchController = controller;
-  try {
-    const { databaseBase, availabilityUrl } = dataSource();
-    const found = await searchRegistry(query, databaseBase, { signal: controller.signal });
-    if (generation !== searchGeneration) return;
-    for (const problem of found.problems) {
-      console.warn(
-        `Search ${problem.stage} ${problem.item} could not be loaded: ` +
-          `${problem.reason?.message || String(problem.reason)}`,
-      );
-    }
-    // Availability changes only where a source link points. It must never hold
-    // verified registry results behind its own long timeout.
-    // Read immediately before the swap, not when the search began: the reader
-    // had the whole wait in which to go and stand on one of these cards.
-    const wasOn = focusedEntryId(results);
-    const cards = renderSearchCards(results, found.entries);
-    restoreFocusAfterSwap(results, wasOn);
-    if (found.entries.length) {
-      void loadAvailabilityBounded(availabilityUrl).then((availability) => {
-        if (availability !== null && generation === searchGeneration) {
-          decorateCardSet(cards, found.entries, availability, "Search card");
-        }
-      }).catch((error) => {
-        if (generation === searchGeneration) {
-          console.warn(`Search card source availability could not be applied: ${error.message}`);
-        }
-      });
-    }
-    if (!found.terms.length) {
-      // Every word of the query is one the indexer drops, so there is nothing
-      // to ask for. Saying which words those were is the difference between an
-      // answer and an apparently empty registry.
-      status.textContent =
-        `Every word of that search is too common to be indexed: ${found.dropped.join(", ")}.`;
-      return;
-    }
-    const degraded = found.problems.length
-      ? found.timedOut
-        ? "the search deadline expired before every request completed"
-        : `${found.problems.length} data request${found.problems.length === 1 ? "" : "s"} failed`
-      : "";
-    if (!found.entries.length) {
-      // Naming the words nothing carries is what turns "no results" into
-      // something a reader can act on. The words the indexer drops are not
-      // among them: they left the query before it was asked.
-      status.textContent = degraded
-        ? `No verified results could be shown. The search is incomplete because ${degraded}. Try again.`
-        : found.missing.length
-        ? `No result carries all of: ${found.terms.join(", ")}. Nothing is indexed under `
-          + `${found.missing.join(", ")}.`
-        : `No result carries all of: ${found.terms.join(", ")}.`;
-      status.classList.toggle("warning", Boolean(degraded));
-      return;
-    }
-    status.hidden = found.whole && !degraded;
-    status.textContent = degraded
-      ? `Showing ${found.entries.length} verified result${found.entries.length === 1 ? "" : "s"}. `
-        + `The search is incomplete because ${degraded}.`
-      : found.whole
-      ? ""
-      : `Showing the newest ${found.entries.length} results; narrow the search for older ones.`;
-    status.classList.toggle("warning", Boolean(degraded));
-  } catch (error) {
-    if (generation !== searchGeneration) return;
-    // A failed search shows nothing rather than leaving the provisional set
-    // standing under an error that does not describe it.
-    results.replaceChildren();
-    if (error instanceof RangeError) showSearchQueryWarning(input, status, error);
-    else {
-      status.textContent = `The search could not be run: ${error.message}`;
-      status.classList.add("error");
-    }
-  } finally {
-    // A superseded search owns none of this any more: the query that replaced
-    // it has already put up its own provisional set and its own spinner.
-    if (generation === searchGeneration) {
-      activeSearchController = null;
-      results.classList.remove("preview");
-      setSearchBusy(results, false);
-    }
-  }
-}
-
-function wireSearch() {
-  const form = document.querySelector("#registry-search");
-  const input = document.querySelector("#query");
-  if (!form || !input) return false;
-  const initial = params.get("q") || "";
-  input.value = initial;
-  let queryTimer;
-  const runQuery = () => {
-    window.clearTimeout(queryTimer);
-    const rawQuery = input.value;
-    try {
-      // Validate before trimming or constructing the shareable URL. This also
-      // keeps an over-limit value out of history.replaceState.
-      validateSearchQuery(rawQuery);
-    } catch (error) {
-      renderSearch(rawQuery);
-      return;
-    }
-    const query = rawQuery.trim();
-    // replaceState, not pushState: typing a query is not a series of pages to
-    // walk back through, but the address stays worth copying at every pause.
-    window.history.replaceState(null, "", searchPageUrlFor(query));
-    renderSearch(query);
-  };
-  const scheduleQuery = () => {
-    window.clearTimeout(queryTimer);
-    // Repaint from what is already loaded now, and ask the registry once the
-    // typing stops. Only the request is worth waiting for: filtering entries
-    // the page is already holding costs nothing, and doing it on the same
-    // delay would leave the last query's answer sitting under the new one.
-    renderSearch(input.value, { ask: false });
-    queryTimer = window.setTimeout(runQuery, SEARCH_UPDATE_DELAY_MS);
-  };
-  input.addEventListener("input", scheduleQuery);
-  form.addEventListener("submit", (event) => {
-    // The page's own content security policy forbids form submission, which is
-    // right: nothing here posts anywhere. The query is a link to this page.
-    event.preventDefault();
-    // Enter means stop waiting for the pause, not run a second search.
-    runQuery();
-  });
-  if (initial) renderSearch(initial);
-  return Boolean(initial);
 }
 
 function detailRow(label, value) {
@@ -1916,11 +1168,18 @@ if (document.body.dataset.page === "index") {
   // Bound to the containers, not to the cards, because both grids replace
   // their children whenever a query or a filter changes.
   statementPreview.watch(document.querySelector("#entry-grid"));
-  statementPreview.watch(document.querySelector("#search-results"));
-  // A linked search is its own view. Avoid fetching and exposing a hidden
-  // recent listing until the query is cleared; then load it exactly once.
-  const hasInitialSearch = wireSearch();
-  if (!hasInitialSearch) ensureLanding();
+  for (const kind of ["arxiv", "msc"]) {
+    void taxonomy(kind).then(codes => {
+      const list = document.querySelector(`#${kind}-options`);
+      if (!list) return;
+      list.replaceChildren(...Object.entries(codes).map(([code, description]) => {
+        const option = el("option", "", description);
+        option.value = code;
+        return option;
+      }));
+    });
+  }
+  renderRegistryPage({ document, window, loadResults, renderRows: renderRegistryRows });
 }
 if (document.body.dataset.page === "entry") {
   // A same-page anchor into a collapsed section must open that section first,
