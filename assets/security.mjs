@@ -1890,6 +1890,13 @@ export function validateEntry(entry, summary) {
       fail("entry.challenge_render.bwrap_source_tag is malformed");
     }
     if (render.landrun_commit !== undefined) fail("entry.challenge_render.landrun_commit is not part of schema 5");
+  } else if (render.bwrap_source_tag !== undefined) {
+    // Verified by the standalone comparator, rendered after landrun was
+    // retired: the render names the renderer's bubblewrap release instead.
+    if (render.landrun_commit !== undefined) fail("entry.challenge_render names both sandboxes");
+    if (!RELEASE_TAG_RE.test(string(render.bwrap_source_tag, "entry.challenge_render.bwrap_source_tag"))) {
+      fail("entry.challenge_render.bwrap_source_tag is malformed");
+    }
   } else {
     commit(render.landrun_commit, "entry.challenge_render.landrun_commit");
   }

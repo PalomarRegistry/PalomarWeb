@@ -1966,6 +1966,22 @@ test("a schema-5 record names the toolchain and its kernels instead of the four 
   );
 });
 
+test("an older record rendered after landrun names the renderer's bubblewrap release", () => {
+  const record = entry();
+  const { landrun_commit, ...render } = record.challenge_render;
+  const rendered = entry({ challenge_render: { ...render, bwrap_source_tag: "v0.12.0" } });
+  assert.equal(validateEntry(rendered, summary()).schema_version, 3);
+  assert.throws(
+    () => validateEntry(entry({ challenge_render: { ...render, bwrap_source_tag: "v0.12.0", landrun_commit } }), summary()),
+    /names both sandboxes/,
+  );
+  assert.throws(
+    () => validateEntry(entry({ challenge_render: { ...render, bwrap_source_tag: "0.12.0" } }), summary()),
+    /challenge_render\.bwrap_source_tag is malformed/,
+  );
+  assert.throws(() => validateEntry(entry({ challenge_render: render }), summary()), /landrun_commit/);
+});
+
 test("an older record still names the four tools and nothing of schema 5", () => {
   const record = entry();
   assert.equal(validateEntry(record, summary()).schema_version, 3);
