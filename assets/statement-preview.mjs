@@ -139,6 +139,10 @@ export function createStatementPreview({
     const source = sources.get(link);
     if (!source) return null;
     const { renderBase, databaseBase } = dataSource();
+    if (source.preview) {
+      return { id: source.id, version: source.preview.version,
+        href: renderArtifactUrl(source.id, source.preview.version, source.preview.artifact_tree_sha256, renderBase).href };
+    }
     // A search result is a whole validated record and says where its rendering
     // is. A landing row is the card and nothing else, so its hash comes from
     // the bounded companion document. An explicit test, not a failed attempt:

@@ -6,16 +6,33 @@
 
 ## Read and search
 
-Use https://data.palomar-registry.org (CORS `*`, CC0, no query strings).
+Use https://data.palomar-registry.org (CORS `*`, CC0).
 
-- Newest results: https://data.palomar-registry.org/recent.json
+- Registry listing and search: https://data.palomar-registry.org/api/v1/results
 - RSS: https://data.palomar-registry.org/feed.xml
 - Record schema: https://data.palomar-registry.org/schema-v3.json
-- Search stopwords: https://data.palomar-registry.org/search/stopwords.json
 - Browse head: https://data.palomar-registry.org/browse/index.json
 - Licence: https://data.palomar-registry.org/LICENSE
 - Policy: https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md
 - Current aggregate operating-cost run rate: https://palomar-registry.org/costs
+
+`/api/v1/results` accepts `q`, `arxiv`, `msc` (prefix),
+`trust=all|high|qualified`, `order=updated|registered`, inclusive `from`/`to`
+(YYYY-MM-DD), exact `id` lookup, and `cursor`. Filters combine across the entire registry. Text
+searches current titles, abstracts, authors, theorem names and repositories;
+words are ANDed, accents folded, and common function words ignored.
+Use at most 4096 UTF-8 bytes and 20 distinct normalized words.
+
+The response is schema version 1, at most 25 entries and 512 KiB uncompressed.
+It includes exact registry-wide `totals`, bounded display summaries, and opaque
+`next`/`previous` cursors (null at the ends). Follow a cursor with the same
+filters and order. HTTP 409 means the registry changed: remove the cursor and
+refresh. Large display fields may be abbreviated; search uses complete text.
+Only the newest active version of each ID is listed. Complete records remain
+at their versioned entry URLs. No filtered total is calculated.
+
+The old `/search/t/...` and `/search/stopwords.json` APIs are retired (410).
+Static data paths below still reject query strings.
 
 Path grammar on that origin, substituting the braces. These are not documents
 to fetch as written:
@@ -24,7 +41,6 @@ to fetch as written:
 - `/entries/PALOMAR-YYYY-MM-DD-NNNNNN-vN.json`
 - `/repositories/{owner}/{repo}.json` (lowercase)
 - `/subjects/arxiv/{code}.json` and `/subjects/msc/{code}.json`
-- `/search/t/{word}/head.json` after dropping stopwords
 - `/registration-identities/{sha256}.json`
 
 Cite `id` and integer `version`. An unversioned URL floats to latest. Human

@@ -7,15 +7,11 @@ A short machine-facing map of how to read, search, and submit is served at
 The site is static and deployed with GitHub Pages. It reads
 <https://data.palomar-registry.org/> at runtime, so publishing a database change
 does not require a coordinated website deployment. There is no whole-registry
-document there any more, and the pages are shaped by that: the landing page
-reads one self-contained `recent.json` projection, an entry page reads
-`versions/<id>.json` and then the one record it wants, a search reads
-`search/stopwords.json` and a word's postings, and a withdrawn version reads its
-tombstone. Fetching the index and filtering it in a browser meant every visitor
-paid for the whole registry to see a couple of hundred rows, and paid more every
-time somebody else published anything.
+document there any more. The listing and its combined filters read one bounded
+`/api/v1/results` page. Entry pages read `versions/<id>.json` and the selected
+record, and withdrawn versions read their tombstones.
 
-The landing page and entry pages also load the current source-availability
+Entry pages also load the current source-availability
 manifest. When an original pinned commit has been confirmed missing and the
 recorded archive is not itself known to be missing, source links automatically
 switch to the `PalomarArchive` copy while still displaying the original
@@ -74,39 +70,26 @@ and `?order=registered&from=2026-08-01` fills all three in from a link. A card
 leads with the day its listing is arranged by and names the other underneath
 when they differ, so the leading dates run down the page in the page's order.
 
-Those filters are over `recent.json`, which is
-the newest 200 current versions and not the registry, so they narrow what is on
-the page rather than searching everything: a range reaching back before the
-oldest row says so rather than answering for days the page does not hold. The
-search box searches everything, a
-word at a time, over titles, abstracts and author names, and the subject pages
-answer a code exactly.
-Search accepts at most 4,096 characters and 20 distinct normalized words. The
-word limit is checked before the stopword list is loaded, so common words that
-the index later drops still count. An over-limit linked or typed query is
-rejected before any registry-data request or browser-history update. At most 20
-search heads, 16 posting pages and 60 candidate records are then read with
-concurrency at most eight under one 30-second deadline. Including the stopword
-list and optional source-availability manifest, that is at most 98 dynamic data
-requests per search; at most 20 results are displayed. A failed page or record
-leaves already validated results visible with an incomplete-search warning. The
-record loader advances as a bounded sliding window, keeps publisher order
-however requests finish, and stops at the result limit with at most seven
-speculative result groups. Multiple matching versions of one Palomar ID collapse
-to the newest matching version in the bounded candidate set, so a result is not
-repeated. A posting still says neither that a version is current nor how many
-active versions exist, so search cards make neither claim; landing cards get
-both facts from `recent.json`.
-Each `recent.json` row projects the fields a landing card needs from a canonical
-entry: identity, current/history count, registration time, title, abstract,
-authors, classifications, theorem names, trust, source commit and project path,
-and the source's preservation mapping. The browser checks the envelope and the
-fields needed to render and link safely, but leaves schema policy such as
-classification cardinality to PalomarDatabase. A normal landing load is still
-exactly two dynamic data requests—`recent.json` and the optional
-source-availability manifest—with no per-card entry reads. An unusable row is
-omitted with a visible count while valid siblings continue to render; transport
-and unsupported-schema failures still fail the page.
+All listing filters apply to the entire current registry before pagination.
+Text searches title, abstract, authors, theorem names and repository. The Worker
+returns one current active version per ID, at most 25 summaries of at most
+16 KiB each, and at most 512 KiB uncompressed per response. Text is limited to
+4096 UTF-8 bytes and 20 distinct normalized words. Previous/Next use opaque
+keyset cursors tied to the query and index revision. A changed registry returns
+409 and the page offers a refresh preserving filters; other failures offer a
+retry. Existing rows remain visibly marked as stale during loading or failure.
+The toolbar stays available during text search, and all controls are linkable.
+
+A listing requires one dynamic request, with no per-entry, recent, postings, or
+source-availability requests. Exact totals describe the whole registry; there
+is no filtered total. Large display fields may be abbreviated and are marked
+as such, but complete canonical text remains searchable. Summaries include
+original/preserved source controls and the preview artifact reference. A bad
+row rejects the whole page so it cannot silently disappear behind a cursor.
+Static search URLs are retired in favor of this API. A tiny retired-module
+notice keeps named imports available for a cached app so entry pages still load. See the Tools repository's
+`docs/registry-query.md` for publication and deployment ordering.
+
 The `browse/index.json`, `browse/<year>.json`, and
 `browse/<day>/<page>.json` hierarchy is another exact, closed contract owned by
 PalomarDatabase and consumed by Web. Its head declares years and aggregate
@@ -114,16 +97,11 @@ counts, each year declares its days and page ranges, and each page carries exact
 entry-history rows. Changes to any of those three shapes are producer-first
 contract changes, even though these documents intentionally remain
 `schema_version: 1`.
-Landing and verified search cards render before the source-availability
-manifest; if it arrives, their existing source controls are decorated in place.
-A linked `?q=` search does not also load the hidden recent listing; clearing the
-search starts one landing attempt, and a failed attempt can be retried.
-Entry and named-declarations pages follow the same rule: verified content and
+On entry and named-declarations pages, verified content and
 its recorded source links render immediately, then a validated availability
 result updates only those source controls in place. Each active entry or
 named-declarations page makes exactly one availability attempt; an unknown or
-withdrawn record makes none. Landing and search consumers share one
-in-flight/settled read. Each attempt has one 30-second deadline. A 404 is a
+withdrawn record makes none. Each attempt has one 30-second deadline. A 404 is a
 stable page-scoped absence, while a timeout, transport failure, or invalid
 document is evicted so a later explicit consumer attempt can issue one retry.
 Validation builds a private lookup for the `R` availability rows, and source
@@ -248,7 +226,7 @@ attempts with short backoff. The hourly job has a fifteen-minute ceiling, and a
 new observation supersedes an older queued or stuck one.
 
 The review-language cutover also moves `recent.json`, per-result version
-indexes, and browse, subject, and search projections to schema version 2.
+indexes, and browse, subject projections to schema version 2.
 Source availability and independent render and evidence metadata keep their
 own versioned contracts. Only the registered-entry contract is v3-only.
 

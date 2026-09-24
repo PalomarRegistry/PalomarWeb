@@ -1932,3 +1932,19 @@ body[data-page="not-found"] {
   color: var(--muted);
   margin-top: 0.65rem;
 }
+
+.registry-pagination { display: flex; gap: .75rem; margin: 1.25rem 0; }
+.summary-abbreviated { display: block; margin-top: .5rem; }
+
+.registry-pagination button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: .4rem .8rem;
+  border: 1px solid var(--line);
+  background: var(--control);
+  color: var(--ink);
+  font: .85rem var(--sans);
+  cursor: pointer;
+}
+.registry-pagination button:disabled { color: var(--muted); background: var(--paper); cursor: default; }
+.registry-pagination button:not(:disabled):hover { background: var(--control-hover); }
