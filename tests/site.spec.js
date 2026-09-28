@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { entry, toolchainEntry } from "./registry-fixture.mjs";
 
 
 const database = encodeURIComponent("http://127.0.0.1:4173/database/");
@@ -1201,6 +1202,31 @@ test("an archive warning says the original works only after a fresh confirmation
   await expect(notice).not.toContainText("has not been confirmed");
   await expect(notice.getByRole("link", { name: "Original source" })).toBeVisible();
 });
+
+for (const [label, record, kernels] of [
+  ["earlier record", entry(), ["nanoda"]],
+  ["toolchain record", toolchainEntry(), ["nanoda", "con-ron"]],
+  ["toolchain record with another kernel", (() => {
+    const record = toolchainEntry();
+    record.verification.kernels.push({ name: "another-checker", argv: ["/toolchain/bin/another-checker"] });
+    return record;
+  })(), ["nanoda", "con-ron", "another-checker"]],
+]) {
+  test(`mechanical assurance names the kernels used: ${label}`, async ({ page }) => {
+    await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) =>
+      route.fulfill({ json: { ...record, title: "Fixture PALOMAR-2026-07-29-000123 version 1" } }),
+    );
+    await page.goto(
+      `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+    );
+    const assurance = page.locator(".registration-callout p", { hasText: "Mechanical assurance" });
+    await expect(assurance).toContainText("checked successfully by Lean's kernel");
+    await expect(assurance).toContainText(
+      `by the independent ${kernels.length === 1 ? "kernel" : "kernels"} ${kernels.join(", ")}.`,
+    );
+    if (kernels.length === 1) await expect(assurance).not.toContainText("con-ron");
+  });
+}
 
 test("entry schema v1 fails closed before rendering", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", async (route) => {

@@ -61,8 +61,9 @@
         <p>
           A repository version is registrable only after mechanical verification
           succeeds and an automated review identifies no blocking problem. The
-          mechanical check uses both Lean’s kernel and the independent NanoDa
-          kernel; the other checks are performed by a language model.
+          mechanical check uses Lean’s kernel and independent kernels. Each
+          entry’s mechanical assurance names the independent kernels used for
+          that verification; the other checks are performed by a language model.
         </p>
         <ol class="assertions">
           <li>
@@ -73,8 +74,8 @@
             and that it uses only the axioms allowed by Palomar’s current
             <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#23-comparator-configuration">Comparator
             configuration policy</a>. This
-            exported proof is replayed through both Lean’s kernel and the
-            independent NanoDa kernel. The comparison is performed using the
+            exported proof is replayed through Lean’s kernel and the independent
+            kernels recorded in the entry. The comparison is performed using the
             <a href="https://github.com/leanprover/comparator">Comparator</a>
             tool, which holds the advertised statement apart from its proof, so
             that a proof cannot quietly weaken the statement it claims to
@@ -385,7 +386,7 @@
           the exact kernels used with every registry entry: the NanoDa commit
           for earlier records, the toolchain-bundled kernels and their digests
           for records verified by <code>lake comparator</code>. We encourage
-          readers to reproduce either check themselves:
+          readers to reproduce the recorded checks themselves:
         </p>
         <ul class="checkers">
           <li>

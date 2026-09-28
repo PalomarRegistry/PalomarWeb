@@ -623,6 +623,9 @@ function licenceRow(entry, sourceAvailability) {
 }
 
 function registrationCallout(entry, databaseBase) {
+  const kernelNames = hasToolchainProvenance(entry)
+    ? entry.verification.kernels.map((kernel) => kernel.name)
+    : ["nanoda"];
   const callout = el("div", "registration-callout");
   const check = el("span", "registration-check", "✓");
   check.setAttribute("aria-hidden", "true");
@@ -654,7 +657,7 @@ function registrationCallout(entry, databaseBase) {
       el("code", "", "Solution.lean"),
       " proves the recorded formal ",
       el("code", "", "Challenge.lean"),
-      " under the listed axiom and dependency rules, and both Lean's kernel and NanoDa checked the exported proof successfully.",
+      ` under the listed axiom and dependency rules. The exported proof was checked successfully by Lean's kernel and by the independent ${kernelNames.length === 1 ? "kernel" : "kernels"} ${kernelNames.join(", ")}.`,
     ),
     assurance(
       "Automated review",
