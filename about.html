@@ -417,16 +417,18 @@
           informal meaning, for instance by handling degenerate cases correctly.
         </p>
         <p>
-          New submissions must use Lean's <code>module</code> system throughout
-          their source and keep each source file within 10,000 lines. Scope,
-          exclusions, and migration guidance are in the
-          <a href="/how-to-submit#lean-source-requirements">submission guide</a>.
           To assist with such comparisons, Palomar caps the size of the formal
           statement at 1,000 lines and 100 KiB. Imports are restricted to Lean
           core and pinned allowlisted libraries; the language model audits the
           definitions actually reached from those sources. Each registry entry
           displays the compared declarations, with their types available on
           hover, and links the exact statement file at the exact commit.
+        </p>
+        <p>
+          New submissions must use Lean's <code>module</code> system throughout
+          their source and keep each source file within 10,000 lines. Scope,
+          exclusions, and migration guidance are in the
+          <a href="/how-to-submit#lean-source-requirements">submission guide</a>.
         </p>
       </section>
 
