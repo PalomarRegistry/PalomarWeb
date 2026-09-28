@@ -108,9 +108,10 @@
           This includes unused files, generated certificates, contained projects,
           and local path dependencies. Blank and comment lines count; LF and CRLF
           delimit one line each, an unterminated final line counts, and a final
-          newline adds no line. Lake configuration files named <code>lakefile.lean</code>,
-          files under <code>.git</code> or <code>.lake</code>, and symbolic links
-          are excluded. Separately declared substantive source repositories receive
+          newline adds no line. Lake configuration files named <code>lakefile.lean</code> are exempt only
+          from the module header and still have the line cap. Files under
+          <code>.git</code> or <code>.lake</code> are excluded; <code>.lean</code>
+          symbolic links are refused. Separately declared substantive source repositories receive
           the same checks; external pinned Git dependencies are outside this length cap.
         </p>
         <p>
@@ -123,8 +124,9 @@
           The Challenge retains its stricter 1,000-line and 100 KiB limits.
         </p>
         <p>
-          The form and HTTPS intake run bounded source checks at your exact commit
-          and report incomplete scans explicitly. Full verification scans every
+          The form and HTTPS intake run bounded checks of the submitted repository
+          at your exact commit and report incomplete scans explicitly. Separately
+          declared substantive repositories are checked by preparation. Full verification scans every
           submitted source before builds and confirms headers with Lean. These
           requirements apply to ordinary submissions and revisions; metadata
           corrections keep their registered source. The binding rules are in
