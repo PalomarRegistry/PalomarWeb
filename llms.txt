@@ -51,6 +51,12 @@ permalink: `/entry?id=PALOMAR-…&version=N`.
 Do not drive the browser form or GitHub OAuth. The agent protocol is
 https://submit.palomar-registry.org/llms.txt
 
+Prepare source first: new ordinary submissions require `module` in every Lean
+source file and at most 10,000 physical lines per file. Challenge retains its
+stricter 1,000-line and 100 KiB caps. Read the policy above for scope and
+exclusions, and the submission protocol for full mechanical preflight;
+bounded intake checks can be incomplete and do not replace verification.
+
 Sketch: `POST /api/submit` → lightweight tag `palomar-verify-{challenge}` at
 the commit → secret gist carrying the challenge → `POST /api/verify` → Bearer
 token → delete the temporary tag and gist.
