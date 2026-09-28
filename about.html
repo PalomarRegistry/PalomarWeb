@@ -361,11 +361,9 @@
           compiles the statement and the proof in separate sandboxes, exports
           both environments with <code>lean4export</code>, checks that the
           declarations the statement depends on are identical in each. Palomar
-          then requires the exported proof to be accepted from scratch by both
-          Lean’s kernel and independent kernel implementations
-          (<code>nanoda</code>, and <code>con-ron</code> for records verified
-          by the toolchain’s <code>lake comparator</code>). A proof that
-          survives those checks cannot have relied
+          then requires the exported proof to be accepted from scratch by
+          Lean’s kernel and the independent kernels recorded with each entry.
+          A proof that survives those checks cannot have relied
           on a metaprogram tampering with the elaborator’s state or misreporting
           its result.
         </p>
@@ -407,8 +405,10 @@
         <p>
           The Lean reference manual’s
           <a href="https://lean-lang.org/doc/reference/latest/ValidatingProofs/">guide to validating a Lean proof</a>
-          describes both, along with further checkers collected in the
-          <a href="https://arena.lean-lang.org/">Lean Kernel Arena</a>.
+          describes Lean’s replay and NanoDa. For additional recorded checkers
+          such as <code>con-ron</code>, consult the
+          <a href="https://arena.lean-lang.org/">Lean Kernel Arena</a> and the
+          entry’s archived mechanical report.
         </p>
         <p>
           In addition to independently checking that the formal proof proves the
