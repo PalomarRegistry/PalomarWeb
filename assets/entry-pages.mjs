@@ -8,6 +8,23 @@ function parsedVersion(value) {
 }
 
 /**
+ * Decode a `#fragment` for `getElementById`.
+ *
+ * Malformed percent-encoding must not throw: callers scroll after a successful
+ * load, and a URIError must never be treated as a registry load failure.
+ */
+export function fragmentTargetId(hash) {
+  if (typeof hash !== "string" || !hash.startsWith("#")) return null;
+  const encoded = hash.slice(1);
+  if (!encoded) return null;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Open the disclosures that would otherwise hide a fragment target.
  *
  * A section's body is a `details.section-collapse`; its heading is the
@@ -56,8 +73,8 @@ export async function renderEntryPage({
     status.classList.add("error");
     return;
   }
+  const requestedHash = location.hash;
   try {
-    const requestedHash = location.hash;
     const loaded = await loadEntry(id, version);
     if (loaded.tombstone) {
       status.hidden = true;
@@ -73,19 +90,21 @@ export async function renderEntryPage({
     await renderEntry(loaded, content);
     status.hidden = true;
     content.hidden = false;
-    const anchorTarget = requestedHash.startsWith("#")
-      ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
-      : null;
-    if (anchorTarget) {
-      expandDetailsForTarget(anchorTarget);
-      anchorTarget.scrollIntoView();
-    }
   } catch (error) {
     content.replaceChildren();
     content.hidden = true;
     status.hidden = false;
     status.textContent = `The registry entry could not be loaded: ${error.message}`;
     status.classList.add("error");
+    return;
+  }
+  // Fragment decode stays outside the load-failure path so a bad hash cannot
+  // wipe a successfully rendered entry.
+  const targetId = fragmentTargetId(requestedHash);
+  const anchorTarget = targetId ? document.getElementById(targetId) : null;
+  if (anchorTarget) {
+    expandDetailsForTarget(anchorTarget);
+    anchorTarget.scrollIntoView();
   }
 }
 
