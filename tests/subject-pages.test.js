@@ -250,6 +250,33 @@ test("a day that serves fewer rows than it lists is a failure, not a short listi
 
   assert.match(
     page.view.nodes.get("#subject-more-status").textContent,
+    /2026-06-01 serves 1 of the 2 versions it lists/,
+  );
+  assert.equal(page.shown.length, 2, "a day that does not reconcile must not be half-shown");
+  assert.equal(more.hidden, false, "a day that failed is still a day to read");
+});
+
+test("a day whose unique ids disagree with results is a failure even when row count matches", async () => {
+  // Two version rows for one result still satisfy day.versions. The old error
+  // always cited day.versions and said "results", so this case read as
+  // "serves 2 of the 2 results" even though day.results was the broken count.
+  const page = subjectPage();
+  const older = page.fixture.pages.get("2026-06-01:1");
+  const first = older.entries[0];
+  page.fixture.pages.set("2026-06-01:1", {
+    ...older,
+    entries: [
+      { ...first, version: 2, path: first.path.replace("-v1.json", "-v2.json") },
+      first,
+    ],
+  });
+
+  await renderSubjectPage(page.settings);
+  const more = page.view.nodes.get("#subject-more");
+  await more.click();
+
+  assert.match(
+    page.view.nodes.get("#subject-more-status").textContent,
     /2026-06-01 serves 1 of the 2 results it lists/,
   );
   assert.equal(page.shown.length, 2, "a day that does not reconcile must not be half-shown");
