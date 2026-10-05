@@ -482,7 +482,11 @@ test("an unavailable recent summary reports failure instead of emptiness", async
   await expect(page.locator("#status")).toContainText("HTTP 503");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveClass(/error/);
-  await expect(page.locator("#status")).not.toContainText("No entries have been published");
+  // Guard against mistaking load failure for a genuinely empty registry.
+  await expect(page.locator("#status")).not.toContainText(
+    "No current registry entries are available to display",
+  );
+  await expect(page.locator("#status")).not.toContainText("No entries have been registered");
 });
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
