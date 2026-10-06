@@ -2212,3 +2212,26 @@ test("previews are not raised where a pointer cannot rest", async ({ browser }) 
   expect(hides).toBe(true);
   await context.close();
 });
+
+test("clipboard fallback preserves selected entry text and the viewport", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+  await expect(page.locator("#entry-content")).toBeVisible();
+  const result = await page.evaluate(async () => {
+    const { createClipboard } = await import("/assets/clipboard.mjs");
+    const heading = document.querySelector("h1");
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const before = selection.toString();
+    window.scrollTo(0, 300);
+    const top = window.scrollY;
+    const clipboard = createClipboard({ document, navigator: {}, window });
+    const copied = await clipboard.copyText("citation");
+    return { copied, before, after: selection.toString(), top, afterTop: window.scrollY };
+  });
+  expect(result.copied).toBe(true);
+  expect(result.after).toBe(result.before);
+  expect(result.afterTop).toBe(result.top);
+});
