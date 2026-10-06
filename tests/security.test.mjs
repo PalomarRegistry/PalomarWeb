@@ -1829,3 +1829,17 @@ test("an older record still names the four tools and nothing of schema 5", () =>
   const { nanoda_commit, ...withoutNanoda } = record.verification;
   assert.throws(() => validateEntry(entry({ verification: withoutNanoda }), summary()), /nanoda_commit/);
 });
+
+
+test("entry registration and preservation dates must exist on the UTC calendar", () => {
+  for (const date of ["2027-02-30T09:14:07Z", "2027-04-31T09:14:07Z"]) {
+    const record = secondVersion({ registered_at: date });
+    assert.throws(() => validateEntry(record, summary({version: 2})), /entry.registered_at is malformed/);
+    const preserved = entry();
+    preserved.preservation.archived_at = date;
+    assert.throws(() => validateEntry(preserved, summary()), /entry.preservation.archived_at is malformed/);
+  }
+  const valid = secondVersion({ registered_at: "2028-02-29T09:14:07Z" });
+  valid.preservation.archived_at = "2028-02-29T09:14:07Z";
+  assert.equal(validateEntry(valid, summary({version: 2})), valid);
+});
