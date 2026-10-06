@@ -245,6 +245,10 @@ export function createStatementPreview({
   }
 
   const bound = [];
+  const onKeyDown = (event) => {
+    if (event.key === "Escape") close();
+  };
+  if (hoverable) window.addEventListener("keydown", onKeyDown);
   function watch(grid) {
     if (!hoverable || !grid || bound.includes(grid)) return;
     // Delegated, because the grids replace their children on every search and
@@ -263,6 +267,7 @@ export function createStatementPreview({
     close,
     destroy() {
       close();
+      window.removeEventListener("keydown", onKeyDown);
       for (const grid of bound.splice(0)) {
         grid.removeEventListener("mouseover", onOver);
         grid.removeEventListener("mouseout", onOut);
