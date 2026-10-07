@@ -860,6 +860,13 @@ async function renderEntry(
     const list = el("ul", "reference-links");
     for (const reference of references) {
       const link = externalLink(reference.label, reference.href);
+      const icon = el("img", "reference-icon");
+      icon.src = new URL(`assets/reference-icons/${reference.icon}`, document.baseURI).href;
+      icon.alt = "";
+      icon.width = 16;
+      icon.height = 16;
+      icon.setAttribute("aria-hidden", "true");
+      link.prepend(icon);
       const description = reference.descriptions.join("; ");
       link.title = description;
       link.setAttribute("aria-label", `${reference.label} — ${description}`);

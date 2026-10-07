@@ -1064,6 +1064,19 @@ footer {
   overflow-wrap: anywhere;
 }
 
+.reference-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.reference-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex: none;
+}
+
 .version-notice {
   margin-bottom: 1.5rem;
   padding: .85rem 1rem;

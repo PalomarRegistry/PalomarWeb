@@ -9,17 +9,17 @@ const OEIS_IDENTIFIER_RE = /^oeis:(A[0-9]{6})$/i;
 // Identifier resolution stays separate: unknown citations remain readable in
 // Mathematical origin, even when they have no recognized link target.
 const REFERENCE_SITES = [
-  { key: "arxiv", label: "arXiv", hosts: ["arxiv.org", "www.arxiv.org"] },
-  { key: "hexagon", label: "Hexagon", hosts: ["hexagonmath.org", "www.hexagonmath.org"] },
-  { key: "doi", label: "DOI", hosts: ["doi.org", "dx.doi.org"] },
-  { key: "erdos", label: "Erdős Problems", hosts: ["erdosproblems.com", "www.erdosproblems.com"] },
-  { key: "afp", label: "Archive of Formal Proofs", hosts: ["isa-afp.org", "www.isa-afp.org"] },
-  { key: "mathoverflow", label: "MathOverflow", hosts: ["mathoverflow.net"] },
-  { key: "oeis", label: "OEIS", hosts: ["oeis.org", "www.oeis.org"] },
-  { key: "zbmath", label: "zbMATH", hosts: ["zbmath.org"] },
-  { key: "proofatlas", label: "ProofAtlas", hosts: ["proofatlas.ai", "www.proofatlas.ai"] },
-  { key: "euclid", label: "Project Euclid", hosts: ["projecteuclid.org"] },
-  { key: "eudml", label: "EuDML", hosts: ["eudml.org"] },
+  { key: "arxiv", icon: "arxiv.png", label: "arXiv", hosts: ["arxiv.org", "www.arxiv.org"] },
+  { key: "hexagon", icon: "hexagon.svg", label: "Hexagon", hosts: ["hexagonmath.org", "www.hexagonmath.org"] },
+  { key: "doi", icon: "doi.png", label: "DOI", hosts: ["doi.org", "dx.doi.org"] },
+  { key: "erdos", icon: "erdosproblems.png", label: "Erdős Problems", hosts: ["erdosproblems.com", "www.erdosproblems.com"] },
+  { key: "afp", icon: "afp.ico", label: "Archive of Formal Proofs", hosts: ["isa-afp.org", "www.isa-afp.org"] },
+  { key: "mathoverflow", icon: "mathoverflow.ico", label: "MathOverflow", hosts: ["mathoverflow.net"] },
+  { key: "oeis", icon: "oeis.ico", label: "OEIS", hosts: ["oeis.org", "www.oeis.org"] },
+  { key: "zbmath", icon: "zbmath.ico", label: "zbMATH", hosts: ["zbmath.org"] },
+  { key: "proofatlas", icon: "proofatlas.svg", label: "ProofAtlas", hosts: ["proofatlas.ai", "www.proofatlas.ai"] },
+  { key: "euclid", icon: "euclid.png", label: "Project Euclid", hosts: ["projecteuclid.org"] },
+  { key: "eudml", icon: "eudml.ico", label: "EuDML", hosts: ["eudml.org"] },
 ];
 
 function encodePathSegment(segment) {
@@ -93,7 +93,7 @@ function referenceLink(identifier) {
     const match = /^\/(A[0-9]{6})\/?$/.exec(href.pathname);
     if (match) label = `OEIS:${match[1]}`;
   }
-  return { href, label };
+  return { href, label, icon: site.icon };
 }
 
 function citationIdentifiers(identifier) {

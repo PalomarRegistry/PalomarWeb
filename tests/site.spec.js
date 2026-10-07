@@ -1059,6 +1059,38 @@ test("entry headings omit the reference row when there are no recognized referen
   await expect(page.getByRole("navigation", { name: "References", exact: true })).toHaveCount(0);
 });
 
+test("all reference icons load locally alongside their text labels", async ({ page }, testInfo) => {
+  const identifiers = [
+    "arXiv:2605.20695", "doi:10.1137/0327028", "hexagon:2610.00022",
+    "https://www.erdosproblems.com/501", "https://isa-afp.org/entries/Example.html",
+    "https://mathoverflow.net/a/449571", "OEIS:A116485", "https://zbmath.org/3254142",
+    "https://proofatlas.ai/formalizations/example/", "https://projecteuclid.org/example",
+    "https://eudml.org/doc/158244",
+  ];
+  await page.route("**/database/entries/PALOMAR-2026-07-29-000123-v2.json", async (route) => {
+    const response = await route.fetch();
+    const entry = await response.json();
+    entry.provenance.mathematical_sources = identifiers.map((identifier) => ({
+      identifier, title: "Example source", authors: [], relationship: "background",
+    }));
+    await route.fulfill({ response, json: entry });
+  });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const references = page.getByRole("navigation", { name: "References", exact: true });
+  const icons = references.locator("img");
+  await expect(icons).toHaveCount(11);
+  await expect.poll(() => icons.evaluateAll((images) => images.every((image) => (
+    image.complete && image.naturalWidth > 0 && image.alt === "" &&
+    new URL(image.src).origin === window.location.origin
+  )))).toBe(true);
+  await expect(references.getByRole("link", { name: /^Erdős Problems/ })).toHaveText("Erdős Problems");
+  await expect(references.getByRole("link", { name: /^Project Euclid/ })).toHaveText("Project Euclid");
+  await expect(references.getByRole("link", { name: /^zbMATH/ })).toHaveText("zbMATH");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await references.screenshot({ path: testInfo.outputPath("reference-icons-mobile.png") });
+});
+
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
   const pending = [];
   await page.route("**/database/source-availability.json", async (route) => {
