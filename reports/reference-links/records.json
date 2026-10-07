@@ -1,0 +1,74 @@
+[
+  {
+    "name": "hexagon",
+    "id": "PALOMAR-2026-10-03-000001",
+    "version": 2,
+    "title": "Continuity of solutions to abstract linear control systems",
+    "links": [
+      {
+        "text": "Hexagon:2610.00022",
+        "href": "https://hexagonmath.org/2610.00022"
+      },
+      {
+        "text": "DOI",
+        "href": "https://doi.org/10.1137/0327028"
+      },
+      {
+        "text": "arXiv:2609.40348v1",
+        "href": "https://arxiv.org/abs/2609.40348v1"
+      }
+    ]
+  },
+  {
+    "name": "erdos",
+    "id": "PALOMAR-2026-10-05-000002",
+    "version": 1,
+    "title": "Erdős 2: minimum modulus of distinct covering systems",
+    "links": [
+      {
+        "text": "arXiv:1811.03547v1",
+        "href": "https://arxiv.org/abs/1811.03547v1"
+      },
+      {
+        "text": "DOI",
+        "href": "https://doi.org/10.4007/annals.2015.181.1.6"
+      },
+      {
+        "text": "Erdős Problems",
+        "href": "https://www.erdosproblems.com/2"
+      }
+    ]
+  },
+  {
+    "name": "oeis",
+    "id": "PALOMAR-2026-10-01-000014",
+    "version": 1,
+    "title": "Counting recurrences for the permutation classes Av(1342) and Av(12453)",
+    "links": [
+      {
+        "text": "arXiv:2609.15642",
+        "href": "https://arxiv.org/abs/2609.15642"
+      },
+      {
+        "text": "DOI",
+        "href": "https://doi.org/10.1006/jcta.1997.2800"
+      },
+      {
+        "text": "OEIS:A116485",
+        "href": "https://oeis.org/A116485"
+      }
+    ]
+  },
+  {
+    "name": "euclid",
+    "id": "PALOMAR-2026-09-20-000001",
+    "version": 1,
+    "title": "Finite tight Blackwell approachability-to-improper phi-regret reduction in Lean",
+    "links": [
+      {
+        "text": "Project Euclid",
+        "href": "https://projecteuclid.org/journals/pacific-journal-of-mathematics/volume-6/issue-1/An-analog-of-the-minimax-theorem-for-vector-payoffs/pjm/1103044269.full"
+      }
+    ]
+  }
+]
