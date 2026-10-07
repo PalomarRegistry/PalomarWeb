@@ -106,3 +106,30 @@ test("other corpus sites are recognized by exact host, and unknown links stay in
   assert.deepEqual(links.map(({ href }) => href.href), urls);
   assert.deepEqual(entryReferenceLinks(provenance([])), []);
 });
+
+test("composite citations preserve SICI DOI punctuation without truncating the target", () => {
+  const doi = "10.1002/(SICI)1097-0118(199601)21:1<1::AID-JGT1>3.0.CO;2-Q";
+  const links = entryReferenceLinks(provenance([
+    `Wiley; doi:${doi}`,
+    `A citation (doi:${doi}); arXiv:2306.12535`,
+    "Another citation; doi:10.1000/a,b;",
+  ]));
+  assert.deepEqual(links.map(({ href }) => href.href), [
+    "https://doi.org/10.1002/%28SICI%291097-0118%28199601%2921%3A1%3C1%3A%3AAID-JGT1%3E3.0.CO%3B2-Q",
+    "https://arxiv.org/abs/2306.12535",
+    "https://doi.org/10.1000/a%2Cb",
+  ]);
+});
+
+test("bracketed citation links strip unmatched closing brackets", () => {
+  const links = entryReferenceLinks(provenance([
+    "See [https://arxiv.org/abs/2306.12535].",
+    "See {https://hexagonmath.org/2610.00022}.",
+    "See ([https://oeis.org/A116485]).",
+  ]));
+  assert.deepEqual(links.map(({ href }) => href.href), [
+    "https://arxiv.org/abs/2306.12535",
+    "https://hexagonmath.org/2610.00022",
+    "https://oeis.org/A116485",
+  ]);
+});

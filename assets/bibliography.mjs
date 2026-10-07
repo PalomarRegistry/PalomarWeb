@@ -103,11 +103,16 @@ function citationIdentifiers(identifier) {
   if (!/\s/.test(text) && mathematicalSourceUrl(text)) return [text];
   // Some submissions put several identifiers inside a bibliographic citation.
   // Only scan the recorded identifier, never unrelated free-form metadata.
-  const tokens = text.match(/https?:\/\/[^\s<>"']+|\b(?:arxiv|hexagon|doi|oeis):[^\s;,<>"']+/gi) || [];
+  // Older SICI DOIs contain angle brackets, commas, and semicolons. Preserve
+  // the complete non-whitespace token rather than cutting a DOI at those marks.
+  const tokens = text.match(/https?:\/\/[^\s"']+|\bdoi:\S+|\b(?:arxiv|hexagon|oeis):[^\s;,<>"']+/gi) || [];
   return tokens.map((token) => {
     let result = token.replace(/[.,;]+$/, "");
-    while (result.endsWith(")") && result.split(")").length > result.split("(").length) {
-      result = result.slice(0, -1);
+    const brackets = { ")": "(", "]": "[", "}": "{" };
+    while (brackets[result.at(-1)]) {
+      const closing = result.at(-1);
+      if (result.split(closing).length <= result.split(brackets[closing]).length) break;
+      result = result.slice(0, -1).replace(/[.,;]+$/, "");
     }
     return result;
   });
