@@ -1000,11 +1000,11 @@ test("mathematical sources format known identifiers and preserve unknown ones", 
   await expect(page.locator(".source-contributors")).toHaveText(
     " — Wilhelm Magnus (problem-proposer); Evgenii Khukhro (editor)",
   );
-  await expect(page.getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
+  await expect(page.locator(".provenance-sources").getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
     .toHaveAttribute("href", "https://arxiv.org/abs/2605.20695");
   await expect(page.getByRole("link", { name: "doi:10.1000/a?#b", includeHidden: true }))
     .toHaveAttribute("href", "https://doi.org/10.1000/a%3F%23b");
-  await expect(page.getByRole("link", { name: "arXiv:math.AG/0211159", includeHidden: true }))
+  await expect(page.locator(".provenance-sources").getByRole("link", { name: "arXiv:math.AG/0211159", includeHidden: true }))
     .toHaveAttribute("href", "https://arxiv.org/abs/math.AG/0211159");
   await expect(page.getByRole("link", {
     name: "Open source for A linked web source",
@@ -1015,6 +1015,48 @@ test("mathematical sources format known identifiers and preserve unknown ones", 
     "bibliographic:custom-reference",
     "https://reader:secret@example.invalid/source",
   ]);
+});
+
+test("entry references are visible before opening provenance and preserve source context", async ({ page }) => {
+  await page.route("**/database/entries/PALOMAR-2026-07-29-000123-v2.json", async (route) => {
+    const response = await route.fetch();
+    const entry = await response.json();
+    entry.provenance.result_origin = "source-based";
+    entry.provenance.mathematical_sources = [
+      { title: "Control systems", authors: [], relationship: "formalizes",
+        identifier: "https://hexagonmath.org/2610.00022" },
+      { title: "Earlier work", authors: [], relationship: "background",
+        identifier: "Journal citation; arXiv:2609.40348v1; doi:10.1137/0327028" },
+      { title: "Unknown source", authors: [], relationship: "background",
+        identifier: "https://example.invalid/source" },
+    ];
+    entry.provenance.related_formalizations = [
+      { identifier: "hexagon:2610.00022", relationship: "related work" },
+      { identifier: "https://isa-afp.org/entries/Example.html", relationship: "prior work" },
+    ];
+    await route.fulfill({ response, json: entry });
+  });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const references = page.getByRole("navigation", { name: "References", exact: true });
+  await expect(references).toBeVisible();
+  await expect(references.getByRole("link")).toHaveCount(4);
+  const hexagon = references.getByRole("link", { name: /^Hexagon:2610.00022/ });
+  await expect(hexagon).toHaveAttribute("href", "https://hexagonmath.org/2610.00022");
+  await expect(hexagon).toHaveAttribute("title", /Source: Control systems \(formalizes\).*Related formalization:/);
+  await expect(references.getByRole("link", { name: /^arXiv:2609.40348v1/ }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/2609.40348v1");
+  await expect(references.getByRole("link", { name: /^DOI/ }))
+    .toHaveAttribute("href", "https://doi.org/10.1137/0327028");
+  await expect(references.getByRole("link", { name: /^Archive of Formal Proofs/ })).toBeVisible();
+  await expect(page.locator(".entry-provenance details")).not.toHaveAttribute("open", "");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test("entry headings omit the reference row when there are no recognized references", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator(".entry-heading h1")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "References", exact: true })).toHaveCount(0);
 });
 
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {

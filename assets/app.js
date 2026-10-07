@@ -17,7 +17,7 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
-import { mathematicalSourceUrl } from "./bibliography.mjs";
+import { entryReferenceLinks, mathematicalSourceUrl } from "./bibliography.mjs";
 import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
@@ -852,6 +852,24 @@ async function renderEntry(
   const byline = el("p", "byline", "By ");
   appendPeople(byline, entry.authors);
   heading.append(byline);
+  const references = entryReferenceLinks(entry.provenance);
+  if (references.length) {
+    const navigation = el("nav", "entry-references");
+    navigation.setAttribute("aria-label", "References");
+    navigation.append(el("span", "reference-heading", "References"));
+    const list = el("ul", "reference-links");
+    for (const reference of references) {
+      const link = externalLink(reference.label, reference.href);
+      const description = reference.descriptions.join("; ");
+      link.title = description;
+      link.setAttribute("aria-label", `${reference.label} — ${description}`);
+      const item = el("li");
+      item.append(link);
+      list.append(item);
+    }
+    navigation.append(list);
+    heading.append(navigation);
+  }
 
   const evidence = el("section", "entry-evidence");
   const evidenceTitle = el("div", "section-heading");
