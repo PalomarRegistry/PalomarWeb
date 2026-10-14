@@ -132,3 +132,20 @@ test("typing invalidates a slow response and keeps combined filters on clear", a
   await expect(page).toHaveURL(/msc=05/);
   await expect(page).not.toHaveURL(/[?&]q=/);
 });
+
+for (const [count, expected] of [
+  [0, "No current registry entries are available to display."],
+  [2, "No registry entries match these search terms and filters."],
+]) {
+  test(`empty listing distinguishes registry total ${count}`, async ({ page }) => {
+    const base = await fixture(page);
+    await page.route("**/database/api/v1/results**", route => route.fulfill({
+      json: { ...base, entries: [], totals: { results: count, projects: count ? 1 : 0 }, previous: null, next: null },
+    }));
+    await page.goto(home);
+    await settled(page);
+    await expect(page.locator("#status")).toHaveText(expected);
+    await expect(page.locator("#status")).not.toHaveClass(/error/);
+    await expect(page.locator(".entry-row")).toHaveCount(0);
+  });
+}

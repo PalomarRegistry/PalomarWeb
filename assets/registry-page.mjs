@@ -81,7 +81,9 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
       }
       status.textContent = page.message || (page.entries.length
         ? `Showing ${page.entries.length} result${page.entries.length === 1 ? "" : "s"}${page.next ? "; more results are available" : ""}.`
-        : "No registry entries match these search terms and filters.");
+        : page.totals.results === 0
+          ? "No current registry entries are available to display."
+          : "No registry entries match these search terms and filters.");
       previous.disabled = !page.previous;
       next.disabled = !page.next;
     } catch (error) {
