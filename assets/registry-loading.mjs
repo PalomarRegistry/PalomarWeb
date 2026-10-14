@@ -38,6 +38,7 @@ export function createRegistryLoader({
   location,
   warn = () => {},
   availabilityTimeoutMs = AVAILABILITY_TIMEOUT_MS,
+  recentRendersTimeoutMs = AVAILABILITY_TIMEOUT_MS,
 }) {
   function dataSource() {
     const databaseBase = databaseBaseFor(
@@ -185,8 +186,14 @@ export function createRegistryLoader({
     const url = recentRendersUrl(databaseBase);
     const key = url.href;
     if (!renderLoads.has(key)) {
-      const loading = fetchJson(url)
-        .then((document) => validateRecentRenders(document))
+      const loading = loadSettledBounded(
+        [url],
+        async (selected, signal) => validateRecentRenders(await fetchJson(selected, { signal })),
+        { concurrency: 1, timeoutMs: recentRendersTimeoutMs },
+      ).then(([loaded]) => {
+        if (loaded.status === "fulfilled") return loaded.value;
+        throw loaded.reason;
+      })
         .catch((error) => {
           if (error?.status !== 404) {
             renderLoads.delete(key);
