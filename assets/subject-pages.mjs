@@ -116,9 +116,14 @@ function createArchiveWalk({ years, loadYear, loadPage }) {
         if (!seen.has(rowKey(row))) found.push(row);
       }
     }
-    if (rows !== day.versions || identifiers.size !== day.results) {
+    if (rows !== day.versions) {
       throw new Error(
-        `${day.day} serves ${rows} of the ${day.versions} results it lists`,
+        `${day.day} serves ${rows} of the ${day.versions} versions it lists`,
+      );
+    }
+    if (identifiers.size !== day.results) {
+      throw new Error(
+        `${day.day} serves ${identifiers.size} of the ${day.results} results it lists`,
       );
     }
     return found;
