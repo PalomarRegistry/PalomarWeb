@@ -33,6 +33,7 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
   let timer;
   let page = null;
   let changed = false;
+  let composing = false;
   const parameters = () => new URLSearchParams(window.location.search);
   const view = () => parameters().get("view") === "cards" ? "cards" : "table";
   const selectedTrust = () => document.querySelector(".filter.active")?.dataset.trust || "all";
@@ -97,6 +98,7 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
     }
   }
   function apply() {
+    if (composing) return;
     const p = parameters();
     for (const [name, control] of controls) {
       const value = control?.value.trim();
@@ -109,10 +111,22 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
     void load();
   }
   for (const control of controls.values()) {
-    control?.addEventListener("input", () => {
+    const scheduleApply = () => {
       window.clearTimeout(timer);
       busy();
       timer = window.setTimeout(apply, 300);
+    };
+    control?.addEventListener("compositionstart", () => {
+      composing = true;
+      window.clearTimeout(timer);
+      busy();
+    });
+    control?.addEventListener("compositionend", () => {
+      composing = false;
+      scheduleApply();
+    });
+    control?.addEventListener("input", event => {
+      if (!composing && !event.isComposing) scheduleApply();
     });
     control?.addEventListener("change", apply);
   }
