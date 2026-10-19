@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { entryReferenceLinks, mathematicalSourceUrl } from "../assets/bibliography.mjs";
+import { entryReferenceLinks, mathematicalSourceUrl, palomarRecordUrl } from "../assets/bibliography.mjs";
+
+test("a cited Palomar identifier opens that entry", () => {
+  assert.equal(
+    palomarRecordUrl("PALOMAR-2026-08-08-000001-v3").href.href,
+    "https://palomar-registry.org/entry?id=PALOMAR-2026-08-08-000001&version=3",
+  );
+  assert.equal(palomarRecordUrl("not-an-id"), null);
+});
 
 test("current and legacy arXiv identifiers resolve to their matching abstracts", () => {
   assert.equal(
