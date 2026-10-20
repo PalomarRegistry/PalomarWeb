@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { entryReferenceLinks, mathematicalSourceUrl } from "../assets/bibliography.mjs";
+import { classificationCatalogUrl, entryReferenceLinks, mathematicalSourceUrl } from "../assets/bibliography.mjs";
+
+test("classification codes link to the catalog that defines them", () => {
+  assert.equal(
+    classificationCatalogUrl("arxiv", "math.NT").href,
+    "https://arxiv.org/list/math.NT/recent",
+  );
+  assert.equal(
+    classificationCatalogUrl("msc", "11N05").href,
+    "https://zbmath.org/classification/?q=cc%3A11N05",
+  );
+  assert.equal(classificationCatalogUrl("msc", "11-02").href,
+    "https://zbmath.org/classification/?q=cc%3A11-02");
+  assert.equal(classificationCatalogUrl("arxiv", "not a code"), null);
+  assert.equal(classificationCatalogUrl("msc", "11n05"), null);
+  assert.equal(classificationCatalogUrl("other", "math.NT"), null);
+});
 
 test("current and legacy arXiv identifiers resolve to their matching abstracts", () => {
   assert.equal(
