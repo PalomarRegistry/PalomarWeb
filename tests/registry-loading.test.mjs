@@ -228,6 +228,44 @@ test("the render companion is read once a page and caches only a stable absence"
   assert.match(warnings.join("\n"), /Render previews are unavailable/);
 });
 
+test("render companion deadlines cover transport and JSON decoding and allow recovery", async () => {
+  const database = new URL("https://data.palomar-registry.org/");
+  for (const phase of ["transport", "JSON decoding"]) {
+    let reads = 0;
+    let firstSignal;
+    const warnings = [];
+    const document = recentRenders();
+    const loader = createRegistryLoader({
+      fetch: async (_url, { signal }) => {
+        reads += 1;
+        if (reads > 1) return jsonResponse(document);
+        firstSignal = signal;
+        if (phase === "transport") return new Promise(() => {});
+        return { ...jsonResponse(document), json: () => new Promise(() => {}) };
+      },
+      location: productionLocation("index.html"),
+      warn: (message) => warnings.push(message),
+      recentRendersTimeoutMs: 5,
+    });
+    const first = loader.loadRecentRenders(database);
+    assert.equal(loader.loadRecentRenders(database), first);
+    let guard;
+    try {
+      const result = await Promise.race([
+        first,
+        new Promise((resolve) => { guard = setTimeout(() => resolve("hung"), 100); }),
+      ]);
+      assert.equal(result, null, phase);
+    } finally {
+      clearTimeout(guard);
+    }
+    assert.equal(firstSignal.aborted, true);
+    assert.match(warnings[0], /load deadline of 5ms expired/);
+    assert.deepEqual(await loader.loadRecentRenders(database), document);
+    assert.equal(reads, 2);
+  }
+});
+
 test("an unversioned entry read resolves and validates the current immutable record", async () => {
   const record = secondVersion();
   const versions = {
