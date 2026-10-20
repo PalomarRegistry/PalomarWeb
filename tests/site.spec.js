@@ -1372,6 +1372,8 @@ test("entry pages offer a version-pinned BibTeX citation that can be copied", as
   author = {{Example}},
   title = {{Fixture PALOMAR-2026-07-29-000123 version 1}},
   year = {2026},
+  month = jul,
+  day = {29},
   howpublished = {Palomar, PALOMAR-2026-07-29-000123 v1},
   url = {https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=1},
 }`,

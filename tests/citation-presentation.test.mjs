@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   bibtexCitation,
   createCitationPresentation,
+  plainCitation,
 } from "../assets/citation-presentation.mjs";
 
 function fakeDocument(copyResult) {
@@ -78,6 +79,8 @@ test("BibTeX citations pin the selected immutable Palomar version", () => {
   author = {{Ada Lovelace} and {Emmy Noether}},
   title = {{A result}},
   year = {2027},
+  month = jan,
+  day = {02},
   howpublished = {Palomar, PALOMAR-2026-08-08-000001 v3},
   url = {https://palomar-registry.org/entry?id=PALOMAR-2026-08-08-000001&version=3},
 }`,
@@ -97,6 +100,19 @@ test("BibTeX citations preserve Unicode and escape TeX-significant record text",
   assert.match(
     citation,
     /title = \{\{Erdős \\& 100\\% of \\\{cases\\\}\\_x \\textasciitilde\{\} \\textasciicircum\{\} \\textbackslash\{\} path continued\}\}/,
+  );
+});
+
+test("a plain citation names the authors, the day, and the immutable page", () => {
+  assert.equal(
+    plainCitation({
+      id: "PALOMAR-2026-08-08-000001",
+      version: 3,
+      registered_at: "2027-01-02T03:04:05Z",
+      title: "A result",
+      authors: [{ name: "Ada Lovelace" }, { name: "Emmy Noether" }],
+    }),
+    "Ada Lovelace, Emmy Noether (2027). A result. Palomar, PALOMAR-2026-08-08-000001 version 3, registered 2027-01-02. https://palomar-registry.org/entry?id=PALOMAR-2026-08-08-000001&version=3",
   );
 });
 
