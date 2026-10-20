@@ -87,6 +87,21 @@ export function createFormalizationPresentation({ document }) {
     section.append(disclosure);
     const imports = entry.trust.challenge_imports;
     const dependencies = entry.trust.challenge_dependencies;
+    const reasons = entry.trust.reasons;
+    // The reasons are the hypotheses: what a reader is trusting besides the
+    // checked proof. They lead, and each one is a fragment target, so a
+    // citation can point at a single assumption. A high entry with nothing
+    // recorded here does not grow an empty list.
+    if (reasons.length) {
+      disclosure.append(el("h3", "", "Why additional libraries are needed"));
+      const reasonList = el("ul", "reason-list");
+      for (const [index, reason] of reasons.entries()) {
+        const item = el("li", "", reason);
+        item.id = `statement-reason-${index + 1}`;
+        reasonList.append(item);
+      }
+      disclosure.append(reasonList);
+    }
     disclosure.append(el("h3", "", "Imported libraries"));
     if (imports.length === 1 && dependencies.length === 1) {
       const line = el("p", "statement-import-line");
@@ -104,12 +119,6 @@ export function createFormalizationPresentation({ document }) {
         }
         disclosure.append(dependencyList);
       }
-    }
-    if (entry.trust.reasons.length) {
-      disclosure.append(el("h3", "", "Why additional libraries are needed"));
-      const reasons = el("ul", "reason-list");
-      for (const reason of entry.trust.reasons) reasons.append(el("li", "", reason));
-      disclosure.append(reasons);
     }
     return section;
   }

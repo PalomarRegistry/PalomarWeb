@@ -124,6 +124,7 @@ test("the trust badge and statement dependency section present the registered tr
   );
   const section = presentation.statementDependencies(qualified);
   assert.ok(texts(section, "h2").includes("Depends on additional libraries"));
+  assert.equal(texts(section, "h3")[0], "Why additional libraries are needed");
   assert.deepEqual(texts(section, "code"), ["Mathlib", "TauCeti"]);
   assert.deepEqual(texts(byClass(section, "plain-list")[0], "li"), [
     "TauCetiProject/TauCeti",
@@ -131,6 +132,45 @@ test("the trust badge and statement dependency section present the registered tr
   assert.deepEqual(texts(byClass(section, "reason-list")[0], "li"), [
     "The statement uses a domain-specific definition.",
   ]);
+  const reasonItem = byTag(byClass(section, "reason-list")[0], "li")[0];
+  const importCode = byTag(section, "code")[0];
+  assert.equal(reasonItem.id, "statement-reason-1");
+  assert.ok(
+    descendants(section).indexOf(reasonItem) < descendants(section).indexOf(importCode),
+    "a qualified entry leads with the assumption, before the import tokens",
+  );
+});
+
+test("several assumptions are addressable, and a high entry grows no empty list", () => {
+  const presentation = createFormalizationPresentation({ document: fakeDocument() });
+  const high = presentation.statementDependencies(entry());
+  assert.equal(byClass(high, "reason-list").length, 0);
+  assert.deepEqual(texts(high, "h3"), ["Imported libraries"]);
+
+  const qualified = entry();
+  qualified.trust = {
+    ...qualified.trust,
+    level: "qualified",
+    challenge_imports: ["Mathlib", "TauCeti"],
+    challenge_dependencies: [
+      { repository: "leanprover-community/mathlib4" },
+      { repository: "TauCetiProject/TauCeti" },
+    ],
+    reasons: ["First hypothesis.", "Second hypothesis."],
+  };
+  const section = presentation.statementDependencies(qualified);
+  const items = byTag(byClass(section, "reason-list")[0], "li");
+  assert.deepEqual(items.map((item) => item.id), [
+    "statement-reason-1",
+    "statement-reason-2",
+  ]);
+  assert.deepEqual(items.map((item) => item.textContent), [
+    "First hypothesis.",
+    "Second hypothesis.",
+  ]);
+  assert.equal(texts(section, "h3")[0], "Why additional libraries are needed");
+  assert.ok(texts(section, "h3").includes("Imported libraries"));
+  assert.ok(texts(section, "h3").includes("Source repositories"));
 });
 
 test("the proof section presents imports and every preserved dependency kind", () => {
