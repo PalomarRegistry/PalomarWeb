@@ -1314,10 +1314,7 @@ export function validateEntry(entry, summary) {
   // surface reads and what the card is dated by. How it has to agree with
   // `first_registered_on` is in `validateCanonicalRecordLinks`, beside the rest of what
   // a record derives from itself.
-  const registeredAt = string(entry.registered_at, "entry.registered_at");
-  if (!TIMESTAMP_RE.test(registeredAt) || Number.isNaN(Date.parse(registeredAt))) {
-    fail("entry.registered_at is malformed");
-  }
+  const registeredAt = instant(entry.registered_at, "entry.registered_at");
   if (summary.published_at !== undefined && summary.published_at !== registeredAt) {
     fail("entry.registered_at does not match summary.published_at");
   }
@@ -1584,10 +1581,7 @@ export function validateEntry(entry, summary) {
   if (preservation.archive_owner !== "PalomarArchive") {
     fail("entry.preservation.archive_owner is unsupported");
   }
-  if (!TIMESTAMP_RE.test(preservation.archived_at) ||
-      Number.isNaN(Date.parse(preservation.archived_at))) {
-    fail("entry.preservation.archived_at is malformed");
-  }
+  instant(preservation.archived_at, "entry.preservation.archived_at");
   digest(preservation.receipt_sha256, "entry.preservation.receipt_sha256");
   const expected = new Map();
   const addExpected = (repository, revision) => {
