@@ -289,3 +289,14 @@ test("a failed archive read keeps the page it has and does not step over the day
   assert.equal(status.classList.contains("error"), false);
   assert.equal(more.hidden, true);
 });
+
+
+test("an exhausted archive reports when it falls short of the subject head", async () => {
+  const { fixture, shown, view, settings } = subjectPage();
+  fixture.head.versions = 5;
+  await renderSubjectPage(settings);
+  await view.nodes.get("#subject-more").click();
+  assert.equal(shown.length, 4);
+  assert.equal(view.nodes.get("#subject-more-status").classList.contains("error"), true);
+  assert.match(view.nodes.get("#subject-more-status").textContent, /4.*5/);
+});
