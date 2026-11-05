@@ -201,7 +201,10 @@ test("malformed entry fragments do not wipe a successfully loaded entry", async 
 test("fragmentTargetId decodes valid hashes and rejects malformed encoding", () => {
   assert.equal(fragmentTargetId("#version-history"), "version-history");
   assert.equal(fragmentTargetId("#caf%C3%A9"), "café");
-  assert.equal(fragmentTargetId("#%E0%A4%A"), null);
+  for (const hash of ["#%", "#%GG", "#%E0%A4%A", "#%FF"]) {
+    assert.equal(fragmentTargetId(hash), null);
+  }
+  assert.equal(fragmentTargetId("#section%20%CE%B1%2520"), "section α%20");
   assert.equal(fragmentTargetId("#"), null);
   assert.equal(fragmentTargetId(""), null);
   assert.equal(fragmentTargetId("version-history"), null);

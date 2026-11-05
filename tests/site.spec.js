@@ -833,6 +833,29 @@ test("an entry answers its reader's first three questions first", async ({ page 
   expect(page.url().split("#")[0]).toBe(before.split("#")[0]);
 });
 
+test("malformed fragments leave entries readable and later fragment navigation working", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}#%E0%A4%A`);
+  await expect(page.locator("#entry-content")).toBeVisible();
+  await expect(page.locator(".entry-evidence")).toBeVisible();
+  await expect(page.locator("#status")).toBeHidden();
+  await page.evaluate(() => { window.location.hash = "#%"; });
+  // A real link also passes through the click handler before hashchange.
+  await page.evaluate(() => {
+    const link = document.createElement("a");
+    link.href = "#%GG";
+    link.textContent = "Malformed fragment";
+    link.id = "malformed-fragment";
+    document.querySelector("main").append(link);
+  });
+  await page.locator("#malformed-fragment").click();
+  await page.evaluate(() => { window.location.hash = "#statement-dependencies"; });
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute("open", "");
+  await expect(page.locator("#entry-content")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("a hash that arrives without a click still opens its section", async ({ page }) => {
   await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
   await expect(page.locator("#statement-dependencies")).toBeVisible();
