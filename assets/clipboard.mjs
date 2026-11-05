@@ -4,6 +4,10 @@ export const CLIPBOARD_RESET_DELAY_MS = 1600;
 export function createClipboard({ document, navigator, window }) {
   function fallbackCopy(text) {
     const previousFocus = document.activeElement;
+    const selection = window.getSelection?.();
+    const ranges = selection
+      ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange())
+      : [];
     const input = document.createElement("textarea");
     input.value = text;
     input.readOnly = true;
@@ -17,7 +21,11 @@ export function createClipboard({ document, navigator, window }) {
       return false;
     } finally {
       input.remove();
-      previousFocus?.focus();
+      previousFocus?.focus({ preventScroll: true });
+      if (selection) {
+        selection.removeAllRanges();
+        for (const range of ranges) selection.addRange(range);
+      }
     }
   }
 
