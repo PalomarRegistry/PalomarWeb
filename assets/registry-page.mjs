@@ -1,3 +1,22 @@
+/**
+ * The sentence under the toolbar.
+ *
+ * `message` is the registry's own account of the page. The dropped list is
+ * words the query asked for and the index did not search. Leaving them off
+ * the page makes a shorter query look like the one the reader typed.
+ */
+export function resultsStatusText(page) {
+  const count = page.entries.length;
+  const base = page.message || (count
+    ? `Showing ${count} result${count === 1 ? "" : "s"}${page.next ? "; more results are available" : ""}.`
+    : "No registry entries match these search terms and filters.");
+  const dropped = Array.isArray(page.dropped) ? page.dropped : [];
+  if (!dropped.length) return base;
+  const listed = dropped.map((word) => `"${word}"`).join(", ");
+  const verb = dropped.length === 1 ? "This word was" : "These words were";
+  return `${base} ${verb} not searched: ${listed}.`;
+}
+
 /** One controller for registry browsing, filtering, search and pagination. */
 export function renderRegistryPage({ document, window, loadResults, renderRows }) {
   const grid = document.querySelector("#entry-grid");
@@ -79,9 +98,7 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
         const metric = document.querySelector(`#metric-${name}`);
         if (metric) metric.textContent = String(page.totals[name]);
       }
-      status.textContent = page.message || (page.entries.length
-        ? `Showing ${page.entries.length} result${page.entries.length === 1 ? "" : "s"}${page.next ? "; more results are available" : ""}.`
-        : "No registry entries match these search terms and filters.");
+      status.textContent = resultsStatusText(page);
       previous.disabled = !page.previous;
       next.disabled = !page.next;
     } catch (error) {
