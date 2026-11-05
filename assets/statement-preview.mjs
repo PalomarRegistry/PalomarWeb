@@ -139,6 +139,10 @@ export function createStatementPreview({
     const source = sources.get(link);
     if (!source) return null;
     const { renderBase, databaseBase } = dataSource();
+    if (source.preview) {
+      return { id: source.id, version: source.preview.version,
+        href: renderArtifactUrl(source.id, source.preview.version, source.preview.artifact_tree_sha256, renderBase).href };
+    }
     // A search result is a whole validated record and says where its rendering
     // is. A landing row is the card and nothing else, so its hash comes from
     // the bounded companion document. An explicit test, not a failed attempt:
@@ -213,8 +217,13 @@ export function createStatementPreview({
     }, openDelayMs);
   }
 
+  // What makes a link previewable is that a surface registered it, not what
+  // wraps it: the cards put their title in an h3 and the table puts it in a
+  // cell, and matching the markup meant the table's titles silently had no
+  // preview. The registration below is the check that was always doing the
+  // work -- every other link on a card is absent from it.
   function titleLink(node) {
-    const link = node?.closest?.("h3 > a");
+    const link = node?.closest?.("a");
     return link && sources.has(link) ? link : null;
   }
 

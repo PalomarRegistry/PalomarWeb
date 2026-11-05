@@ -61,7 +61,7 @@
   traverses every advertised browse page and per-ID version index and validates
   every advertised active entry before Pages artifact upload. A recent-only
   sample is not enough.
-  `recent.json`, versions, and browse/search/subject projections use their
+  `recent.json`, versions, and browse/subject projections use their
   schema-v2 protocols. Source availability and independent render/evidence
   metadata retain their own versioned contracts.
 
@@ -141,11 +141,13 @@
   inclusive day window the landing toolbar filters by, and which of the two a
   card leads with. The first-registration day is read from the identifier and
   not from a row field: the publisher requires an entry's `first_registered_on`
-  to equal its identifier's day, so ordering and filtering by it costs no
-  addition to the closed `recent.json` row contract. `app.js` wires those to
-  the toolbar and rearranges the cards the grid already holds rather than
-  rebuilding them, because a rebuilt card loses its hover-preview registration
-  and whatever the availability answer decorated it with;
+  to equal its identifier's day. The query service uses that identifier for
+  ordering and filtering.
+  `assets/registry-page.mjs` owns the unified listing controls, history,
+  pagination, cancellation and retry state. `registry-loading.mjs` streams one
+  bounded query response and `security.mjs` validates it as a complete page.
+  The listing does not fetch recent or source-availability documents; previews
+  use the bounded summary's artifact reference;
   `assets/app.js` owns remaining page composition and controller wiring. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed

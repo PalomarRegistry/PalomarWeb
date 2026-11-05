@@ -12,7 +12,7 @@ test("llms.txt is shipped and is a short machine map, not a scrape of the pages"
   assert.match(text, /This site is the human explorer/);
   assert.match(text, /Do not drive the browser form or GitHub OAuth/);
   assert.match(text, /https:\/\/submit\.palomar-registry\.org\/llms\.txt/);
-  assert.match(text, /https:\/\/data\.palomar-registry\.org\/recent\.json/);
+  assert.match(text, /https:\/\/data\.palomar-registry\.org\/api\/v1\/results/);
   assert.match(text, /GET \/api\/submission/);
   assert.match(text, /registered_url.*final registry permalink/);
   assert.match(text, /delete the temporary tag and gist/);
@@ -34,11 +34,10 @@ test("llms.txt names only registry documents the link checker can HEAD", async (
   const hrefs = [...documents.keys()].sort();
   assert.deepEqual(hrefs, [
     "https://data.palomar-registry.org/LICENSE",
+    "https://data.palomar-registry.org/api/v1/results",
     "https://data.palomar-registry.org/browse/index.json",
     "https://data.palomar-registry.org/feed.xml",
-    "https://data.palomar-registry.org/recent.json",
     "https://data.palomar-registry.org/schema-v3.json",
-    "https://data.palomar-registry.org/search/stopwords.json",
     "https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md",
   ]);
 });

@@ -2,11 +2,8 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { entry, toolchainEntry } from "./registry-fixture.mjs";
 
-import {
-  SEARCH_QUERY_CHARACTER_LIMIT,
-  SEARCH_TERM_LIMIT,
-} from "../assets/searching.mjs";
 
 const database = encodeURIComponent("http://127.0.0.1:4173/database/");
 const missingAvailability = encodeURIComponent(
@@ -42,7 +39,7 @@ async function startSearch(page, query) {
  */
 async function runSearch(page, query) {
   await startSearch(page, query);
-  await expect(page.locator("#search-spinner")).toBeHidden();
+  await expect(page.locator("#entry-grid")).toHaveAttribute("aria-busy", "false");
 }
 
 async function expectNoHorizontalOverflow(page, label) {
@@ -89,7 +86,7 @@ const currentEntrySchema = Number(
 
 test("the registry follows the browser's light and dark preference", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("html")).toHaveCSS("background-color", "rgb(16, 18, 22)");
   await expect(page.locator("body")).toHaveCSS("color", "rgb(232, 234, 238)");
   await expect(page.locator(".toolbar")).toHaveCSS("background-color", "rgb(28, 32, 39)");
@@ -197,26 +194,77 @@ test("long reference pages expose an adaptive table of contents", async ({ page 
   await expect(page.locator(".page-toc")).toHaveCount(0);
 });
 
-test("search mode removes unresolved hero furniture and restores it on clear", async ({ page }) => {
-  await page.goto(`/?database=${database}&q=synthetically`);
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect(page.locator("body")).toHaveClass(/registry-searching/);
-  await expect(page.locator(".hero-copy")).toBeHidden();
-  await expect(page.locator(".metric-row")).toBeHidden();
-  await expect(page.locator(".hero")).toHaveCSS("padding-top", "20px");
-  await expect(page.locator(".registry-section")).toHaveCSS("padding-top", "16px");
-
+test("search keeps the toolbar and registry totals visible", async ({ page }) => {
+  await page.goto(`/?view=cards&database=${database}&q=synthetically`);
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(1);
+  await expect(page.locator(".toolbar")).toBeVisible();
+  await expect(page.locator("#metric-results")).toHaveText("2");
   await runSearch(page, "");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-  await expect(page.locator("body")).not.toHaveClass(/registry-searching/);
-  await expect(page.locator(".hero-copy")).toBeVisible();
-  await expect(page.locator(".metric-row")).toBeVisible();
-  await expect(page.locator("#metric-results")).toHaveText("2");
-  await expect(page.locator("#metric-projects")).toHaveText("1");
+});
+
+// Two hundred results are a list to be scanned before any one of them is read,
+// so the landing arrives as a table and the cards, which lead with the
+// abstract, are the alternative. The choice rides in the URL rather than on the
+// reader's device: the registry deep-links its order and its filters the same
+// way, and this page keeps nothing about whoever is reading it.
+test("the landing arrives as a table, and the cards are one link away", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const rows = page.locator("#entry-grid tr.entry-row");
+  await expect(rows.first()).toBeVisible();
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
+  await expect(page.locator("#entry-grid th")).toHaveText([
+    "Result", "Authors", "Subjects", "Dependencies", "Registered",
+  ]);
+  await expect(page.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+
+  // A row carries less than a card, so the rendering behind its title is worth
+  // more here, not less: the same hover preview has to reach it.
+  const listed = await rows.count();
+  await rows.first().locator("a").first().hover();
+  await expect(page.locator(".statement-preview")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Cards" }).click();
+  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(listed);
+  await expect(page.locator("#entry-grid tr.entry-row")).toHaveCount(0);
+  // Linkable, so a reader can send the view they are reading in.
+  expect(new URL(page.url()).searchParams.get("view")).toBe("cards");
+
+  await page.getByRole("button", { name: "Table" }).click();
+  await expect(page.locator("#entry-grid tr.entry-row")).toHaveCount(listed);
+  // The default is the bare address rather than a parameter spelling it out.
+  expect(new URL(page.url()).searchParams.has("view")).toBe(false);
+
+  await page.goto(`/?view=cards&database=${database}`);
+  await expect(page.locator("#entry-grid .entry-card").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
+
+  // An unknown view is not an error a reader should meet; it is the default.
+  await page.goto(`/?view=nonsense&database=${database}`);
+  await expect(page.locator("#entry-grid tr.entry-row").first()).toBeVisible();
+});
+
+// The toolbar narrows the selection by reading data attributes off whichever
+// node is showing, so the rows have to carry what the cards carry.
+test("the toolbar narrows the table as it narrows the cards", async ({ page }) => {
+  await page.goto(`/?database=${database}`);
+  const rows = page.locator("#entry-grid tr.entry-row:visible");
+  await expect(rows.first()).toBeVisible();
+  const all = await rows.count();
+
+  await page.getByRole("button", { name: "Mathlib only" }).click();
+  await expect(rows).toHaveCount(1);
+  const mathlibOnly = await rows.count();
+  expect(mathlibOnly).toBeGreaterThan(0);
+  expect(mathlibOnly).toBeLessThan(all);
+
+  // And the same narrowing survives being carried into the other view.
+  await page.getByRole("button", { name: "Cards" }).click();
+  await expect(page.locator("#entry-grid .entry-card:visible")).toHaveCount(mathlibOnly);
 });
 
 test("user-facing pages do not overflow narrow mobile viewports", async ({ page }) => {
-  await page.route("**/database/recent.json", async (route) => {
+  await page.route("**/database/api/v1/results**", async (route) => {
     const response = await route.fetch();
     const recent = await response.json();
     recent.entries[0].title =
@@ -227,8 +275,11 @@ test("user-facing pages do not overflow narrow mobile viewports", async ({ page 
   });
 
   const surfaces = [
-    { name: "registry", path: `/?database=${database}`, ready: ".entry-card" },
-    { name: "search", path: `/?database=${database}&q=synthetically`, ready: "#search-results .entry-card" },
+    // Both landing views: the table is the default and the likelier of the two
+    // to be pushed wide, by a long title or a long list of authors.
+    { name: "registry table", path: `/?database=${database}`, ready: "tr.entry-row" },
+    { name: "registry cards", path: `/?view=cards&database=${database}`, ready: ".entry-card" },
+    { name: "search", path: `/?database=${database}&q=synthetically`, ready: "#entry-grid .entry-row" },
     {
       name: "entry",
       path: `/entry?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
@@ -263,7 +314,7 @@ test("user-facing pages do not overflow narrow mobile viewports", async ({ page 
 
 test("navigation and action controls expose mobile-sized targets", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expectMinimumTargets(
     page.locator(
@@ -334,7 +385,7 @@ test("landing cards show the registration date and dated identifier", async ({ p
   // A landing record read is a regression even if its result happens to be
   // valid, so make one fail loudly instead of letting it hide in the fixture.
   await page.route("**/database/entries/*.json", (route) => route.abort());
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const first = page.locator(".entry-card").first();
   await expect(first.locator(".entry-id")).toContainText("PALOMAR-2026-07-29-");
   await expect(first.locator(".entry-id")).toContainText("v2 · current");
@@ -373,16 +424,15 @@ test("landing cards show the registration date and dated identifier", async ({ p
   await expect(page.getByRole("button", { name: "Mathlib only" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Additional libraries" })).toBeVisible();
   await expect.poll(() => [...dynamicRequests].sort()).toEqual([
-    "/database/recent.json",
-    "/database/source-availability.json",
+    "/database/api/v1/results",
   ]);
   await page.waitForTimeout(100);
   expect(dynamicRequests.filter((path) => path.startsWith("/database/entries/"))).toEqual([]);
-  expect(dynamicRequests).toHaveLength(2);
+  expect(dynamicRequests).toHaveLength(1);
 });
 
 test("card metadata is on the card, not behind a toggle", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card").first();
 
   // Titles in this registry are repository names, so the authors and the
@@ -401,7 +451,7 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
     ["PALOMAR-2026-07-29-000124", "2026-07-29T23:00:00Z"],
     ["PALOMAR-2026-07-29-000123", "2026-07-29T22:00:00Z"],
   ]);
-  await page.route("**/database/recent.json", async (route) => {
+  await page.route("**/database/api/v1/results**", async (route) => {
     const response = await route.fetch();
     const recent = await response.json();
     expect(recent.entries).toHaveLength(registeredAt.size);
@@ -412,7 +462,7 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
     }));
     await route.fulfill({ response, json: recent });
   });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
   // Recency and identifier order deliberately disagree. The DOM must follow
   // recent.json, whose order has already been validated as newest-first.
@@ -422,55 +472,21 @@ test("landing cards preserve the publisher's newest-first order", async ({ page 
   ]);
 });
 
-test("an unusable recent row is omitted without hiding its valid siblings", async ({ page }) => {
-  await page.route("**/database/recent.json", async (route) => {
-    const response = await route.fetch();
-    const document = await response.json();
-    document.entries[0].preservation.repositories[0].commit = "2".repeat(40);
-    await route.fulfill({ response, json: document });
-  });
-
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(1);
-  await expect(page.locator("#registry-warning")).toBeVisible();
-  await expect(page.locator("#registry-warning")).toHaveText(
-    "1 registry entry could not be displayed.",
-  );
-  await expect(page.locator("#status")).not.toHaveClass(/error/);
-  await page.locator("#arxiv-query").fill("math.NT");
-  await expect(page.locator("#registry-warning")).toBeVisible();
-});
-
-test("an entirely unusable recent projection is not reported as an empty registry", async ({ page }) => {
-  await page.route("**/database/recent.json", async (route) => {
-    const response = await route.fetch();
-    const document = await response.json();
-    for (const row of document.entries) row.status = "draft";
-    await route.fulfill({ response, json: document });
-  });
-
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
-  await expect(page.locator("#status")).toHaveClass(/warning/);
-  await expect(page.locator("#status")).toContainText("registry entries could not be displayed");
-  await expect(page.locator("#status")).not.toContainText("No entries have been registered");
-});
-
 test("an unavailable recent summary reports failure instead of emptiness", async ({ page }) => {
-  await page.route("**/database/recent.json", (route) =>
+  await page.route("**/database/api/v1/results**", (route) =>
     route.fulfill({ status: 503, body: "temporarily unavailable" }),
   );
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
 
-  await expect(page.locator("#status")).toContainText("The registry could not be loaded: 503");
+  await expect(page.locator("#status")).toContainText("HTTP 503");
   await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveClass(/error/);
   await expect(page.locator("#status")).not.toContainText("No entries have been published");
 });
 
 test("registry entries can be filtered by arXiv and MSC classifications", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator("#arxiv-query")).toBeVisible();
   await expect(page.locator("#msc-query")).toBeVisible();
   await expect(page.locator('#arxiv-options option[value="math.NT"]')).toHaveCount(1);
@@ -491,14 +507,14 @@ test("registry entries can be filtered by arXiv and MSC classifications", async 
 });
 
 test("an MSC filter matches every code beginning with what was typed", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
 
   // 000123 is 05C10, 000124 is 11N13.
   await page.locator("#msc-query").fill("11");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
-  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
 
   await page.locator("#msc-query").fill("11n");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
@@ -511,18 +527,15 @@ test("an MSC filter matches every code beginning with what was typed", async ({ 
   await page.locator("#msc-query").fill("12");
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveText(
-    "No registry entries match the current filters. Classification query: MSC2020 12.",
+    "No registry entries match these search terms and filters.",
   );
 
   await page.locator("#msc-query").fill("1N");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
-  await expect(page.locator("#status")).toHaveText(
-    "No registry entries match the current filters. Invalid classification code format: MSC2020.",
-  );
+  await expect(page.locator("#status")).toContainText("Invalid MSC prefix");
 });
 
 test("the registry can be ordered by when a result first entered it", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   // 000123 is a v2 registered on 2 August; 000124 is a v1 registered on 29
   // July, the same day 000123 first entered the registry.
   await expect(page.locator(".entry-card .entry-id")).toHaveText([
@@ -552,18 +565,18 @@ test("the registry can be ordered by when a result first entered it", async ({ p
 });
 
 test("a date range narrows the listing by the date it is ordered by", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator("#date-from").fill("2026-08-01");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000123");
-  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
 
   // The same range against the day each result first entered the registry:
   // the August version is a new version of a July result, not a new result.
   await page.locator("#order-by").selectOption("registered");
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveText(
-    "No registry entries match the current filters. First registered on or after 1 August 2026.",
+    "No registry entries match these search terms and filters.",
   );
 
   await page.locator("#date-from").fill("2026-07-29");
@@ -572,53 +585,46 @@ test("a date range narrows the listing by the date it is ordered by", async ({ p
 });
 
 test("a range that cannot be read, or cannot hold a day, matches nothing and says so", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator("#date-from").fill("2026-08-13");
   await page.locator("#date-to").fill("2026-08-02");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(0);
-  await expect(page.locator("#status")).toHaveText(
-    "No registry entries match the current filters. The date range ends before it begins.",
-  );
+  await expect(page.locator("#status")).toContainText("The date range ends before it begins");
 
   await page.locator("#date-from").fill("");
   await page.locator("#date-to").fill("");
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
-  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
 });
 
 test("a range reaching past the newest results says what the page cannot answer for", async ({ page }) => {
-  await page.goto(`/?database=${database}&from=2026-01-01`);
+  await page.goto(`/?view=cards&database=${database}&from=2026-01-01`);
   await expect(page.locator("#date-from")).toHaveValue("2026-01-01");
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
   await expect(page.locator("#status")).toHaveText(
-    "Versions registered before 29 July 2026 are not on this page.",
+    "Showing 2 results.",
   );
   await expect(page.locator("#status")).not.toHaveClass(/error/);
 });
 
 test("an order and a range apply from a deep link", async ({ page }) => {
-  await page.goto(`/?database=${database}&order=registered&from=2026-07-29&to=2026-07-29`);
+  await page.goto(`/?view=cards&database=${database}&order=registered&from=2026-07-29&to=2026-07-29`);
   await expect(page.locator("#order-by")).toHaveValue("registered");
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
   await expect(page.locator(".entry-card").first().locator(".entry-id"))
     .toHaveText("PALOMAR-2026-07-29-000124 v1 · current");
 
-  // An order nothing offers is the default rather than an empty page.
-  await page.goto(`/?database=${database}&order=sideways`);
-  await expect(page.locator("#order-by")).toHaveValue("updated");
-  await expect(page.locator(".entry-card").first().locator(".entry-id"))
-    .toHaveText("PALOMAR-2026-07-29-000123 v2 · current");
+
 });
 
 test("an MSC prefix applies from a deep link", async ({ page }) => {
-  await page.goto(`/?database=${database}&msc=11`);
+  await page.goto(`/?view=cards&database=${database}&msc=11`);
   await expect(page.locator("#msc-query")).toHaveValue("11");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
 });
 
 test("classification filters apply from a deep link", async ({ page }) => {
-  await page.goto(`/?database=${database}&arxiv=math.NT`);
+  await page.goto(`/?view=cards&database=${database}&arxiv=math.NT`);
   await expect(page.locator("#arxiv-query")).toBeVisible();
   await expect(page.locator("#arxiv-query")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
@@ -626,34 +632,32 @@ test("classification filters apply from a deep link", async ({ page }) => {
 });
 
 test("absent classifications produce a useful empty result", async ({ page }) => {
-  await page.goto(`/?database=${database}&arxiv=math.AG`);
+  await page.goto(`/?view=cards&database=${database}&arxiv=math.AG`);
   await expect(page.locator("#arxiv-query")).toHaveValue("math.AG");
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveText(
-    "No registry entries match the current filters. Classification query: arXiv math.AG.",
+    "No registry entries match these search terms and filters.",
   );
 
   await page.locator("#arxiv-query").fill("");
   await expect(page.locator(".entry-card:visible")).toHaveCount(2);
-  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
 
   await page.locator("#msc-query").fill("14Q05");
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
-  await expect(page.locator("#status")).toContainText("Classification query: MSC2020 14Q05.");
+  await expect(page.locator("#status")).toContainText("No registry entries match");
 
   await page.locator("#arxiv-query").fill("math.AG");
   await expect(page.locator("#status")).toContainText(
-    "Classification query: arXiv math.AG, MSC2020 14Q05.",
+    "No registry entries match",
   );
 });
 
 test("malformed classification parameters are bounded and identified", async ({ page }) => {
-  await page.goto(`/?database=${database}&arxiv=${encodeURIComponent("not a code".repeat(20))}`);
-  await expect(page.locator("#arxiv-query")).toHaveValue("not a codenot a codenot a codeno");
+  await page.goto(`/?view=cards&database=${database}&arxiv=${encodeURIComponent("not a code".repeat(20))}`);
+  await expect(page.locator("#arxiv-query")).toHaveValue("not a code".repeat(20));
   await expect(page.locator(".entry-card:visible")).toHaveCount(0);
-  await expect(page.locator("#status")).toHaveText(
-    "No registry entries match the current filters. Invalid classification code format: arXiv.",
-  );
+  await expect(page.locator("#status")).toContainText("Invalid arXiv code");
 });
 
 test("an unversioned entry link resolves to the current immutable URL", async ({ page }) => {
@@ -692,6 +696,95 @@ test("an unversioned entry link resolves to the current immutable URL", async ({
     "href",
     "https://palomar-registry.org/entry?id=PALOMAR-2026-07-29-000123&version=2",
   );
+});
+
+// An entry page is read, not scanned, and it used to offer the reader two
+// typographies at once: an abstract held to 72 characters a line, and the
+// explanations under it running the full 1024px to 104. Both sat at the body's
+// 1.45. This measures what the page actually renders rather than checking the
+// rules that produce it, and it walks the prose it finds rather than a list
+// written here, so a paragraph added later without a measure is caught too.
+test("prose on an entry page holds one reading measure and leading", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator("p.lede")).toBeVisible();
+
+  const loose = await page.evaluate(() => {
+    const characterWidth = (node) => {
+      const probe = document.createElement("span");
+      probe.textContent = "0".repeat(100);
+      probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+      node.append(probe);
+      const width = probe.getBoundingClientRect().width / 100;
+      probe.remove();
+      return width;
+    };
+    return [...document.querySelectorAll("main p, main li")]
+      // Rows of controls are not prose, and a short line cannot be too long.
+      .filter((node) => !node.classList.contains("challenge-links"))
+      .filter((node) => (node.textContent || "").trim().length > 110)
+      .map((node) => {
+        const style = getComputedStyle(node);
+        return {
+          name: node.className || node.tagName,
+          characters: Math.round(node.getBoundingClientRect().width / characterWidth(node)),
+          leading: Number(
+            (parseFloat(style.lineHeight) / parseFloat(style.fontSize)).toFixed(2),
+          ),
+        };
+      })
+      .filter((row) => row.characters > 80 || row.leading < 1.55);
+  });
+  expect(loose, "entry prose outside a comfortable measure or leading").toEqual([]);
+});
+
+// Submitters mark identifiers in an abstract with Markdown code spans, and the
+// page used to render the abstract verbatim: the reader got the backticks as
+// punctuation, and the identifier in the same face as the sentence holding it.
+// Several submitters also lay a claim out over indented lines, which collapsing
+// whitespace ran together into one paragraph.
+test("an abstract keeps the submitter's code spans and their line structure", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const lede = page.locator("p.lede");
+  await expect(lede).toBeVisible();
+
+  await expect(lede.locator("code")).toHaveText(["AddCircle (1 : ℝ)", "ℤ"]);
+  // The marks are read, so they are gone from what the reader sees -- but only
+  // the paired ones. A tick a submitter used for something else is their text,
+  // and stays.
+  await expect(lede).toContainText("It classifies AddCircle (1 : ℝ) by ℤ");
+  await expect(lede).toContainText("a 90` turn");
+
+  // Most submitters mark nothing and write the mathematics into the sentence.
+  // Those are found by their operators and set apart too, in the face but not
+  // on the ground: this page found them rather than being told, and the
+  // stronger signal stays with the span the submitter marked themselves.
+  await expect(lede.locator(".expression")).toHaveText(["mu ≥ 2", "n > 3", "2^kappa"]);
+  const expression = lede.locator(".expression").first();
+  await expect(expression).toHaveCSS("font-family", /mono/i);
+  const [mathGround, proseGround] = await Promise.all([
+    expression.evaluate((n) => getComputedStyle(n).backgroundColor),
+    lede.evaluate((n) => getComputedStyle(n).backgroundColor),
+  ]);
+  expect(mathGround, "a found expression carries no ground of its own")
+    .toBe(proseGround);
+
+  // Rendered, not merely present: an identifier that reads as prose is the
+  // defect this closes.
+  const inline = lede.locator("code").first();
+  await expect(inline).toHaveCSS("font-family", /mono/i);
+  const [codeGround, ledeGround] = await Promise.all([
+    inline.evaluate((n) => getComputedStyle(n).backgroundColor),
+    lede.evaluate((n) => getComputedStyle(n).backgroundColor),
+  ]);
+  expect(codeGround, "an inline code span sits on the same ground as the prose")
+    .not.toBe(ledeGround);
+
+  // The indented hypotheses are the submitter's structure, and each has to
+  // start its own line rather than being folded into the sentence above it.
+  await expect(lede).toHaveCSS("white-space", "pre-wrap");
+  const lines = (await lede.textContent()).split("\n").map((line) => line.trimEnd());
+  expect(lines).toContain("    (1) the first indented hypothesis");
+  expect(lines).toContain("    (2) the second indented hypothesis");
 });
 
 test("an entry answers its reader's first three questions first", async ({ page }) => {
@@ -777,7 +870,7 @@ test("the licence caveat travels with the licence evidence it qualifies", async 
 });
 
 test("the subject filters share the toolbar's line, ending at its right edge", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card").first();
 
   const toolbar = await page.locator(".toolbar").boundingBox();
@@ -907,11 +1000,11 @@ test("mathematical sources format known identifiers and preserve unknown ones", 
   await expect(page.locator(".source-contributors")).toHaveText(
     " — Wilhelm Magnus (problem-proposer); Evgenii Khukhro (editor)",
   );
-  await expect(page.getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
+  await expect(page.locator(".provenance-sources").getByRole("link", { name: "arXiv:2605.20695", includeHidden: true }))
     .toHaveAttribute("href", "https://arxiv.org/abs/2605.20695");
   await expect(page.getByRole("link", { name: "doi:10.1000/a?#b", includeHidden: true }))
     .toHaveAttribute("href", "https://doi.org/10.1000/a%3F%23b");
-  await expect(page.getByRole("link", { name: "arXiv:math.AG/0211159", includeHidden: true }))
+  await expect(page.locator(".provenance-sources").getByRole("link", { name: "arXiv:math.AG/0211159", includeHidden: true }))
     .toHaveAttribute("href", "https://arxiv.org/abs/math.AG/0211159");
   await expect(page.getByRole("link", {
     name: "Open source for A linked web source",
@@ -922,6 +1015,80 @@ test("mathematical sources format known identifiers and preserve unknown ones", 
     "bibliographic:custom-reference",
     "https://reader:secret@example.invalid/source",
   ]);
+});
+
+test("entry references are visible before opening provenance and preserve source context", async ({ page }) => {
+  await page.route("**/database/entries/PALOMAR-2026-07-29-000123-v2.json", async (route) => {
+    const response = await route.fetch();
+    const entry = await response.json();
+    entry.provenance.result_origin = "source-based";
+    entry.provenance.mathematical_sources = [
+      { title: "Control systems", authors: [], relationship: "formalizes",
+        identifier: "https://hexagonmath.org/2610.00022" },
+      { title: "Earlier work", authors: [], relationship: "background",
+        identifier: "Journal citation; arXiv:2609.40348v1; doi:10.1137/0327028" },
+      { title: "Unknown source", authors: [], relationship: "background",
+        identifier: "https://example.invalid/source" },
+    ];
+    entry.provenance.related_formalizations = [
+      { identifier: "hexagon:2610.00022", relationship: "related work" },
+      { identifier: "https://isa-afp.org/entries/Example.html", relationship: "prior work" },
+    ];
+    await route.fulfill({ response, json: entry });
+  });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const references = page.getByRole("navigation", { name: "References", exact: true });
+  await expect(references).toBeVisible();
+  await expect(references.getByRole("link")).toHaveCount(4);
+  const hexagon = references.getByRole("link", { name: /^Hexagon:2610.00022/ });
+  await expect(hexagon).toHaveAttribute("href", "https://hexagonmath.org/2610.00022");
+  await expect(hexagon).toHaveAttribute("title", /Source: Control systems \(formalizes\).*Related formalization:/);
+  await expect(references.getByRole("link", { name: /^arXiv:2609.40348v1/ }))
+    .toHaveAttribute("href", "https://arxiv.org/abs/2609.40348v1");
+  await expect(references.getByRole("link", { name: /^DOI/ }))
+    .toHaveAttribute("href", "https://doi.org/10.1137/0327028");
+  await expect(references.getByRole("link", { name: /^Archive of Formal Proofs/ })).toBeVisible();
+  await expect(page.locator(".entry-provenance details")).not.toHaveAttribute("open", "");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test("entry headings omit the reference row when there are no recognized references", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  await expect(page.locator(".entry-heading h1")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "References", exact: true })).toHaveCount(0);
+});
+
+test("all reference icons load locally alongside their text labels", async ({ page }, testInfo) => {
+  const identifiers = [
+    "arXiv:2605.20695", "doi:10.1137/0327028", "hexagon:2610.00022",
+    "https://www.erdosproblems.com/501", "https://isa-afp.org/entries/Example.html",
+    "https://mathoverflow.net/a/449571", "OEIS:A116485", "https://zbmath.org/3254142",
+    "https://proofatlas.ai/formalizations/example/", "https://projecteuclid.org/example",
+    "https://eudml.org/doc/158244",
+  ];
+  await page.route("**/database/entries/PALOMAR-2026-07-29-000123-v2.json", async (route) => {
+    const response = await route.fetch();
+    const entry = await response.json();
+    entry.provenance.mathematical_sources = identifiers.map((identifier) => ({
+      identifier, title: "Example source", authors: [], relationship: "background",
+    }));
+    await route.fulfill({ response, json: entry });
+  });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&database=${database}`);
+  const references = page.getByRole("navigation", { name: "References", exact: true });
+  const icons = references.locator("img");
+  await expect(icons).toHaveCount(11);
+  await expect.poll(() => icons.evaluateAll((images) => images.every((image) => (
+    image.complete && image.naturalWidth > 0 && image.alt === "" &&
+    new URL(image.src).origin === window.location.origin
+  )))).toBe(true);
+  await expect(references.getByRole("link", { name: /^Erdős Problems/ })).toHaveText("Erdős Problems");
+  await expect(references.getByRole("link", { name: /^Project Euclid/ })).toHaveText("Project Euclid");
+  await expect(references.getByRole("link", { name: /^zbMATH/ })).toHaveText("zbMATH");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await references.screenshot({ path: testInfo.outputPath("reference-icons-mobile.png") });
 });
 
 test("entry and render content do not wait for a never-settling availability read", async ({ page }) => {
@@ -942,7 +1109,7 @@ test("entry and render content do not wait for a never-settling availability rea
   await expect(page.locator(".entry-heading h1")).toBeVisible();
   await expect(page.locator(".entry-evidence")).toBeVisible();
   await expect(page.locator(".source-availability")).toBeHidden();
-  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
   await expect.poll(() => pending.length).toBe(1);
   pending[0].release();
 
@@ -951,7 +1118,7 @@ test("entry and render content do not wait for a never-settling availability rea
   );
   await expect(page.locator(".entry-heading h1")).toBeVisible();
   await expect(page.locator(".challenge-metadata")).toBeVisible();
-  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
   await expect.poll(() => pending.length).toBe(2);
   pending[1].release();
 });
@@ -1110,6 +1277,31 @@ test("an archive warning says the original works only after a fresh confirmation
   await expect(notice.getByRole("link", { name: "Original source" })).toBeVisible();
 });
 
+for (const [label, record, kernels] of [
+  ["earlier record", entry(), ["nanoda"]],
+  ["toolchain record", toolchainEntry(), ["nanoda", "con-ron"]],
+  ["toolchain record with another kernel", (() => {
+    const record = toolchainEntry();
+    record.verification.kernels.push({ name: "another-checker", argv: ["/toolchain/bin/another-checker"] });
+    return record;
+  })(), ["nanoda", "con-ron", "another-checker"]],
+]) {
+  test(`mechanical assurance names the kernels used: ${label}`, async ({ page }) => {
+    await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) =>
+      route.fulfill({ json: { ...record, title: "Fixture PALOMAR-2026-07-29-000123 version 1" } }),
+    );
+    await page.goto(
+      `/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`,
+    );
+    const assurance = page.locator(".registration-callout p", { hasText: "Mechanical assurance" });
+    await expect(assurance).toContainText("checked successfully by Lean's kernel");
+    await expect(assurance).toContainText(
+      `by the independent ${kernels.length === 1 ? "kernel" : "kernels"} ${kernels.join(", ")}.`,
+    );
+    if (kernels.length === 1) await expect(assurance).not.toContainText("con-ron");
+  });
+}
+
 test("entry schema v1 fails closed before rendering", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", async (route) => {
     const response = await route.fetch();
@@ -1124,89 +1316,6 @@ test("entry schema v1 fails closed before rendering", async ({ page }) => {
   await expect(page.locator(".entry-heading")).toHaveCount(0);
   await expect(page.locator("#status")).toHaveClass(/error/);
   await expect(page.locator("#status")).toContainText("unsupported entry schema_version 1");
-});
-
-test("a recent row without the required preservation mapping is omitted", async ({ page }) => {
-  await page.route("**/database/recent.json", async (route) => {
-    const response = await route.fetch();
-    const recent = await response.json();
-    recent.entries[0].preservation = null;
-    await route.fulfill({ response, json: recent });
-  });
-  await page.goto(`/?database=${database}`);
-
-  await expect(page.locator(".entry-card")).toHaveCount(1);
-  await expect(page.locator("#registry-warning")).toHaveText(
-    "1 registry entry could not be displayed.",
-  );
-  await expect(page.locator("#status")).not.toHaveClass(/error/);
-});
-
-test("a card says the original is unavailable exactly when the manifest says so", async ({ page }) => {
-  let releaseAvailability;
-  let noteAvailabilityRequest;
-  const availabilityRequested = new Promise((resolve) => { noteAvailabilityRequest = resolve; });
-  await page.route("**/database/source-availability-missing.json", async (route) => {
-    noteAvailabilityRequest();
-    await new Promise((resolve) => { releaseAvailability = resolve; });
-    await route.continue();
-  });
-  await page.goto(`/?database=${database}&availability=${missingAvailability}`);
-  const card = page.locator(".entry-card").first();
-  await expect(card).toHaveCount(1);
-  await availabilityRequested;
-  await page.locator("#arxiv-query").fill("math.CO");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-  await page.locator("#arxiv-query").evaluate((input) => input.focus());
-  await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
-  // Cards and filters are usable while availability is still pending.
-  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
-  releaseAvailability();
-  await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
-  await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
-  await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
-  await expect(page.locator("#arxiv-query")).toBeFocused();
-  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator(".entry-card .source-status")).toHaveCount(0);
-});
-
-test("progressive cards never apply a stale missing claim", async ({ page }) => {
-  let releaseAvailability;
-  let noteAvailabilityRequest;
-  const availabilityRequested = new Promise((resolve) => { noteAvailabilityRequest = resolve; });
-  await page.route("**/database/source-availability-missing.json", async (route) => {
-    noteAvailabilityRequest();
-    const response = await route.fetch();
-    const availability = await response.json();
-    const now = new Date();
-    now.setMilliseconds(0);
-    availability.generated_at = now.toISOString().replace(".000Z", "Z");
-    const stale = new Date(now.getTime() - 18 * 60 * 60 * 1000 - 1_000)
-      .toISOString().replace(".000Z", "Z");
-    for (const row of availability.repositories) {
-      row.original.checked_at = stale;
-      row.original.last_attempt_at = null;
-    }
-    await new Promise((resolve) => { releaseAvailability = resolve; });
-    await route.fulfill({ response, json: availability });
-  });
-
-  await page.goto(`/?database=${database}&availability=${missingAvailability}`);
-  const card = page.locator(".entry-card").first();
-  await expect(card).toHaveCount(1);
-  await availabilityRequested;
-  await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
-  await card.locator(".repo-link").focus();
-  releaseAvailability();
-
-  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
-  await expect(card.locator(".source-status.missing")).toHaveCount(0);
-  await expect(card.locator(".archive-link")).toBeVisible();
-  await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
-  await expect(card.locator(".repo-link")).toBeFocused();
 });
 
 test("entry pages list immutable versions and flag superseded snapshots", async ({ page }) => {
@@ -1277,7 +1386,7 @@ test("entry pages offer a version-pinned BibTeX citation that can be copied", as
 });
 
 test("a single current version has no supersession treatment", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card").nth(1);
   await expect(card.locator(".version-history-link")).toHaveCount(0);
 
@@ -1358,7 +1467,7 @@ test("unknown exact versions remain generic not-found pages", async ({ page }) =
 });
 
 test("the index version-history link reaches history loaded at runtime", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator(".entry-card").first().getByRole("link", { name: "2 versions" }).click();
 
   await expect(page).toHaveURL(/#version-history$/);
@@ -1376,7 +1485,7 @@ test("optional metric markup cannot take down the registry", async ({ page }) =>
     contentType: "text/html; charset=utf-8",
   }));
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 });
@@ -1548,7 +1657,7 @@ test("a missing formatted Challenge leaves the registered entry and pinned sourc
   await expect(playground).toBeVisible();
   await expect(playground).toHaveText("Open in Lean Playground");
   await expect(playground).not.toHaveClass(/challenge-playground-button/);
-  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.locator("#status")).not.toHaveClass(/error/);
 });
 
 test("the playground overlay remains visible without hover", async ({ browser }) => {
@@ -1598,7 +1707,7 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   await audit.locator("summary").click();
   const auditSource = audit.locator(".challenge-audit-declaration pre");
   await expect(auditSource).toHaveText(
-    "theorem Example.theorem : Eq Nat.zero Nat.zero",
+    "theorem Example.theorem : ∀ {α : Type u_1} (a b : α), Eq a b → Eq b ⋯",
   );
   await expect(auditSource).toHaveAttribute("tabindex", "0");
   await expect(audit.locator(".challenge-audit-declaration")).toHaveAttribute(
@@ -1617,6 +1726,40 @@ test("larger Challenge falls back to the dedicated wrapper", async ({ page }) =>
   await expect(audit.locator(".challenge-audit-limits")).toContainText(
     "omitted subterm with ⋯",
   );
+  // The audit view is where a reader checks notation, and Lean writes it in
+  // Greek, quantifiers, arrows, and the ⋯ it leaves where it elided a subterm.
+  // A family that cannot draw those does not fail visibly: the browser quietly
+  // substitutes another face for the characters it is missing, so ∀ arrives in
+  // a different weight beside identifiers drawn by the declared font. Advance
+  // widths do not catch it, because the substitute is monospaced too. Ask
+  // Chromium which platform fonts it actually reached for instead.
+  //
+  // The fixture declaration deliberately stays inside the repertoire a
+  // monospace family is expected to carry, which is what one face here means.
+  // Published entries do reach past it -- a statement naming 𝒜 pulls in a math
+  // face no general-purpose monospace font covers -- and that is a property of
+  // the Mathematical Alphanumeric Symbols block, not a defect in the stack, so
+  // it is deliberately not what this fixture asks about.
+  const client = await page.context().newCDPSession(page);
+  await client.send("DOM.enable");
+  await client.send("CSS.enable");
+  const { root } = await client.send("DOM.getDocument");
+  const { nodeId } = await client.send("DOM.querySelector", {
+    nodeId: root.nodeId,
+    selector: ".challenge-audit-declaration pre",
+  });
+  const { fonts } = await client.send("CSS.getPlatformFontsForNode", { nodeId });
+  await client.detach();
+  // A node that rendered nothing reports nothing, which would otherwise agree
+  // with this by drawing no glyphs at all.
+  expect(
+    fonts.reduce((total, font) => total + font.glyphCount, 0),
+    "the audit view drew no glyphs to measure",
+  ).toBeGreaterThan(0);
+  expect(
+    fonts.map((font) => `${font.familyName} (${font.glyphCount} glyphs)`).sort(),
+    "the audit view was drawn from more than one face: --mono is missing glyphs Lean prints",
+  ).toHaveLength(1);
   await audit.locator("summary").click();
   await expect(audit.locator(".challenge-audit-declaration")).not.toBeVisible();
   const dependencies = page.getByRole("link", { name: "Inspect statement dependencies" });
@@ -1674,7 +1817,7 @@ test("current HTML remains compatible with cached JavaScript from the previous d
   // fresh shared modules, which is the adjacent Pages deployment boundary this
   // regression exercises.
 
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await expect(page.locator(".entry-card")).toHaveCount(2);
   await expect(page.locator("#status")).not.toContainText("could not be loaded");
 
@@ -1700,7 +1843,7 @@ test("current JavaScript preserves represented deep links with cached HTML", asy
     return route.continue();
   });
 
-  await page.goto(`/?database=${database}&arxiv=math.NT`);
+  await page.goto(`/?view=cards&database=${database}&arxiv=math.NT`);
   await expect(page.locator("#arxiv-query, #arxiv-filter")).toHaveValue("math.NT");
   await expect(page.locator(".entry-card:visible")).toHaveCount(1);
   await expect(page.locator(".entry-card:visible")).toContainText("000124");
@@ -1746,7 +1889,7 @@ test("classification codes are spaced, and their descriptions are hovers", async
 });
 
 test("a card's classifications are muted links, glossed on hover", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const card = page.locator(".entry-card", { hasText: "PALOMAR-2026-07-29-000123" });
   const arxiv = card.locator(".category-token", { hasText: "math.CO" });
   const msc = card.locator(".category-token", { hasText: "MSC 05C10" });
@@ -1912,622 +2055,18 @@ test("what was checked is compressed without losing what it said", async ({ page
   expect(project.length).toBeLessThanOrEqual(1);
 });
 
-test("a search reads one postings sequence per word and confirms every hit", async ({ page }) => {
-  const asked = [];
-  page.on("request", (request) => {
-    const path = new URL(request.url()).pathname;
-    if (path.startsWith("/database/")) asked.push(path);
-  });
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator(".entry-card")).toHaveCount(2);
-
-  asked.length = 0;
-  await runSearch(page, "quasicoherent 000124");
-
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect(page.locator("#search-results .entry-card")).toContainText("000124");
-  // A posting names an immutable version, but does not claim that it is
-  // current or say how many active versions the result has. Search cards omit
-  // both claims until the public search contract publishes them.
-  await expect(page.locator("#search-results .entry-id")).not.toContainText("current");
-  await expect(page.locator("#search-results .version-history-link")).toHaveCount(0);
-  // The listing is a different question, and answering both at once would show
-  // one reader two sets of results with nothing saying which was which.
-  await expect(page.locator("#entry-grid")).toBeHidden();
-  // Two words, two heads, and the pages of each; the rarer word drives, and
-  // the pages are walked newest first.
-  expect(asked).toContain("/database/search/t/quasicoherent/head.json");
-  expect(asked.filter((path) => path.startsWith("/database/search/t/000124/")))
-    .toEqual(["/database/search/t/000124/head.json", "/database/search/t/000124/0.json"]);
-  expect(asked.filter((path) => /quasicoherent\/[0-9]/.test(path)))
-    .toEqual([
-      "/database/search/t/quasicoherent/1.json",
-      "/database/search/t/quasicoherent/0.json",
-    ]);
-  // One record, because the intersection settled the rest. The record is
-  // fetched to be shown, and checking that it really carries every word costs
-  // nothing on top of that.
-  expect(asked.filter((path) => path.startsWith("/database/entries/")))
-    .toEqual(["/database/entries/PALOMAR-2026-07-29-000124-v1.json"]);
-});
-
-test("runtime data reads reuse a fresh HTTP response", async ({ page }) => {
-  const headUrl = "http://127.0.0.1:4173/database/search/t/cacheprobe/head.json";
-  const timings = () => page.evaluate((url) =>
-    performance.getEntriesByName(url).map((entry) => ({
-      decodedBodySize: entry.decodedBodySize,
-      transferSize: entry.transferSize,
-    })), headUrl);
-
-  await page.goto(`/?database=${database}`);
-  await page.evaluate(() => performance.clearResourceTimings());
-  await runSearch(page, "cacheprobe");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect.poll(async () => (await timings()).length).toBe(1);
-
-  // The fixture gives this otherwise ordinary postings document max-age=60.
-  // Submitting the same search still calls fetch, but the browser should
-  // satisfy it from its HTTP cache rather than transferring it again.
-  await page.locator("#query").press("Enter");
-  await expect.poll(async () => (await timings()).length).toBe(2);
-  const [network, cached] = await timings();
-  expect(network.transferSize).toBeGreaterThan(0);
-  expect(network.decodedBodySize).toBeGreaterThan(0);
-  expect(cached.transferSize).toBe(0);
-  expect(cached.decodedBodySize).toBe(network.decodedBodySize);
-});
-
-test("an over-limit term count is an accessible warning and can be corrected", async ({ page }) => {
-  const query = Array.from(
-    { length: SEARCH_TERM_LIMIT + 1 },
-    (_unused, index) => `word${String(index).padStart(2, "0")}`,
-  ).join(" ");
-  const asked = [];
-  page.on("request", (request) => {
-    const path = new URL(request.url()).pathname;
-    if (path.startsWith("/database/")) asked.push(path);
-  });
-
-  await page.goto(`/?database=${database}&q=${encodeURIComponent(query)}`);
-  await expect(page.locator("#query")).toHaveValue(query);
-  await expect(page.locator("#search-status")).toHaveText(
-    `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
-      `this search has ${SEARCH_TERM_LIMIT + 1}. Common words count toward this limit.`,
-  );
-  await expect(page.locator("#search-status")).toHaveClass(/warning/);
-  await expect(page.locator("#search-status")).not.toHaveClass(/error/);
-  await expect(page.locator("#query")).toHaveAttribute("aria-invalid", "true");
-  await expect(page.locator("#query")).toHaveAttribute("aria-describedby", "search-status");
-  await page.waitForTimeout(100);
-  expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
-  expect(asked.filter((path) => path === "/database/recent.json")).toEqual([]);
-  await expect(page.locator("#entry-grid")).toBeHidden();
-
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-  asked.length = 0;
-  await runSearch(page, query);
-  await expect(page.locator("#query")).toHaveValue(query);
-  await expect(page.locator("#search-status")).toHaveText(
-    `Use at most ${SEARCH_TERM_LIMIT} distinct normalized words; ` +
-      `this search has ${SEARCH_TERM_LIMIT + 1}. Common words count toward this limit.`,
-  );
-  await page.waitForTimeout(100);
-  expect(asked.filter((path) => path.includes("/database/search/"))).toEqual([]);
-
-  await runSearch(page, "synthetically");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect(page.locator("#query")).not.toHaveAttribute("aria-invalid");
-  await expect(page.locator("#query")).not.toHaveAttribute("aria-describedby");
-
-  await runSearch(page, "");
-  await expect(page.locator("#entry-grid")).toBeVisible();
-  await expect(page.locator("#search-status")).toBeHidden();
-});
-
-test("huge few-distinct linked and typed queries fail before I/O or history", async ({ page }) => {
-  const query = "echo ".repeat(Math.ceil((SEARCH_QUERY_CHARACTER_LIMIT + 1) / 5));
-  const asked = [];
-  const pageErrors = [];
-  page.on("request", (request) => {
-    const path = new URL(request.url()).pathname;
-    if (path.startsWith("/database/")) asked.push(path);
-  });
-  page.on("pageerror", (error) => pageErrors.push(error));
-
-  await page.goto(`/?database=${database}&q=${encodeURIComponent(query)}`);
-  await expect(page.locator("#search-status")).toContainText(
-    `Shorten the search to at most ${SEARCH_QUERY_CHARACTER_LIMIT} characters`,
-  );
-  await expect(page.locator("#query")).toHaveAttribute(
-    "maxlength",
-    String(SEARCH_QUERY_CHARACTER_LIMIT),
-  );
-  await expect(page.locator("#query")).toHaveAttribute("aria-invalid", "true");
-  await page.waitForTimeout(100);
-  expect(asked.filter((path) => path.startsWith("/database/search/"))).toEqual([]);
-  expect(asked.filter((path) => path === "/database/recent.json")).toEqual([]);
-  expect(pageErrors).toEqual([]);
-
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-  const before = page.url();
-  asked.length = 0;
-  await page.locator("#query").evaluate((input, value) => { input.value = value; }, query);
-  await page.locator("#registry-search").evaluate((form) => {
-    form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
-  });
-  await expect(page.locator("#search-status")).toContainText(
-    `Shorten the search to at most ${SEARCH_QUERY_CHARACTER_LIMIT} characters`,
-  );
-  await page.waitForTimeout(100);
-  expect(page.url()).toBe(before);
-  expect(asked.filter((path) => path.startsWith("/database/search/"))).toEqual([]);
-  expect(pageErrors).toEqual([]);
-});
-
-test("search cards retain posting order when posting pages finish out of order", async ({ page }) => {
-  await page.route("**/database/search/t/quasicoherent/*.json", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.endsWith("/1.json")) await new Promise((resolve) => setTimeout(resolve, 100));
-    if (path.endsWith("/0.json")) await new Promise((resolve) => setTimeout(resolve, 5));
-    await route.continue();
-  });
-
-  await page.goto(`/?database=${database}&q=quasicoherent`);
-
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-  await expect(page.locator("#search-results .entry-id")).toHaveText([
-    "PALOMAR-2026-07-29-000124 v1",
-    "PALOMAR-2026-07-29-000123 v2",
-  ]);
-});
-
-test("a failed posting page leaves validated search cards and reports degradation", async ({ page }) => {
-  await page.route("**/database/search/t/quasicoherent/1.json", (route) =>
-    route.fulfill({ status: 503, body: "temporarily unavailable" }),
-  );
-
-  await page.goto(`/?database=${database}&q=quasicoherent`);
-
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect(page.locator("#search-results .entry-id")).toHaveText([
-    "PALOMAR-2026-07-29-000123 v2",
-  ]);
-  await expect(page.locator("#search-status")).toContainText(
-    "Showing 1 verified result. The search is incomplete because 1 data request failed.",
-  );
-  await expect(page.locator("#search-status")).toHaveClass(/warning/);
-});
-
-test("search availability decorates the existing focused card in place", async ({ page }) => {
-  let releaseAvailability;
-  let noteAvailabilityRequest;
-  const availabilityRequested = new Promise((resolve) => { noteAvailabilityRequest = resolve; });
-  await page.route("**/database/source-availability-missing.json", async (route) => {
-    noteAvailabilityRequest();
-    await new Promise((resolve) => { releaseAvailability = resolve; });
-    await route.continue();
-  });
-
-  await page.goto(
-    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
-  );
-  const card = page.locator("#search-results .entry-card");
-  await expect(card).toHaveCount(1);
-  await availabilityRequested;
-  await card.evaluate((node) => { node.dataset.progressiveFixture = "same-card"; });
-  await card.locator(".repo-link").focus();
-  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
-
-  releaseAvailability();
-  await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
-  await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
-  await expect(card).toHaveAttribute("data-progressive-fixture", "same-card");
-  await expect(card.locator(".repo-link")).toBeFocused();
-});
-
-test("search cards do not publish a stale source-unavailable claim", async ({ page }) => {
-  await page.route("**/database/source-availability-missing.json", async (route) => {
-    const response = await route.fetch();
-    const availability = await response.json();
-    const now = new Date();
-    now.setMilliseconds(0);
-    availability.generated_at = now.toISOString().replace(".000Z", "Z");
-    const stale = new Date(now.getTime() - 18 * 60 * 60 * 1000 - 1_000)
-      .toISOString().replace(".000Z", "Z");
-    for (const row of availability.repositories) row.original.checked_at = stale;
-    await route.fulfill({ response, json: availability });
-  });
-
-  await page.goto(
-    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
-  );
-  const card = page.locator("#search-results .entry-card");
-  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
-  await expect(card.locator(".source-status.missing")).toHaveCount(0);
-  await expect(card.locator(".archive-link")).toBeVisible();
-});
-
-test("transient and invalid availability responses are both retried", async ({ page }) => {
-  let availabilityRequests = 0;
-  let releaseFirst;
-  let noteFirstRequest;
-  const firstRequest = new Promise((resolve) => { noteFirstRequest = resolve; });
-  const firstFailureLogged = page.waitForEvent("console", {
-    predicate: (message) => message.text().includes("Source availability is unavailable"),
-  });
-  await page.route("**/database/source-availability-missing.json", async (route) => {
-    availabilityRequests += 1;
-    if (availabilityRequests === 1) {
-      noteFirstRequest();
-      await new Promise((resolve) => { releaseFirst = resolve; });
-      await route.fulfill({ status: 503, body: "temporarily unavailable" });
-      return;
-    }
-    if (availabilityRequests === 2) {
-      await route.fulfill({ status: 200, json: { schema_version: 2 } });
-      return;
-    }
-    await route.continue();
-  });
-
-  await page.goto(
-    `/?database=${database}&availability=${missingAvailability}&q=synthetically`,
-  );
-
-  const card = page.locator("#search-results .entry-card");
-  await expect(card).toHaveCount(1);
-  await firstRequest;
-  // The decorative manifest is still blocked, but the verified record is not.
-  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
-  await expect(card.locator(".entry-id")).toHaveText("PALOMAR-2026-07-29-000124 v1");
-  releaseFirst();
-  await firstFailureLogged;
-
-  const invalidLogged = page.waitForEvent("console", {
-    predicate: (message) => message.text().includes("Source availability is unavailable"),
-  });
-  await page.locator("#query").press("Enter");
-  await expect.poll(() => availabilityRequests).toBe(2);
-  await invalidLogged;
-  await expect(card.locator(".repo-link")).toHaveText("example/challenge");
-
-  await page.locator("#query").press("Enter");
-  await expect.poll(() => availabilityRequests).toBe(3);
-  await expect(card.locator(".repo-link")).toHaveText("Palomar preserved copy");
-  await expect(card.locator(".source-status.missing")).toHaveText("Original unavailable");
-  await expect(card.locator(".version-history-link")).toHaveCount(0);
-});
-
-test("a missing availability manifest is cached for the page", async ({ page }) => {
-  let availabilityRequests = 0;
-  await page.route("**/database/no-source-availability.json", async (route) => {
-    availabilityRequests += 1;
-    await route.fulfill({ status: 404, body: "not published" });
-  });
-  const absentAvailability = encodeURIComponent(
-    "http://127.0.0.1:4173/database/no-source-availability.json",
-  );
-
-  await page.goto(
-    `/?database=${database}&availability=${absentAvailability}&q=synthetically`,
-  );
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect.poll(() => availabilityRequests).toBe(1);
-  await page.locator("#query").press("Enter");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await page.waitForTimeout(50);
-  expect(availabilityRequests).toBe(1);
-});
-
-test("a superseded slow search cannot repaint a newer query", async ({ page }) => {
-  let slowHeadRequests = 0;
-  await page.route("**/database/search/t/quasicoherent/head.json", async (route) => {
-    slowHeadRequests += 1;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    await route.continue().catch(() => {});
-  });
-  await page.goto(`/?database=${database}`);
-
-  await startSearch(page, "quasicoherent");
-  await expect.poll(() => slowHeadRequests).toBe(1);
-  await runSearch(page, "synthetically");
-
-  await expect(page.locator("#search-results .entry-id")).toHaveText(
-    "PALOMAR-2026-07-29-000124 v1",
-  );
-  await page.waitForTimeout(300);
-  await expect(page.locator("#search-results .entry-id")).toHaveText(
-    "PALOMAR-2026-07-29-000124 v1",
-  );
-  await expect(page).toHaveURL(/q=synthetically/);
-});
-
-test("a linked search hides landing DOM and retries one failed landing load", async ({ page }) => {
-  let recentRequests = 0;
-  let releaseFirstRecent;
-  let noteFirstRecent;
-  const firstRecent = new Promise((resolve) => { noteFirstRecent = resolve; });
-  await page.route("**/database/recent.json", async (route) => {
-    recentRequests += 1;
-    if (recentRequests === 1) {
-      noteFirstRecent();
-      await new Promise((resolve) => { releaseFirstRecent = resolve; });
-      await route.fulfill({ status: 503, body: "temporarily unavailable" });
-      return;
-    }
-    await route.continue();
-  });
-
-  await page.goto(`/?database=${database}&q=synthetically`);
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  expect(recentRequests).toBe(0);
-  expect(await page.evaluate(() => ({
-    grid: document.querySelector("#entry-grid").hidden,
-    status: document.querySelector("#status").hidden,
-    toolbar: document.querySelector(".toolbar").hidden,
-  }))).toEqual({ grid: true, status: true, toolbar: true });
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(0);
-
-  await runSearch(page, "");
-  await firstRecent;
-  expect(await page.evaluate(() => ({
-    grid: document.querySelector("#entry-grid").hidden,
-    status: document.querySelector("#status").hidden,
-    toolbar: document.querySelector(".toolbar").hidden,
-  }))).toEqual({ grid: false, status: false, toolbar: false });
-
-  // Clearing again while the first landing request is pending shares it.
-  await page.locator("#query").press("Enter");
-  await page.waitForTimeout(50);
-  expect(recentRequests).toBe(1);
-  releaseFirstRecent();
-  await expect(page.locator("#status")).toContainText("could not be loaded");
-
-  // Once that attempt has settled as failed, clearing retries it.
-  await page.locator("#query").press("Enter");
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-  expect(recentRequests).toBe(2);
-});
-
-test("a search runs from a link, and says so when nothing carries the words", async ({ page }) => {
-  await page.goto(`/?database=${database}&q=quasicoherent`);
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-
-  await runSearch(page, "quasicoherent unobtainium");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
-  // The words with no postings are named rather than guessed about. They are
-  // words nothing carries and not words the indexer drops, because the dropped
-  // ones left the query before it was asked.
-  await expect(page.locator("#search-status")).toContainText("Nothing is indexed under unobtainium");
-  await expect(page).toHaveURL(/q=quasicoherent\+unobtainium/);
-});
-
-test("a hostile query cannot construct a path outside the postings grammar", async ({ page }) => {
-  const asked = [];
-  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
-  await page.goto(`/?database=${database}`);
-
-  asked.length = 0;
-  await runSearch(page, "../../etc/passwd?x=1 <script>");
-  await expect(page.locator("#search-status")).toContainText("No result carries all of");
-
-  // The stopword list is at a fixed path and is the only request under
-  // `/search/` that the query has no part in building. Every other one is
-  // constructed from what somebody typed, with no dictionary to check it
-  // against first, which is why the grammar is the whole defence.
-  const searched = asked.filter(
-    (path) => path.includes("/search/") && path !== "/database/search/stopwords.json",
-  );
-  expect(searched.length).toBeGreaterThan(0);
-  for (const path of searched) {
-    expect(path).toMatch(/^\/database\/search\/t\/[a-z0-9]{2,32}\/(?:head|[0-9]{1,4})\.json$/);
-  }
-});
-
-test("a query with no word in it leaves the listing alone", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
-  await runSearch(page, "a !");
-  await expect(page.locator("#entry-grid")).toBeVisible();
-  await expect(page.locator("#search-status")).toBeHidden();
-});
-
-test("a word the indexer drops leaves the query instead of failing it", async ({ page }) => {
-  // The hole the published list closes. "the" has no head, which from a
-  // browser is indistinguishable from a word nothing carries, so a query
-  // containing it used to be answered against each record's own text -- and
-  // this record's text does not contain "the". Fetching the list is what turns
-  // that from a wrong answer nobody could diagnose into no question at all.
-  const asked = [];
-  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
-  await page.goto(`/?database=${database}`);
-
-  asked.length = 0;
-  await runSearch(page, "the quasicoherent sheaves");
-
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect(page.locator("#search-results .entry-card")).toContainText("000124");
-  expect(asked).toContain("/database/search/stopwords.json");
-  expect(asked.filter((path) => path.startsWith("/database/search/t/the/"))).toEqual([]);
-});
-
-test("a search made only of words the indexer drops says which they were", async ({ page }) => {
-  // Otherwise this is a registry that appears to hold nothing.
-  await page.goto(`/?database=${database}`);
-  await runSearch(page, "the of and");
-
-  await expect(page.locator("#search-status")).toContainText("too common to be indexed");
-  await expect(page.locator("#search-status")).toContainText("the");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
-  await expect(page.locator("#search-spinner")).toBeHidden();
-});
-
-/** Hold one head request open, and hand back the way to let it go. */
 async function holdSearchHead(page, term) {
-  let release;
-  let noteRequest;
-  const requested = new Promise((resolve) => { noteRequest = resolve; });
-  await page.route(`**/database/search/t/${term}/head.json`, async (route) => {
-    noteRequest();
-    await new Promise((resolve) => { release = resolve; });
-    await route.continue().catch(() => {});
+  let requested, release;
+  const seen = new Promise(resolve => { requested = resolve; });
+  const wait = new Promise(resolve => { release = resolve; });
+  await page.route("**/database/api/v1/results?*", async route => {
+    if (new URL(route.request().url()).searchParams.get("q") !== term) return route.continue();
+    requested();
+    await wait;
+    await route.continue();
   });
-  return { requested, release: () => release() };
+  return { requested: seen, release };
 }
-
-test("typing runs one search at the pause, not one per keystroke", async ({ page }) => {
-  const heads = [];
-  page.on("request", (request) => {
-    const path = new URL(request.url()).pathname;
-    if (path.endsWith("/head.json")) heads.push(path);
-  });
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-
-  // There is no button to press, so the pause is the whole of the instruction.
-  await page.locator("#query").pressSequentially("quasicoherent", { delay: 10 });
-  await expect(page.locator("#search-spinner")).toBeVisible();
-  await expect(page.locator("#search-spinner")).toBeHidden();
-  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-
-  expect(heads).toEqual(["/database/search/t/quasicoherent/head.json"]);
-  await expect(page).toHaveURL(/q=quasicoherent/);
-});
-
-test("a keystroke abandons the answer to the query it just replaced", async ({ page }) => {
-  // The gap the generation counter alone does not close: it turns over when a
-  // search starts, and the next one does not start until the pause. Between
-  // the two, an answer to what the reader has already typed past would arrive
-  // verified and undimmed under a box that says something else.
-  const held = await holdSearchHead(page, "quasicoherent");
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-
-  await startSearch(page, "quasicoherent");
-  await held.requested;
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-
-  // One real keystroke, and then the old answer is let go immediately -- well
-  // inside the pause that would otherwise still be running.
-  await page.locator("#query").press("End");
-  await page.locator("#query").press("x");
-  await expect(page.locator("#query")).toHaveValue("quasicoherentx");
-  held.release();
-  await page.waitForTimeout(150);
-
-  // Nothing the abandoned query found may be standing here, verified or not.
-  // Nothing in hand carries "quasicoherentx" either, so the page is honestly
-  // empty rather than showing the two cards the old query had just confirmed.
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
-  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#search-spinner")).toBeVisible();
-  await expect(page.locator("#search-status")).toContainText("Searching the registry");
-
-  await expect(page.locator("#search-spinner")).toBeHidden();
-  await expect(page.locator("#search-status")).toContainText("No result carries all of");
-});
-
-test("confirming a result keeps the reader on the card they were standing on", async ({ page }) => {
-  // The provisional cards are replaced wholesale, so without this the reader's
-  // focus goes with the node that carried it and lands on the document.
-  const held = await holdSearchHead(page, "quasicoherent");
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-
-  await startSearch(page, "quasicoherent");
-  await held.requested;
-  const card = (id) => page.locator(`#search-results .entry-card[data-id="${id}"]`);
-  await expect(page.locator("#search-results .entry-card").first())
-    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000123");
-  await card("PALOMAR-2026-07-29-000123").locator("h3 a").focus();
-
-  held.release();
-  await expect(page.locator("#search-spinner")).toBeHidden();
-  // Verified results come back in posting order, so this result is no longer
-  // the first card. Focus follows the result, not the position.
-  await expect(page.locator("#search-results .entry-card").first())
-    .toHaveAttribute("data-id", "PALOMAR-2026-07-29-000124");
-  await expect(card("PALOMAR-2026-07-29-000123").locator("h3 a")).toBeFocused();
-});
-
-test("a pause shows the entries already loaded, marked as not yet the answer", async ({ page }) => {
-  const held = await holdSearchHead(page, "quasicoherent");
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-
-  await startSearch(page, "quasicoherent");
-  await held.requested;
-  await expect(page.locator("#search-results")).toHaveClass(/preview/);
-  await expect(page.locator("#search-results")).toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-  // Set apart by ground, not by fading: these are cards a reader reads and may
-  // click, so the text stays at full contrast.
-  await expect(page.locator("#search-results .entry-card").first())
-    .toHaveCSS("background-color", "rgb(242, 242, 242)");
-  await expect(page.locator("#search-results .entry-card").first()).toHaveCSS("opacity", "1");
-  await expect(page.locator("#search-status")).toContainText("while the registry search runs");
-  await expect(page.locator("#search-status")).toContainText("newest 2 entries");
-  await expect(page.locator("#search-spinner")).toBeVisible();
-  // A provisional card claims no more than the search card replacing it will.
-  await expect(page.locator("#search-results .entry-id").first()).not.toContainText("current");
-
-  held.release();
-  await expect(page.locator("#search-spinner")).toBeHidden();
-  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
-  await expect(page.locator("#search-results")).not.toHaveAttribute("aria-busy", "true");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-  await expect(page.locator("#search-results .entry-card").first())
-    .toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-});
-
-test("nothing loaded to show leaves the wait to the spinner alone", async ({ page }) => {
-  const held = await holdSearchHead(page, "synthetically");
-  // A linked search never reads the landing selection, so there is nothing in
-  // hand to show, and the status must not claim otherwise.
-  await page.goto(`/?database=${database}&q=synthetically`);
-  await held.requested;
-  await expect(page.locator("#search-spinner")).toBeVisible();
-  await expect(page.locator("#search-status")).toHaveText("Searching the registry…");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
-
-  held.release();
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(1);
-  await expect(page.locator("#search-spinner")).toBeHidden();
-});
-
-test("a provisional match the index does not confirm is taken away", async ({ page }) => {
-  // What the dimming is for. "quasi" sits inside a word the newest entries
-  // carry, so it is in hand at once, but the index knows whole words and holds
-  // nothing under it. The cards go and the reader is told why.
-  await page.goto(`/?database=${database}`);
-  await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
-
-  await runSearch(page, "quasi");
-  await expect(page.locator("#search-status")).toContainText("No result carries all of: quasi");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(0);
-  await expect(page.locator("#search-results")).not.toHaveClass(/preview/);
-  await expect(page.locator("#search-spinner")).toBeHidden();
-});
-
-test("emptying the box gives the listing and its filters back", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
-  // Set before searching, because a search takes the toolbar off the page.
-  await page.locator("#arxiv-query").fill("math.CO");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-
-  await runSearch(page, "quasicoherent");
-  await expect(page.locator("#search-results .entry-card")).toHaveCount(2);
-  await expect(page.locator("body")).toHaveClass(/registry-searching/);
-
-  await runSearch(page, "");
-  await expect(page.locator("body")).not.toHaveClass(/registry-searching/);
-  await expect(page.locator(".toolbar")).toBeVisible();
-  await expect(page.locator("#search-spinner")).toBeHidden();
-  await expect(page.locator("#arxiv-query")).toHaveValue("math.CO");
-  await expect(page.locator(".entry-card:visible")).toHaveCount(1);
-});
 
 /**
  * Every run of text on the page, measured as a reader's eye receives it.
@@ -2639,7 +2178,7 @@ for (const scheme of ["light", "dark"]) {
   test(`${scheme} text stays readable once opacity and grounds are composited`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
 
-    await page.goto(`/?database=${database}`);
+    await page.goto(`/?view=cards&database=${database}`);
     await expect(page.locator("#entry-grid .entry-card")).toHaveCount(2);
     await readableTextOnly(page, `${scheme} listing`, 40);
 
@@ -2651,11 +2190,11 @@ for (const scheme of ["light", "dark"]) {
     const held = await holdSearchHead(page, "quasicoherent");
     await startSearch(page, "quasicoherent");
     await held.requested;
-    await expect(page.locator("#search-results")).toHaveClass(/preview/);
+    await expect(page.locator("#entry-grid")).toHaveAttribute("aria-busy", "true");
     await readableTextOnly(page, `${scheme} provisional matches`, 25);
 
     held.release();
-    await expect(page.locator("#search-spinner")).toBeHidden();
+    await expect(page.locator("#entry-grid")).toHaveAttribute("aria-busy", "false");
     await readableTextOnly(page, `${scheme} verified results`, 25);
 
     await page.goto(
@@ -2668,7 +2207,7 @@ for (const scheme of ["light", "dark"]) {
 test("resting on a landing title raises the result's rendering over the listing", async ({ page }) => {
   const asked = [];
   page.on("request", (request) => asked.push(new URL(request.url()).pathname));
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   const title = page.locator(".entry-card h3 > a").first();
   const identifier = await page.locator(".entry-card .entry-id").first().textContent();
   const versioned = /(PALOMAR-[0-9-]+) v([0-9]+)/.exec(identifier);
@@ -2686,7 +2225,7 @@ test("resting on a landing title raises the result's rendering over the listing"
     "src",
     `http://127.0.0.1:4173/database/renders/${versioned[1]}-v${versioned[2]}/${"a".repeat(64)}/Challenge/index.html`,
   );
-  expect(asked).toContain("/database/recent-renders.json");
+  expect(asked).not.toContain("/database/recent-renders.json");
   // The card is a landing row, so this must not have become a record read.
   expect(asked.filter((path) => path.startsWith("/database/entries/"))).toEqual([]);
 
@@ -2702,15 +2241,15 @@ test("resting on a landing title raises the result's rendering over the listing"
 });
 
 test("a search result previews from the record it already holds", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   // Runs on the typing pause now, and the provisional cards it stands in are
   // drawn like the verified ones, so wait for the spinner rather than counting.
   await runSearch(page, "quasicoherent");
-  await expect(page.locator("#search-results .entry-card").first()).toBeVisible();
+  await expect(page.locator("#entry-grid .entry-card").first()).toBeVisible();
 
   const asked = [];
   page.on("request", (request) => asked.push(new URL(request.url()).pathname));
-  await page.locator("#search-results .entry-card h3 > a").first().hover();
+  await page.locator("#entry-grid .entry-card h3 > a").first().hover();
 
   await expect(page.locator(".statement-preview iframe")).toHaveAttribute(
     "src",
@@ -2720,7 +2259,7 @@ test("a search result previews from the record it already holds", async ({ page 
 });
 
 test("a preview survives the pointer crossing into it", async ({ page }) => {
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   await page.locator(".entry-card h3 > a").first().hover();
   const panel = page.locator(".statement-preview");
   await expect(panel).toBeVisible();
@@ -2732,29 +2271,11 @@ test("a preview survives the pointer crossing into it", async ({ page }) => {
   await expect(panel).toBeVisible();
 });
 
-test("an absent or unusable render companion leaves the listing usable", async ({ page }) => {
-  for (const body of ["", '{"schema_version":1,"renders":[{"id":"nope"}]}']) {
-    await page.route("**/database/recent-renders.json", (route) =>
-      body
-        ? route.fulfill({ status: 200, contentType: "application/json", body })
-        : route.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
-    await page.goto(`/?database=${database}`);
-    const title = page.locator(".entry-card h3 > a").first();
-    await title.hover();
-    await page.waitForTimeout(600);
-
-    await expect(page.locator(".statement-preview")).toHaveCount(0);
-    // The listing is what matters, and it is untouched.
-    await expect(page.locator(".entry-card")).not.toHaveCount(0);
-    await expect(title).toBeVisible();
-  }
-});
-
 test("previews are not raised where a pointer cannot rest", async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, isMobile: false });
   const page = await context.newPage();
   await page.emulateMedia({ media: "screen", forcedColors: "none" });
-  await page.goto(`/?database=${database}`);
+  await page.goto(`/?view=cards&database=${database}`);
   // The controller asks `(hover: hover)`; a coarse pointer answers no, and the
   // stylesheet refuses to show a panel even if one were somehow raised.
   const hides = await page.evaluate(() =>

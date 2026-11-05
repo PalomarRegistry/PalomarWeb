@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { init, parse } from "es-module-lexer";
+import { entryReferenceLinks } from "../assets/bibliography.mjs";
 
 import {
   buildSite,
@@ -19,6 +20,26 @@ test("deployment build versions coupled browser assets", async () => {
   const destination = path.join(root, output);
   try {
     await buildSite({ output, version: "0123456789abcdef" });
+    const referenceUrls = [
+      "https://arxiv.org/abs/2605.20695", "https://doi.org/10.1137/0327028",
+      "https://hexagonmath.org/2610.00022", "https://www.erdosproblems.com/501",
+      "https://isa-afp.org/entries/Example.html", "https://mathoverflow.net/a/449571",
+      "https://oeis.org/A116485", "https://zbmath.org/3254142",
+      "https://proofatlas.ai/formalizations/example/", "https://projecteuclid.org/example",
+      "https://eudml.org/doc/158244",
+    ];
+    const references = entryReferenceLinks({
+      mathematical_sources: referenceUrls.map((identifier) => ({
+        identifier, title: "Example source", relationship: "background",
+      })),
+      related_formalizations: [],
+    });
+    assert.equal(references.length, 11);
+    for (const { icon } of references) {
+      const file = `assets/reference-icons/${icon}`;
+      assert.ok(shippedFiles.includes(file), `${file} must be included in deployment`);
+      assert.deepEqual(await readFile(path.join(destination, file)), await readFile(path.join(root, file)));
+    }
     const index = await readFile(path.join(destination, "index.html"), "utf8");
     const about = await readFile(path.join(destination, "about.html"), "utf8");
     const app = await readFile(path.join(destination, "assets", "app.js"), "utf8");
@@ -52,10 +73,6 @@ test("deployment build versions coupled browser assets", async () => {
       path.join(destination, "assets", "registry-loading.mjs"),
       "utf8",
     );
-    const searching = await readFile(
-      path.join(destination, "assets", "searching.mjs"),
-      "utf8",
-    );
     const notFound = await readFile(path.join(destination, "404.html"), "utf8");
     await readFile(path.join(destination, "llms.txt"), "utf8");
     assert.match(index, /assets\/style\.css\?v=0123456789abcdef/);
@@ -76,7 +93,7 @@ test("deployment build versions coupled browser assets", async () => {
     assert.match(app, /\.\/formalization-presentation\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/registry-loading\.mjs\?v=0123456789abcdef/);
-    assert.match(app, /\.\/searching\.mjs\?v=0123456789abcdef/);
+    assert.match(app, /\.\/registry-page\.mjs\?v=0123456789abcdef/);
     assert.match(app, /\.\/source-preservation\.mjs\?v=0123456789abcdef/);
     assert.match(preservation, /\.\/security\.mjs\?v=0123456789abcdef/);
     assert.match(rendering, /\.\/security\.mjs\?v=0123456789abcdef/);
@@ -100,8 +117,6 @@ test("deployment build versions coupled browser assets", async () => {
       formalizationPresentation,
       /\.\/source-preservation\.mjs\?v=0123456789abcdef/,
     );
-    assert.match(searching, /\.\/loading\.mjs\?v=0123456789abcdef/);
-    assert.match(searching, /\.\/security\.mjs\?v=0123456789abcdef/);
     await readFile(path.join(destination, "assets", "loading.mjs"), "utf8");
     await readFile(path.join(destination, "assets", "security.mjs"), "utf8");
 
@@ -144,7 +159,7 @@ test("module versioning changes imports rather than lookalike strings or package
   const source = [
     'import helpers from "./security.mjs";',
     'import rootHelpers from "/assets/rendering.js";',
-    'import parentHelpers from "../assets/searching.mjs";',
+    'import parentHelpers from "../assets/registry-page.mjs";',
     'const description = \'from "./loading.mjs";\';',
     'import packageValue from "package-name";',
     'const lazy = import("./loading.mjs");',
@@ -153,7 +168,7 @@ test("module versioning changes imports rather than lookalike strings or package
 
   assert.match(versioned, /from "\.\/security\.mjs\?v=release-1"/);
   assert.match(versioned, /from "\/assets\/rendering\.js\?v=release-1"/);
-  assert.match(versioned, /from "\.\.\/assets\/searching\.mjs\?v=release-1"/);
+  assert.match(versioned, /from "\.\.\/assets\/registry-page\.mjs\?v=release-1"/);
   assert.match(versioned, /import\("\.\/loading\.mjs\?v=release-1"\)/);
   assert.match(versioned, /const description = 'from "\.\/loading\.mjs";'/);
   assert.match(versioned, /from "package-name"/);

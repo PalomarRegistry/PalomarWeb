@@ -14,6 +14,7 @@ import {
   validateAvailability,
   validateEntry,
   validateRecent,
+  validateQueryPage,
   validateRecentRenders,
   validateSubjectHead,
   validateSubjectPage,
@@ -97,6 +98,42 @@ export function createRegistryLoader({
 
   async function loadRecent(databaseBase) {
     return validateRecent(await fetchJson(recentUrl(databaseBase)));
+  }
+
+  async function loadResults(parameters, { signal } = {}) {
+    const { databaseBase } = dataSource();
+    const url = new URL("api/v1/results", databaseBase);
+    for (const name of ["q", "arxiv", "msc", "trust", "order", "from", "to", "cursor"]) {
+      if (parameters.has(name)) url.searchParams.set(name, parameters.get(name));
+    }
+    const response = await fetch(url, { signal });
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Registry returned no response body");
+    let size = 0;
+    const chunks = [];
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      size += next.value.length;
+      if (size > 512 * 1024) {
+        await reader.cancel();
+        throw new Error("Registry response exceeds its byte limit");
+      }
+      chunks.push(next.value);
+    }
+    const raw = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { raw.set(chunk, offset); offset += chunk.length; }
+    let value;
+    try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)); }
+    catch { throw new Error(`Registry returned an invalid response (HTTP ${response.status})`); }
+    if (!response.ok) {
+      const error = new Error(typeof value.message === "string" ? value.message.slice(0, 512) : "Registry is temporarily unavailable");
+      error.status = response.status;
+      error.code = value.error;
+      throw error;
+    }
+    return validateQueryPage(value);
   }
 
   /**
@@ -215,6 +252,7 @@ export function createRegistryLoader({
 
   return {
     dataSource,
+    loadResults,
     fetchJson,
     loadAvailabilityBounded,
     loadRecent,

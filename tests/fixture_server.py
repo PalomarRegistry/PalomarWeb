@@ -9,6 +9,7 @@ import json
 import pathlib
 import re
 import unicodedata
+from urllib.parse import parse_qs, urlsplit
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -46,7 +47,17 @@ def entry(identifier: str, lines: int, version: int = 1) -> dict:
         "version": version,
         "status": "registered",
         "title": f"Fixture {identifier} version {version}",
-        "abstract": "A browser confinement fixture for the registry, about the quasicoherent behaviour of a synthetic result.",
+        # Carries what submitters actually write: an identifier they marked
+        # as a code span, a tick they left unpaired, and a claim laid out
+        # over indented lines rather than in one paragraph.
+        "abstract": (
+            "A browser confinement fixture for the registry, about the "
+            "quasicoherent behaviour of a synthetic result.\n"
+            "  It classifies `AddCircle (1 : \u211d)` by `\u2124` and notes a 90` turn.\n"
+            "  It holds for mu \u2265 2 and every n > 3, on 2^kappa.\n"
+            "    (1) the first indented hypothesis\n"
+            "    (2) the second indented hypothesis"
+        ),
         "authors": [{
             "name": "Example",
             "orcid": "0000-0002-1825-0097",
@@ -456,8 +467,9 @@ class Handler(SimpleHTTPRequestHandler):
         payload: bytes,
         content_type: str,
         cache_control: str = "no-store",
+        status: int = 200,
     ) -> None:
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", cache_control)
@@ -479,6 +491,52 @@ class Handler(SimpleHTTPRequestHandler):
             query = self.path[len(path) :]
             self.path = clean_pages[path] + query
             path = clean_pages[path]
+        if path == "/database/api/v1/results":
+            params = {key: value[0] for key, value in parse_qs(urlsplit(self.path).query).items()}
+            error = None
+            if params.get("arxiv") and not re.fullmatch(r"[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?", params["arxiv"]):
+                error = "Invalid arXiv code"
+            if params.get("msc") and not re.fullmatch(r"(?:[0-9]{1,2}|[0-9]{2}[A-Z-][0-9]{0,2})", params["msc"].upper()):
+                error = "Invalid MSC prefix"
+            if params.get("from") and params.get("to") and params["from"] > params["to"]:
+                error = "The date range ends before it begins"
+            if params.get("order", "updated") not in ("updated", "registered"):
+                error = "Invalid order"
+            if len(params.get("q", "").encode()) > 4096 or len(set(search_terms(params.get("q", "")))) > 20:
+                error = "Use at most 4096 bytes and 20 distinct search words"
+            if error:
+                self.send_bytes(json.dumps({"error": "invalid_query", "message": error}).encode(), "application/json", status=400)
+                return
+            current = {}
+            for item in ENTRIES.values():
+                if item["id"] not in current or item["version"] > current[item["id"]]["version"]:
+                    current[item["id"]] = item
+            versions = collections.Counter(item["id"] for item in ENTRIES.values())
+            rows = []
+            for item in current.values():
+                row = recent_row(item, versions[item["id"]])
+                row.update(abbreviated=False, source_omitted=False, preview={
+                    "version": item.get("registry_correction", {}).get("based_on", {}).get("version", item["version"]),
+                    "artifact_tree_sha256": item["challenge_render"]["artifact_tree_sha256"],
+                })
+                rows.append(row)
+            words = set(search_terms(params.get("q", ""))) - SEARCH_STOPWORDS
+            def matches(row):
+                text = " ".join([row["title"], row["abstract"], row["source"]["repository"],
+                    *(a["name"] for a in row["authors"]), *row["formalization"]["theorem_names"]])
+                date = row["id"][8:18] if params.get("order") == "registered" else row["published_at"][:10]
+                return ((not params.get("q", "").strip() or bool(words)) and words <= set(search_terms(text))
+                    and (not params.get("arxiv") or params["arxiv"] in row["classification"]["arxiv"])
+                    and (not params.get("msc") or any(code.startswith(params["msc"].upper()) for code in row["classification"]["msc2020"]))
+                    and (params.get("trust", "all") == "all" or params["trust"] == row["trust"]["level"])
+                    and (not params.get("from") or date >= params["from"])
+                    and (not params.get("to") or date <= params["to"]))
+            rows = [r for r in rows if matches(r)]
+            rows.sort(key=lambda r: (r["id"] if params.get("order") == "registered" else r["published_at"], r["id"]), reverse=True)
+            self.send_bytes(json.dumps({"schema_version": 1, "revision": 1, "release": "a" * 64,
+                "totals": {"results": len(current), "projects": len({r["source"]["repository"] for r in current.values()})},
+                "entries": rows[:25], "previous": None, "next": None, "dropped": sorted(set(search_terms(params.get("q", ""))) & SEARCH_STOPWORDS), "message": "Enter a searchable word; common words are ignored." if params.get("q", "").strip() and not words else None}).encode(), "application/json")
+            return
         if path in {
             "/database/source-availability.json",
             "/database/source-availability-missing.json",
@@ -718,7 +776,12 @@ html, body {{ background: var(--palomar-paper); color: var(--palomar-ink); }}
                     {
                         "name": "Example.theorem",
                         "declaration": (
-                            "theorem Example.theorem : Eq Nat.zero Nat.zero"
+                            # Carries the glyph classes core notation actually
+                            # emits and Courier New cannot draw: a Greek binder
+                            # name, the quantifier and arrow, and the marker Lean
+                            # leaves where it elided a subterm.
+                            "theorem Example.theorem : "
+                            "∀ {α : Type u_1} (a b : α), Eq a b → Eq b ⋯"
                         ),
                     }
                 ],

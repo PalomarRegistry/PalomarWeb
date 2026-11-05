@@ -253,3 +253,31 @@ export function identifiedEntry(serial, overrides = {}) {
   }
   return value;
 }
+
+const BUNDLED_TOOLS = ["lake", "lean", "leanexport", "leanchecker", "nanoda_bin", "con-ron", "bwrap"];
+
+/** The schema-5 shape: verified by the toolchain's own `lake comparator`. */
+export function toolchainEntry(overrides = {}) {
+  const base = entry();
+  const {
+    comparator_commit, lean4export_commit, landrun_commit, nanoda_commit, ...verification
+  } = base.verification;
+  const { landrun_commit: renderLandrun, ...render } = base.challenge_render;
+  return {
+    ...base,
+    schema_version: 5,
+    verification: {
+      ...verification,
+      toolchain_commit: "5".repeat(40),
+      tool_digests: Object.fromEntries(BUNDLED_TOOLS.map((tool, index) => [tool, String(index).repeat(64)])),
+      kernels: [
+        { name: "nanoda", argv: ["/toolchain/bin/nanoda_bin"] },
+        { name: "con-ron", argv: ["/toolchain/bin/con-ron"] },
+      ],
+      protected_config_sha256: "6".repeat(64),
+      bwrap_source_tag: "v0.12.0",
+    },
+    challenge_render: { ...render, bwrap_source_tag: "v0.12.0" },
+    ...overrides,
+  };
+}

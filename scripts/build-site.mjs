@@ -30,9 +30,10 @@ const browserModuleFiles = [
   "presentation-text.mjs",
   "registry-dates.mjs",
   "registry-loading.mjs",
+  "registry-page.mjs",
   "rendering.js",
-  "searching.mjs",
   "security.mjs",
+  "searching.mjs",
   "source-preservation.mjs",
   "statement-preview.mjs",
   "subject-pages.mjs",
@@ -44,7 +45,20 @@ const assetFiles = [
 ];
 // Copied verbatim into assets/, keeping their subdirectory. Listed separately
 // because they are data rather than code: no version query, no rewriting.
-const assetDataFiles = ["data/arxiv-categories.json", "data/msc2020-codes.json"];
+const assetDataFiles = [
+  "data/arxiv-categories.json", "data/msc2020-codes.json",
+  "reference-icons/arxiv.png",
+  "reference-icons/doi.png",
+  "reference-icons/hexagon.svg",
+  "reference-icons/erdosproblems.png",
+  "reference-icons/afp.ico",
+  "reference-icons/mathoverflow.ico",
+  "reference-icons/oeis.ico",
+  "reference-icons/zbmath.ico",
+  "reference-icons/proofatlas.svg",
+  "reference-icons/euclid.png",
+  "reference-icons/eudml.ico",
+];
 /**
  * Every file the deployment carries, as paths from the repository root.
  *

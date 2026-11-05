@@ -61,8 +61,9 @@
         <p>
           A repository version is registrable only after mechanical verification
           succeeds and an automated review identifies no blocking problem. The
-          mechanical check uses both Lean’s kernel and the independent NanoDa
-          kernel; the other checks are performed by a language model.
+          mechanical check uses Lean’s kernel and independent kernels. Each
+          entry’s mechanical assurance names the independent kernels used for
+          that verification; the other checks are performed by a language model.
         </p>
         <ol class="assertions">
           <li>
@@ -73,8 +74,8 @@
             and that it uses only the axioms allowed by Palomar’s current
             <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#23-comparator-configuration">Comparator
             configuration policy</a>. This
-            exported proof is replayed through both Lean’s kernel and the
-            independent NanoDa kernel. The comparison is performed using the
+            exported proof is replayed through Lean’s kernel and the independent
+            kernels recorded in the entry. The comparison is performed using the
             <a href="https://github.com/leanprover/comparator">Comparator</a>
             tool, which holds the advertised statement apart from its proof, so
             that a proof cannot quietly weaken the statement it claims to
@@ -209,6 +210,11 @@
           configuration path must match the existing entry.
         </p>
         <p>
+          If you would like your code to be updated (by AI) as Lean and Mathlib
+          get updated, you may submit your project to
+          <a href="https://github.com/Vilin97/lean-pool/blob/main/CONTRIBUTING.md#submitting-a-project">Lean Pool</a>.
+        </p>
+        <p>
           Every version stays permanently resolvable at
           its explicit version URL, while an identifier on its own resolves to
           the newest active version.
@@ -302,7 +308,9 @@
             claim about one commit of it rather than hosting the development.
             Palomar does keep a public preservation fork of every registered
             source, solely as a backup for the registry in the event that the
-            original repository disappears.
+            original repository disappears. If you would like your code to be
+            hosted and maintained, you may submit your project to
+            <a href="https://github.com/Vilin97/lean-pool/blob/main/CONTRIBUTING.md#submitting-a-project">Lean Pool</a>.
           </li>
         </ol>
       </section>
@@ -336,9 +344,12 @@
           provenance with the append-only registry record. Those
           entries record the SHA-256 digest of the report and the exact workflow
           revision, alongside the statement and proof digests, Lean toolchain,
-          and exact Comparator,
+          and the exact verification tools used (for records verified by the
+          Lean toolchain's own <code>lake comparator</code>, the toolchain
+          commit and the digests of the tools it bundles; for earlier records,
+          the Comparator,
           <a href="https://github.com/leanprover/lean4export">lean4export</a>,
-          and Landrun revisions used, which together are enough to reproduce the
+          and Landrun revisions), which together are enough to reproduce the
           run from the published record. One caveat: Mathlib’s build cache is
           fetched from a mutable store, so a later re-run may not retrieve
           identical artifacts. Building Mathlib from source removes that
@@ -350,9 +361,9 @@
           compiles the statement and the proof in separate sandboxes, exports
           both environments with <code>lean4export</code>, checks that the
           declarations the statement depends on are identical in each. Palomar
-          then requires the exported proof to be accepted from scratch by both
-          Lean’s kernel and <code>nanoda</code>, an independent kernel
-          implementation. A proof that survives those checks cannot have relied
+          then requires the exported proof to be accepted from scratch by
+          Lean’s kernel and the independent kernels recorded with each entry.
+          A proof that survives those checks cannot have relied
           on a metaprogram tampering with the elaborator’s state or misreporting
           its result.
         </p>
@@ -369,9 +380,11 @@
           Lean’s replay is a second pass rather than a second implementation: it
           guards against a proof that manipulated the elaborator, not against a
           bug in Lean’s kernel itself. Palomar therefore always requires
-          <code>nanoda</code> as a genuinely independent check and publishes the
-          exact NanoDa commit with every registry entry. We encourage readers to
-          reproduce either check themselves:
+          <code>nanoda</code> as a genuinely independent check and publishes
+          the exact kernels used with every registry entry: the NanoDa commit
+          for earlier records, the toolchain-bundled kernels and their digests
+          for records verified by <code>lake comparator</code>. We encourage
+          readers to reproduce the recorded checks themselves:
         </p>
         <ul class="checkers">
           <li>
@@ -392,8 +405,10 @@
         <p>
           The Lean reference manual’s
           <a href="https://lean-lang.org/doc/reference/latest/ValidatingProofs/">guide to validating a Lean proof</a>
-          describes both, along with further checkers collected in the
-          <a href="https://arena.lean-lang.org/">Lean Kernel Arena</a>.
+          describes Lean’s replay and NanoDa. For additional recorded checkers
+          such as <code>con-ron</code>, consult the
+          <a href="https://arena.lean-lang.org/">Lean Kernel Arena</a> and the
+          entry’s archived mechanical report.
         </p>
         <p>
           In addition to independently checking that the formal proof proves the
@@ -409,6 +424,12 @@
           definitions actually reached from those sources. Each registry entry
           displays the compared declarations, with their types available on
           hover, and links the exact statement file at the exact commit.
+        </p>
+        <p>
+          New submissions must use Lean's <code>module</code> system throughout
+          their source and keep each source file within 10,000 lines. Scope,
+          exclusions, and migration guidance are in the
+          <a href="/how-to-submit#lean-source-requirements">submission guide</a>.
         </p>
       </section>
 
@@ -487,6 +508,25 @@
           demand to merit the added code complexity. If you are interested,
           please raise the issue in the
           <a href="https://leanprover.zulipchat.com/#narrow/channel/621638-Palomar">Palomar channel on the Lean Zulip</a>.
+        </p>
+      </section>
+
+      <section id="other-lean-code-efforts">
+        <h2>Are there other efforts to organize or curate large amounts of Lean code?</h2>
+        <p>
+          Yes, there are several. Lean FRO-supported libraries include
+          <a href="https://github.com/leanprover-community/mathlib4">Mathlib</a>,
+          <a href="https://www.cslib.io/">CSLib</a>,
+          <a href="https://github.com/TauCetiProject/TauCeti">Tau Ceti</a>, and
+          <a href="https://github.com/leanprover/hex">Hex</a>. The Lean FRO also
+          runs <a href="https://reservoir.lean-lang.org/">Reservoir</a>, which is
+          an automatic index of Lean packages meeting its
+          <a href="https://reservoir.lean-lang.org/inclusion-criteria">inclusion
+          criteria</a>. In addition there are multiple additional libraries or
+          registries of Lean code not affiliated with the Lean FRO, many of which
+          are announced at
+          <a href="https://leanprover.zulipchat.com/#narrow/channel/579630-Project-announcements">this
+          Lean Zulip channel</a>.
         </p>
       </section>
 

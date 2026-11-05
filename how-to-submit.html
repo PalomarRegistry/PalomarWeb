@@ -101,6 +101,38 @@
           repository snapshot.
         </p>
 
+        <h3 id="lean-source-requirements">Use modules and keep source files manageable</h3>
+        <p>
+          Every regular Lean source file in the submitted repository must use
+          <code>module</code> and contain at most <strong>10,000 physical lines</strong>.
+          This includes unused files, generated certificates, contained projects,
+          and local path dependencies. Blank and comment lines count; LF and CRLF
+          delimit one line each, an unterminated final line counts, and a final
+          newline adds no line. Lake configuration files named <code>lakefile.lean</code> are exempt only
+          from the module header and still have the line cap. Files under
+          <code>.git</code> or <code>.lake</code> are excluded; <code>.lean</code>
+          symbolic links are refused. Separately declared substantive source repositories receive
+          the same checks; external pinned Git dependencies are outside this length cap.
+        </p>
+        <p>
+          Put module documentation after the <code>module</code> header. When porting,
+          make the declarations needed by clients public, use <code>public import</code>
+          where the public interface needs an import, and expose definition bodies
+          as needed. See <a href="https://lean-lang.org/doc/reference/latest/Source-Files-and-Modules/#modules-and-visibility">Lean's module reference</a>.
+          Split large files into smaller modules or reduce generated certificates,
+          then rebuild and rerun Comparator before submitting the corrected commit.
+          The Challenge retains its stricter 1,000-line and 100 KiB limits.
+        </p>
+        <p>
+          The form and HTTPS intake run bounded checks of the submitted repository
+          at your exact commit and report incomplete scans explicitly. Separately
+          declared substantive repositories are checked by preparation. Full verification scans every
+          submitted source before builds and confirms headers with Lean. These
+          requirements apply to ordinary submissions and revisions; metadata
+          corrections keep their registered source. The binding rules are in
+          <a href="https://github.com/PalomarRegistry/PalomarPolicy/blob/main/CONTRIBUTING.md#lean-source-requirements">the submission standard</a>.
+        </p>
+
         <h3 id="comparator-requirements">What does Comparator require?</h3>
         <p>
           The Challenge module states the result independently and may use

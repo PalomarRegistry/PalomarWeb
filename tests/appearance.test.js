@@ -90,6 +90,39 @@ test("all page colours are palette variables", () => {
   assert.deepEqual(literals, []);
 });
 
+// Every code surface routes through --mono, and the one that matters most is
+// the core-notation audit view: Lean writes it in Greek binder names, ∀ and →,
+// and the ⋯ it leaves where it elided a subterm. Courier New is missing several
+// of those, and the browser substituted another face for exactly those
+// characters, which is the finding that produced this stack. A covering family
+// has to be named for each platform, because the generic at the end of the list
+// is where a reader lands when none of the named ones is installed -- and on
+// Windows that generic resolves to Courier New again. Which faces Chromium
+// actually reaches for is asserted in the browser suite; this only holds the
+// declaration still.
+test("the monospace stack names a math-capable family on every platform", () => {
+  const [, declaration] = css.match(/--mono:\s*([^;]+);/) ?? [];
+  assert.ok(declaration, "style.css declares no --mono stack");
+  const families = declaration
+    .split(",")
+    .map((family) => family.trim().replace(/^"|"$/g, ""));
+  assert.equal(families.at(-1), "monospace", "--mono must end in the generic family");
+  assert.ok(
+    !families.includes("Courier New"),
+    "Courier New carries no Greek letters or mathematical operators",
+  );
+  for (const [platform, candidates] of [
+    ["Apple", ["ui-monospace", "SF Mono", "Menlo"]],
+    ["Windows", ["Consolas", "Cascadia Mono"]],
+    ["Linux", ["DejaVu Sans Mono", "Liberation Mono"]],
+  ]) {
+    assert.ok(
+      candidates.some((family) => families.includes(family)),
+      `--mono names no math-capable family for ${platform}`,
+    );
+  }
+});
+
 // Driven by the build manifest rather than a list written here: a page added
 // to the deployment and forgotten by this test is exactly the page that ships
 // without the chrome colours, and `subject.html` had already been missed once.

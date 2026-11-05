@@ -700,3 +700,17 @@ test("a prefix the site builds documents out of is not itself requested", async 
   ]);
   assert.deepEqual([...documents], []);
 });
+
+test("deployment health verifies the query listing against canonical entries", async () => {
+  const fixture = oneEntryRegistry();
+  const query = { totals: { results: 1, projects: 1 }, entries: [{ ...fixture.recent,
+    preview: { version: 1, artifact_tree_sha256: fixture.entry.challenge_render.artifact_tree_sha256 } }], next: null };
+  fixture.responses.set("https://data.example/api/v1/results", query);
+  const validators = { ...registryValidators, validateQueryPage: value => value };
+  let result = await publicDataState("https://data.example", responseFrom(fixture.responses), validators);
+  assert.equal(result.healthy, true);
+  query.entries = [];
+  result = await publicDataState("https://data.example", responseFrom(fixture.responses), validators);
+  assert.equal(result.healthy, false);
+  assert.match(result.reason, /query pagination omitted/);
+});
