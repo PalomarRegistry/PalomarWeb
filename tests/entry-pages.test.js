@@ -5,6 +5,7 @@ import {
   expandDetailsForTarget,
   renderChallengePage,
   renderEntryPage,
+  targetForFragment,
 } from "../assets/entry-pages.mjs";
 
 function classList() {
@@ -216,6 +217,32 @@ test("entry routes preserve exact tombstones and load failures", async (t) => {
     assert.equal(view.content.hidden, true);
     assert.deepEqual(view.content.children, []);
   });
+});
+
+test("malformed entry fragments do not discard successfully rendered content", async (t) => {
+  for (const hash of ["#%", "#%GG", "#%E0%A4%A"]) {
+    await t.test(hash, async () => {
+      const rendered = node();
+      const { settings, view } = entryDependencies({
+        location: { hash },
+        loadEntry: async () => ({ entry: { id: "PALOMAR-2026-08-08-000001", version: 2 } }),
+        renderEntry: async (_loaded, content) => content.append(rendered),
+      });
+      await renderEntryPage(settings);
+      assert.equal(view.status.hidden, true);
+      assert.equal(view.content.hidden, false);
+      assert.deepEqual(view.content.children, [rendered]);
+    });
+  }
+});
+
+test("fragment targets decode once and ignore empty, missing, or malformed targets", () => {
+  const target = {};
+  const document = { getElementById: id => id === "section α%20" ? target : null };
+  assert.equal(targetForFragment(document, "#section%20%CE%B1%2520"), target);
+  for (const fragment of ["", "#", "#absent", "section", "#%", "#%FF"]) {
+    assert.equal(targetForFragment(document, fragment), null);
+  }
 });
 
 test("expandDetailsForTarget opens the disclosure that would hide a fragment", () => {

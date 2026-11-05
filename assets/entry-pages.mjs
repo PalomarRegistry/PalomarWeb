@@ -7,6 +7,18 @@ function parsedVersion(value) {
   return Number.isSafeInteger(version) ? version : null;
 }
 
+/** A malformed optional fragment must not turn a readable entry into an error. */
+export function targetForFragment(document, fragment) {
+  if (!fragment.startsWith("#") || fragment.length === 1) return null;
+  let id;
+  try {
+    id = decodeURIComponent(fragment.slice(1));
+  } catch {
+    return null;
+  }
+  return document.getElementById(id);
+}
+
 /**
  * Open the disclosures that would otherwise hide a fragment target.
  *
@@ -73,9 +85,7 @@ export async function renderEntryPage({
     await renderEntry(loaded, content);
     status.hidden = true;
     content.hidden = false;
-    const anchorTarget = requestedHash.startsWith("#")
-      ? document.getElementById(decodeURIComponent(requestedHash.slice(1)))
-      : null;
+    const anchorTarget = targetForFragment(document, requestedHash);
     if (anchorTarget) {
       expandDetailsForTarget(anchorTarget);
       anchorTarget.scrollIntoView();

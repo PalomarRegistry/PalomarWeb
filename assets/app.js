@@ -15,6 +15,7 @@ import {
   expandDetailsForTarget,
   renderChallengePage,
   renderEntryPage,
+  targetForFragment,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
 import { entryReferenceLinks, mathematicalSourceUrl } from "./bibliography.mjs";
@@ -1223,7 +1224,7 @@ if (document.body.dataset.page === "entry") {
     if (fragmentIndex === -1) return;
     const fragment = href.slice(fragmentIndex);
     if (fragment === "#") return;
-    const target = document.getElementById(decodeURIComponent(fragment.slice(1)));
+    const target = targetForFragment(document, fragment);
     if (target) expandDetailsForTarget(target);
   });
   // The click above covers links on this page and the initial render covers a
@@ -1232,9 +1233,7 @@ if (document.body.dataset.page === "entry") {
   // browser has already scrolled to a collapsed heading, so the section is
   // opened and the target brought back into view.
   window.addEventListener("hashchange", () => {
-    const fragment = window.location.hash.slice(1);
-    if (!fragment) return;
-    const target = document.getElementById(decodeURIComponent(fragment));
+    const target = targetForFragment(document, window.location.hash);
     if (!target) return;
     expandDetailsForTarget(target);
     target.scrollIntoView();
