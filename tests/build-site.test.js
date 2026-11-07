@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { init, parse } from "es-module-lexer";
+import { entryReferenceLinks } from "../assets/bibliography.mjs";
 
 import {
   buildSite,
@@ -19,6 +20,26 @@ test("deployment build versions coupled browser assets", async () => {
   const destination = path.join(root, output);
   try {
     await buildSite({ output, version: "0123456789abcdef" });
+    const referenceUrls = [
+      "https://arxiv.org/abs/2605.20695", "https://doi.org/10.1137/0327028",
+      "https://hexagonmath.org/2610.00022", "https://www.erdosproblems.com/501",
+      "https://isa-afp.org/entries/Example.html", "https://mathoverflow.net/a/449571",
+      "https://oeis.org/A116485", "https://zbmath.org/3254142",
+      "https://proofatlas.ai/formalizations/example/", "https://projecteuclid.org/example",
+      "https://eudml.org/doc/158244",
+    ];
+    const references = entryReferenceLinks({
+      mathematical_sources: referenceUrls.map((identifier) => ({
+        identifier, title: "Example source", relationship: "background",
+      })),
+      related_formalizations: [],
+    });
+    assert.equal(references.length, 11);
+    for (const { icon } of references) {
+      const file = `assets/reference-icons/${icon}`;
+      assert.ok(shippedFiles.includes(file), `${file} must be included in deployment`);
+      assert.deepEqual(await readFile(path.join(destination, file)), await readFile(path.join(root, file)));
+    }
     const index = await readFile(path.join(destination, "index.html"), "utf8");
     const about = await readFile(path.join(destination, "about.html"), "utf8");
     const app = await readFile(path.join(destination, "assets", "app.js"), "utf8");

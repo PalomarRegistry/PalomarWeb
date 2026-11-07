@@ -1041,6 +1041,42 @@ footer {
   overflow-wrap: anywhere;
 }
 
+.entry-references {
+  margin-top: 1rem;
+}
+
+.reference-heading {
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.reference-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.25rem;
+  list-style: none;
+  padding: 0;
+  margin: .35rem 0 0;
+}
+
+.reference-links li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reference-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.reference-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex: none;
+}
+
 .version-notice {
   margin-bottom: 1.5rem;
   padding: .85rem 1rem;
