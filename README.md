@@ -1,5 +1,16 @@
 # Palomar Web
 
+Entry headings show a References row for recognized sites in the mathematical
+sources and related formalizations already parsed from `formalization.yaml`.
+`assets/bibliography.mjs` owns the site list, identifier resolution, and link
+deduplication; add exact hosts to `REFERENCE_SITES` to surface another site's
+recorded HTTPS links, and bundle its icon in `assets/reference-icons/` plus the
+build's asset list. Reference icons are served locally beside text labels.
+Source titles and relationships remain available in link
+descriptions and the full Mathematical origin section. Unknown identifiers and
+other websites remain in that section. This needs no new registry fields or
+additional registry-data requests.
+
 The read-only human view of Palomar's machine-readable public registry.
 A short machine-facing map of how to read, search, and submit is served at
 [`/llms.txt`](https://palomar-registry.org/llms.txt).
