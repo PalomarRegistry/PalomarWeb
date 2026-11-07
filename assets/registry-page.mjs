@@ -32,6 +32,7 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
   let generation = 0;
   let timer;
   let page = null;
+  let loadedOrder = "updated";
   let changed = false;
   const parameters = () => new URLSearchParams(window.location.search);
   const view = () => parameters().get("view") === "cards" ? "cards" : "table";
@@ -73,8 +74,9 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
       const loaded = await loadResults(parameters(), { signal: controller.signal });
       if (current !== generation) return;
       page = loaded;
+      loadedOrder = parameters().get("order") || "updated";
       changed = false;
-      renderRows(page.entries, view(), parameters().get("order") || "updated");
+      renderRows(page.entries, view(), loadedOrder);
       for (const name of ["results", "projects"]) {
         const metric = document.querySelector(`#metric-${name}`);
         if (metric) metric.textContent = String(page.totals[name]);
@@ -126,7 +128,7 @@ export function renderRegistryPage({ document, window, loadResults, renderRows }
     if (button.dataset.view === "table") p.delete("view"); else p.set("view", button.dataset.view);
     navigate(p);
     mark(".view-button", "view", view());
-    if (page) renderRows(page.entries, view(), p.get("order") || "updated");
+    if (page) renderRows(page.entries, view(), loadedOrder);
   }));
   for (const [button, key] of [[previous, "previous"], [next, "next"]]) {
     button.addEventListener("click", () => {
