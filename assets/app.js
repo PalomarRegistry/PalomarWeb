@@ -17,7 +17,7 @@ import {
   renderEntryPage,
 } from "./entry-pages.mjs";
 import { createChallengePresentation } from "./challenge-presentation.mjs";
-import { entryReferenceLinks, mathematicalSourceUrl } from "./bibliography.mjs";
+import { classificationCatalogUrl, entryReferenceLinks, mathematicalSourceUrl } from "./bibliography.mjs";
 import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
@@ -689,6 +689,19 @@ function classificationSection(entry) {
       // The code itself is the link: a reader who wants the other entries in
       // a subject clicks the subject, rather than a separate word beside it.
       value.append(classificationToken(kind, code, code, "category-link"));
+      const catalog = classificationCatalogUrl(kind, code);
+      if (catalog) {
+        const outside = externalLink(
+          kind === "arxiv" ? "arXiv" : "zbMATH",
+          catalog,
+          "catalog-link",
+        );
+        outside.setAttribute(
+          "aria-label",
+          kind === "arxiv" ? `Open ${code} on arXiv` : `Open MSC ${code} on zbMATH`,
+        );
+        value.append(" ", outside);
+      }
     }
     if (!values.length) value.append(el("span", "unclassified", "Not recorded for this older entry"));
     row.append(value);
@@ -1144,6 +1157,14 @@ function renderSubjectHeading(kind, code, head, content) {
       "data-link",
     ),
   );
+  const catalog = classificationCatalogUrl(kind, code);
+  if (catalog) {
+    counts.append(externalLink(
+      kind === "arxiv" ? "arXiv category" : "zbMATH classification",
+      catalog,
+      "data-link",
+    ));
+  }
   heading.append(eyebrow, title, gloss, counts);
   content.append(heading, el("div", "subject-list"));
 }
