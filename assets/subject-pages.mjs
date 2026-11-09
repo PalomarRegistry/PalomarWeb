@@ -243,6 +243,10 @@ function bindArchive({
       const step = await walk.next(seen);
       exhausted = step.exhausted;
       show(step.rows);
+      if (exhausted && seen.size < head.versions) {
+        moreStatus.textContent = `The subject archive served ${seen.size} of the ${head.versions} versions it lists. Reload this page to read the updated archive.`;
+        moreStatus.classList.add("error");
+      }
       // The walk is bounded per click, so an empty step is "not yet" as long
       // as there is archive left to read.
       if (!step.rows.length && !exhausted && seen.size < head.versions) {
