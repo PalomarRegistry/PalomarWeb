@@ -120,6 +120,23 @@ test("a card leads with the day its listing is arranged by", () => {
   ]);
 });
 
+test("an unreadable registration instant sorts after every readable one", () => {
+  const broken = { id: "PALOMAR-2026-08-01-000999", registeredAt: "not-a-date" };
+  const older = { id: "PALOMAR-2026-01-01-000001", registeredAt: "2026-01-02T00:00:00Z" };
+  const newer = { id: "PALOMAR-2026-01-01-000002", registeredAt: "2026-03-01T00:00:00Z" };
+  assert.deepEqual(
+    [broken, older, newer].sort((left, right) => compareRows(left, right, LATEST_VERSION_ORDER))
+      .map((row) => row.id),
+    [newer.id, older.id, broken.id],
+  );
+  const alsoBroken = { id: "PALOMAR-2026-08-01-000100", registeredAt: "" };
+  assert.deepEqual(
+    [broken, alsoBroken].sort((left, right) => compareRows(left, right, LATEST_VERSION_ORDER))
+      .map((row) => row.id),
+    [broken.id, alsoBroken.id],
+  );
+});
+
 test("a result registered once carries one date under either order", () => {
   for (const order of [LATEST_VERSION_ORDER, FIRST_REGISTRATION_ORDER]) {
     assert.deepEqual(cardDates(second, order), [
