@@ -166,8 +166,12 @@ test("entry routes preserve exact tombstones and load failures", async (t) => {
   await t.test("exact tombstone", async () => {
     const tombstone = { id: "PALOMAR-2026-08-08-000001", version: 2 };
     let rendered = null;
+    let renderedEntry = false;
     const { settings, view } = entryDependencies({
       loadEntry: async () => ({ tombstone }),
+      renderEntry: async () => {
+        renderedEntry = true;
+      },
       renderExactTombstone: (...args) => {
         rendered = args;
       },
@@ -177,6 +181,8 @@ test("entry routes preserve exact tombstones and load failures", async (t) => {
 
     assert.deepEqual(rendered, [tombstone, view.content]);
     assert.equal(view.status.hidden, true);
+    assert.equal(renderedEntry, false);
+    assert.deepEqual(view.content.children, []);
   });
 
   await t.test("load failure", async () => {
