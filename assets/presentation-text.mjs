@@ -26,7 +26,7 @@ export function presentationAbstract(entry) {
 // meant. A run with no closing backtick stays prose, backtick and all, rather
 // than swallowing the rest of the abstract, and a span never crosses a line
 // break, so an unpaired tick costs at most its own line.
-const CODE_SPAN = /`([^`\n]+)`/g;
+const CODE_SPAN = /(?<!`)(`+)(?!`)([^\n]+?)(?<!`)\1(?!`)/g;
 
 // Most submitters mark nothing, and write their mathematics into the sentence:
 // "a colour count mu ≥ 2; and a target order type theta = omega^alpha with
@@ -82,7 +82,7 @@ export function abstractSegments(text) {
   let read = 0;
   for (const match of text.matchAll(CODE_SPAN)) {
     if (match.index > read) withExpressions(text.slice(read, match.index), segments);
-    segments.push({ kind: "code", text: match[1] });
+    segments.push({ kind: "code", text: match[2] });
     read = match.index + match[0].length;
   }
   if (read < text.length) withExpressions(text.slice(read), segments);

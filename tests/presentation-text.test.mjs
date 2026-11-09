@@ -175,3 +175,16 @@ test("a submitter's marked span outranks anything found inside it", () => {
     ],
   );
 });
+
+
+test("matching backtick runs preserve ticks inside a marked identifier", () => {
+  assert.deepEqual(abstractSegments("Use ``foo`bar`` here."), [
+    { kind: "prose", text: "Use " }, { kind: "code", text: "foo`bar" },
+    { kind: "prose", text: " here." },
+  ]);
+  assert.deepEqual(abstractSegments("Use ``Foo.bar`` here."), [
+    { kind: "prose", text: "Use " }, { kind: "code", text: "Foo.bar" },
+    { kind: "prose", text: " here." },
+  ]);
+  assert.equal(abstractSegments("Unclosed ``foo`bar").map(part => part.text).join(""), "Unclosed ``foo`bar");
+});
