@@ -106,6 +106,27 @@ test("malformed and oversized responses fail the page without dropping rows behi
   await expect(page.locator("#status")).toContainText("byte limit");
 });
 
+test("registry search waits until text composition is committed", async ({ page }) => {
+  const base = await fixture(page);
+  const queries = [];
+  await page.route("**/database/api/v1/results**", async route => {
+    queries.push(new URL(route.request().url()).searchParams.get("q"));
+    await route.fulfill({ json: base });
+  });
+  await page.goto(home);
+  await settled(page);
+  await page.clock.install();
+  const query = page.locator("#query");
+  await query.dispatchEvent("compositionstart");
+  await query.evaluate(input => { input.value = "仮"; input.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true })); });
+  await page.clock.runFor(1000);
+  expect(queries).toEqual([null]);
+  await query.evaluate(input => { input.value = "仮説"; input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "仮説" })); });
+  await page.clock.runFor(350);
+  await settled(page);
+  expect(queries).toEqual([null, "仮説"]);
+});
+
 test("typing invalidates a slow response and keeps combined filters on clear", async ({ page }) => {
   const base = await fixture(page);
   let release;
@@ -132,3 +153,5 @@ test("typing invalidates a slow response and keeps combined filters on clear", a
   await expect(page).toHaveURL(/msc=05/);
   await expect(page).not.toHaveURL(/[?&]q=/);
 });
+
+
