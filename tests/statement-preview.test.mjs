@@ -424,3 +424,23 @@ test("an anchor that was never registered raises nothing", async () => {
   assert.equal(panels(browser).length, 0, "an unregistered anchor framed something");
   assert.equal(reads(), 0, "an unregistered anchor started a read");
 });
+
+
+test("Escape dismisses a hovered preview and destroy removes its keyboard listener", async () => {
+  const browser = fakeBrowser();
+  const { preview, grid } = build(browser);
+  const link = titleLink(browser);
+  preview.register(link, recentRow());
+  grid.emit("mouseover", { target: link });
+  await browser.tick(OPEN_MS);
+  assert.equal(panels(browser).length, 1);
+  for (const handler of browser.windowListeners.get("keydown") || []) handler({ key: "Escape" });
+  assert.equal(panels(browser).length, 0);
+  assert.equal((browser.windowListeners.get("message") || []).length, 0);
+  grid.emit("mouseover", { target: link });
+  for (const handler of browser.windowListeners.get("keydown") || []) handler({ key: "Escape" });
+  await browser.tick(OPEN_MS);
+  assert.equal(panels(browser).length, 0);
+  preview.destroy();
+  assert.equal((browser.windowListeners.get("keydown") || []).length, 0);
+});
