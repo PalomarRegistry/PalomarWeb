@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createStatementPreview } from "../assets/statement-preview.mjs";
@@ -31,6 +32,7 @@ function fakeBrowser({ hover = true } = {}) {
   let sequence = 0;
   const timers = new Map();
   const windowListeners = new Map();
+  const focusState = { activeElement: null };
 
   function createElement(tag) {
     const node = {
@@ -89,6 +91,9 @@ function fakeBrowser({ hover = true } = {}) {
       getBoundingClientRect() {
         return { top: 100, bottom: 120, left: 40, right: 300 };
       },
+      focus() {
+        focusState.activeElement = node;
+      },
     };
     return node;
   }
@@ -100,7 +105,13 @@ function fakeBrowser({ hover = true } = {}) {
     body,
     createElement,
     now: () => now,
-    document: { createElement, body },
+    document: {
+      createElement,
+      body,
+      get activeElement() {
+        return focusState.activeElement;
+      },
+    },
     window: {
       innerHeight: 800,
       innerWidth: 1200,
@@ -197,6 +208,7 @@ test("a rest on a landing title frames that result's published rendering", async
   await browser.tick(OPEN_MS);
 
   const frame = frameOf(browser);
+  assert.equal(panels(browser)[0].className, "statement-preview");
   assert.equal(
     frame.src,
     `${DATABASE}renders/PALOMAR-2026-07-29-000123-v1/${DIGEST}/Challenge/index.html`,
@@ -388,7 +400,7 @@ test("an absent or unusable companion document leaves the listing alone", async 
   }
 });
 
-test("without a pointer that can rest, nothing is registered or bound", async () => {
+test("without a pointer that can rest, hover is not bound", async () => {
   const browser = fakeBrowser({ hover: false });
   const { preview, grid } = build(browser);
   const link = titleLink(browser);
@@ -413,6 +425,52 @@ test("a lookup refuses a companion document that was never validated", () => {
 // on a listing in front of the check, not just the titles. The registration is
 // what keeps the rest of them out -- a card carries a repository link, a record
 // link and an archive link beside the title it registers.
+test("Enter or Space on the preview control opens the sandboxed frame, and Escape returns focus", async () => {
+  const browser = fakeBrowser({ hover: false });
+  const { preview, grid } = build(browser);
+  const link = titleLink(browser);
+  const button = preview.register(link, recentRow());
+  assert.equal(button.tagName, "BUTTON");
+  assert.equal(button.className, "statement-preview-control");
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+
+  button.emit("keydown", { key: "Enter", preventDefault() {} });
+  await browser.tick(0);
+
+  const frame = frameOf(browser);
+  assert.equal(
+    frame.src,
+    `${DATABASE}renders/PALOMAR-2026-07-29-000123-v1/${DIGEST}/Challenge/index.html`,
+  );
+  assert.equal(frame.getAttribute("sandbox"), "allow-scripts");
+  assert.equal(frame.referrerPolicy, "no-referrer");
+  assert.equal(panels(browser)[0].className, "statement-preview statement-preview-explicit");
+  assert.equal(button.getAttribute("aria-expanded"), "true");
+  assert.equal(grid.listeners.get("mouseover"), undefined);
+
+  preview.close();
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+
+  button.emit("keydown", { key: " ", preventDefault() {} });
+  await browser.tick(0);
+  assert.equal(panels(browser).length, 1);
+
+  for (const listener of browser.windowListeners.get("keydown")) {
+    listener({ key: "Escape", preventDefault() {} });
+  }
+  assert.equal(panels(browser).length, 0);
+  assert.equal(browser.document.activeElement, button);
+  assert.equal(browser.windowListeners.get("message").length, 0);
+});
+
+test("the preview control is touch sized", async () => {
+  const css = await readFile(new URL("../assets/style.css", import.meta.url), "utf8");
+  const block = /\.statement-preview-control\s*\{[^}]+\}/.exec(css);
+  assert.notEqual(block, null);
+  assert.match(block[0], /min-height:\s*2\.75rem/);
+  assert.match(block[0], /min-width:\s*2\.75rem/);
+});
+
 test("an anchor that was never registered raises nothing", async () => {
   const browser = fakeBrowser();
   const { preview, grid, reads } = build(browser);

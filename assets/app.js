@@ -335,8 +335,9 @@ function entryRow(entry, { registeredAt = entry.registered_at, order = DEFAULT_O
   const titleLink = internalLink(entry.title, localPageUrl("/entry", entry));
   // The same hover preview the cards carry: a row says less than a card, so
   // the rendering behind it is worth more here, not less.
-  statementPreview.register(titleLink, entry);
+  const previewControl = statementPreview.register(titleLink, entry);
   result.append(titleLink);
+  if (previewControl) result.append(previewControl);
 
   const subjects = el("td", "row-subjects");
   subjects.append(categoryTokens(entry));
@@ -384,8 +385,9 @@ function entryCard(
   // The card is built from a landing row on one grid and from a whole
   // validated record on the other. The preview is told which it has rather
   // than left to work it out from what is missing.
-  statementPreview.register(titleLink, entry);
+  const previewControl = statementPreview.register(titleLink, entry);
   title.append(titleLink);
+  if (previewControl) title.append(previewControl);
   const abstract = presentationAbstract(entry);
   const meta = el("div", "card-meta");
   const authors = el("div");

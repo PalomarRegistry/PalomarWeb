@@ -28,11 +28,11 @@ const MARGIN = 8;
  * tying it to the registered entry; this frames the same immutable artifact from
  * the same content address and says nothing further about it.
  *
- * Hover is the only trigger, which is a decision with consequences worth
- * naming: it reaches neither a keyboard nor a touch screen. Both already reach
- * the statement, by the card's own links, and nothing here changes that. What
- * this must not do is degrade those; every failure below closes quietly and
- * leaves the card exactly as it was.
+ * Resting on the title still opens it. A control beside the title opens the
+ * same preview without a pointer that can hover: Enter or Space activates the
+ * control, Escape closes the panel and returns focus to that control. The
+ * card's own links remain the way to the full statement. Every failure below
+ * closes quietly and leaves the card exactly as it was.
  */
 export function createStatementPreview({
   document,
@@ -44,6 +44,7 @@ export function createStatementPreview({
   closeDelayMs = CLOSE_DELAY_MS,
 }) {
   const sources = new WeakMap();
+  const controls = new WeakMap();
   const createRenderFrame = createRenderFrames({ document, window });
   const hoverable = window.matchMedia?.("(hover: hover)")?.matches ?? false;
 
@@ -57,11 +58,17 @@ export function createStatementPreview({
   // has moved on belongs to nobody, and showing it would put one result's
   // statement under the pointer while it rests on another's title.
   let generation = 0;
+  let opener = null;
 
   function cancelOpen() {
     window.clearTimeout(openTimer);
     openTimer = null;
     pending = null;
+  }
+
+  function setExpanded(control, expanded) {
+    if (!control) return;
+    control.setAttribute("aria-expanded", expanded ? "true" : "false");
   }
 
   /** Take the panel down. Not a supersession, so in-flight reads still count. */
@@ -76,6 +83,7 @@ export function createStatementPreview({
       panel.remove();
       panel = null;
     }
+    setExpanded(opener, false);
     anchored = null;
   }
 
@@ -107,11 +115,13 @@ export function createStatementPreview({
     node.style.left = `${left}px`;
   }
 
-  function open(link, target) {
+  function open(link, target, explicit) {
     const box = link.getBoundingClientRect();
     panel = document.createElement("div");
     const current = panel;
-    panel.className = "statement-preview";
+    panel.className = explicit
+      ? "statement-preview statement-preview-explicit"
+      : "statement-preview";
     panel.setAttribute("role", "presentation");
     // The pointer is inside the frame for most of the panel's life, and a
     // cross-origin frame reports none of that to this document. Entering the
@@ -180,7 +190,7 @@ export function createStatementPreview({
     closeTimer = window.setTimeout(dismiss, closeDelayMs);
   }
 
-  function scheduleOpen(link) {
+  function scheduleOpen(link, { immediate = false } = {}) {
     // Back on the title of the panel already up: cancel its dismissal, and any
     // open scheduled for whatever the pointer passed over on the way back.
     if (anchored === link) {
@@ -208,13 +218,43 @@ export function createStatementPreview({
       if (!target || mine !== generation || !link.isConnected) return;
       unmount();
       anchored = link;
+      opener = controls.get(link) || null;
       try {
-        open(link, target);
+        open(link, target, immediate);
+        setExpanded(opener, true);
       } catch (error) {
         warn(`A statement preview could not be shown: ${error.message}`);
         close();
       }
-    }, openDelayMs);
+    }, immediate ? 0 : openDelayMs);
+  }
+
+  function onEscape(event) {
+    if (event.key !== "Escape" || !panel) return;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    const target = opener;
+    close();
+    if (typeof target?.focus === "function") target.focus();
+  }
+
+  function createControl(link, source) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "statement-preview-control";
+    button.textContent = "Preview statement";
+    const name = typeof source.title === "string" && source.title
+      ? source.title
+      : `${source.id} version ${source.version}`;
+    button.setAttribute("aria-label", `Preview the formal statement: ${name}`);
+    button.setAttribute("aria-expanded", "false");
+    button.addEventListener("click", () => scheduleOpen(link, { immediate: true }));
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      scheduleOpen(link, { immediate: true });
+    });
+    controls.set(link, button);
+    return button;
   }
 
   // What makes a link previewable is that a surface registered it, not what
@@ -254,15 +294,23 @@ export function createStatementPreview({
     bound.push(grid);
   }
 
+  window.addEventListener("keydown", onEscape);
+
   return {
-    /** Bind a card's title to the entry or landing row it was built from. */
+    /**
+     * Bind a card's title to the entry or landing row it was built from.
+     * The returned control opens the same preview from the keyboard or touch.
+     */
     register(link, source) {
-      if (hoverable && link && source) sources.set(link, source);
+      if (!link || !source) return null;
+      sources.set(link, source);
+      return controls.get(link) || createControl(link, source);
     },
     watch,
     close,
     destroy() {
       close();
+      window.removeEventListener("keydown", onEscape);
       for (const grid of bound.splice(0)) {
         grid.removeEventListener("mouseover", onOver);
         grid.removeEventListener("mouseout", onOut);
