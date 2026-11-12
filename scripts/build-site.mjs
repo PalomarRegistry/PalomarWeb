@@ -34,6 +34,7 @@ const browserModuleFiles = [
   "rendering.js",
   "security.mjs",
   "searching.mjs",
+  "session-reading-list.mjs",
   "source-preservation.mjs",
   "statement-preview.mjs",
   "subject-pages.mjs",
