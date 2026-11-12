@@ -24,6 +24,7 @@ const browserModuleFiles = [
   "citation-presentation.mjs",
   "clipboard.mjs",
   "entry-history-presentation.mjs",
+  "evidence-dossier.mjs",
   "entry-pages.mjs",
   "formalization-presentation.mjs",
   "loading.mjs",
