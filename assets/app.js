@@ -22,6 +22,7 @@ import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
+import { createSessionReadingList } from "./session-reading-list.mjs";
 import { createStatementPreview } from "./statement-preview.mjs";
 import { renderSubjectPage } from "./subject-pages.mjs";
 import { abstractSegments, presentationAbstract } from "./presentation-text.mjs";
@@ -114,6 +115,20 @@ const statementPreview = createStatementPreview({
   dataSource,
   loadRecentRenders,
   warn: (message) => console.warn(message),
+});
+
+function sessionStore() {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+const readingList = createSessionReadingList({
+  document,
+  storage: sessionStore(),
+  window,
 });
 
 function authorNames(entry) {
@@ -337,6 +352,8 @@ function entryRow(entry, { registeredAt = entry.registered_at, order = DEFAULT_O
   // the rendering behind it is worth more here, not less.
   statementPreview.register(titleLink, entry);
   result.append(titleLink);
+  const saved = readingList.addButton(entry);
+  if (saved) result.append(saved);
 
   const subjects = el("td", "row-subjects");
   subjects.append(categoryTokens(entry));
@@ -423,6 +440,8 @@ function entryCard(
     historyLink.setAttribute("aria-label", `${versionCount} versions of ${entry.id}`);
     footer.append(historyLink);
   }
+  const saved = readingList.addButton(entry);
+  if (saved) footer.append(saved);
   card.append(top, title);
   if (abstract) card.append(abstractParagraph("card-abstract", abstract));
   card.append(meta, footer);
@@ -852,6 +871,11 @@ async function renderEntry(
   const byline = el("p", "byline", "By ");
   appendPeople(byline, entry.authors);
   heading.append(byline);
+  const readingActions = el("div", "reading-list-actions");
+  const saved = readingList.addButton(entry);
+  if (saved) readingActions.append(saved);
+  readingActions.append(readingList.exportButton());
+  heading.append(readingActions);
   const references = entryReferenceLinks(entry.provenance);
   if (references.length) {
     const navigation = el("nav", "entry-references");
@@ -1196,6 +1220,8 @@ if (document.body.dataset.page === "index") {
   // Bound to the containers, not to the cards, because both grids replace
   // their children whenever a query or a filter changes.
   statementPreview.watch(document.querySelector("#entry-grid"));
+  const toolbar = document.querySelector(".toolbar");
+  if (toolbar) toolbar.append(readingList.exportButton());
   for (const kind of ["arxiv", "msc"]) {
     void taxonomy(kind).then(codes => {
       const list = document.querySelector(`#${kind}-options`);

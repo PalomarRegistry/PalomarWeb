@@ -148,6 +148,10 @@
   bounded query response and `security.mjs` validates it as a complete page.
   The listing does not fetch recent or source-availability documents; previews
   use the bounded summary's artifact reference;
+  `assets/session-reading-list.mjs` owns the session-only reading list of exact
+  versions already on screen, its cap, sessionStorage persistence, and the
+  Markdown export. It does not fetch the registry and it does not create an
+  account;
   `assets/app.js` owns remaining page composition and controller wiring. Do not
   duplicate registry-document validation, source resolution, or route
   orchestration across those modules; the route module still rejects malformed
