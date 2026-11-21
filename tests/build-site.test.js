@@ -56,6 +56,8 @@ test("deployment build versions coupled browser assets", async () => {
       path.join(destination, "assets", "entry-history-presentation.mjs"),
       "utf8",
     );
+    await readFile(path.join(destination, "assets", "version-diff.mjs"), "utf8");
+    assert.match(entryHistoryPresentation, /\.\/version-diff\.mjs\?v=0123456789abcdef/);
     const formalizationPresentation = await readFile(
       path.join(destination, "assets", "formalization-presentation.mjs"),
       "utf8",

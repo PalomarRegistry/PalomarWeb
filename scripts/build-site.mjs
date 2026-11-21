@@ -37,6 +37,7 @@ const browserModuleFiles = [
   "source-preservation.mjs",
   "statement-preview.mjs",
   "subject-pages.mjs",
+  "version-diff.mjs",
 ];
 const browserModulePaths = new Set(browserModuleFiles.map((file) => `/assets/${file}`));
 const assetFiles = [
