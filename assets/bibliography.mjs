@@ -4,6 +4,7 @@ const ARXIV_IDENTIFIER_RE = /^arXiv:((?:[0-9]{4}\.[0-9]{4,5}|[a-z-]+(?:\.[a-z]{2
 const DOI_IDENTIFIER_RE = /^doi:(10\.[0-9]{4,9}\/\S+)$/i;
 const HEXAGON_IDENTIFIER_RE = /^hexagon:([0-9]{4}\.[0-9]{5}(?:v[1-9][0-9]*)?)$/i;
 const OEIS_IDENTIFIER_RE = /^oeis:(A[0-9]{6})$/i;
+const PALOMAR_IDENTIFIER_RE = /^(PALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})(?:-v([1-9][0-9]*))?$/i;
 
 // Add a site's exact hosts here to surface its recorded links on entry pages.
 // Identifier resolution stays separate: unknown citations remain readable in
@@ -27,6 +28,17 @@ function encodePathSegment(segment) {
     /[!'()*]/g,
     (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   );
+}
+
+/** A Palomar identifier cited from a record, as the public entry page. */
+export function palomarRecordUrl(identifier) {
+  if (typeof identifier !== "string") return null;
+  const match = PALOMAR_IDENTIFIER_RE.exec(identifier.trim());
+  if (!match) return null;
+  const target = new URL("entry", "https://palomar-registry.org/");
+  target.searchParams.set("id", match[1].toUpperCase());
+  if (match[2]) target.searchParams.set("version", match[2]);
+  return { href: safeExternalUrl(target), id: match[1].toUpperCase(), version: match[2] || null };
 }
 
 /** Resolve recognized bibliography identifiers without ever hiding raw text. */
@@ -105,7 +117,7 @@ function citationIdentifiers(identifier) {
   // Only scan the recorded identifier, never unrelated free-form metadata.
   // Older SICI DOIs contain angle brackets, commas, and semicolons. Preserve
   // the complete non-whitespace token rather than cutting a DOI at those marks.
-  const tokens = text.match(/https?:\/\/[^\s"']+|\bdoi:\S+|\b(?:arxiv|hexagon|oeis):[^\s;,<>"']+/gi) || [];
+  const tokens = text.match(/https?:\/\/[^\s"']+|\bdoi:\S+|\b(?:arxiv|hexagon|oeis):[^\s;,<>"']+|\bPALOMAR-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}(?:-v[1-9][0-9]*)?/gi) || [];
   return tokens.map((token) => {
     let result = token.replace(/[.,;]+$/, "");
     const brackets = { ")": "(", "]": "[", "}": "{" };
@@ -127,6 +139,23 @@ export function entryReferenceLinks(provenance) {
   ]) {
     for (const source of provenance[field]) {
       for (const identifier of citationIdentifiers(source.identifier)) {
+        const palomar = palomarRecordUrl(identifier);
+        if (palomar) {
+          const description = `${role}: ${source.title || source.identifier} (${source.relationship})`;
+          const label = palomar.version ? `${palomar.id} v${palomar.version}` : palomar.id;
+          const previous = links.get(palomar.href.href);
+          if (previous) {
+            if (!previous.descriptions.includes(description)) previous.descriptions.push(description);
+          } else {
+            links.set(palomar.href.href, {
+              href: palomar.href,
+              label,
+              icon: null,
+              descriptions: [description],
+            });
+          }
+          continue;
+        }
         const link = referenceLink(identifier);
         if (!link) continue;
         const description = `${role}: ${source.title || source.identifier} (${source.relationship})`;
