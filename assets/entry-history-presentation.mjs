@@ -1,4 +1,5 @@
 import { safeExternalUrl, safeInternalUrl } from "./security.mjs";
+import { entryDelta } from "./version-diff.mjs";
 
 const CANONICAL_WEB_BASE = "https://palomar-registry.org/";
 
@@ -16,7 +17,7 @@ export function canonicalEntryPageUrl(entry) {
  * remain with their existing owners; this boundary receives only validated
  * records and version summaries.
  */
-export function createEntryHistoryPresentation({ document, localPageUrl, window }) {
+export function createEntryHistoryPresentation({ document, localPageUrl, window, loadVersion }) {
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -123,7 +124,53 @@ export function createEntryHistoryPresentation({ document, localPageUrl, window 
       list.append(item);
     }
     section.append(list);
+    if (versions.length > 1 && loadVersion) section.append(versionCompare(entry, versions));
     return section;
+  }
+
+  function versionCompare(entry, versions) {
+    const block = el("div", "version-compare");
+    const label = el("label", "", "Compare with");
+    label.htmlFor = "version-compare-target";
+    const select = el("select");
+    select.id = "version-compare-target";
+    const blank = el("option", "", "Choose a version");
+    blank.value = "";
+    select.append(blank);
+    for (const summary of versions) {
+      if (summary.version === entry.version) continue;
+      const option = el("option", "", `Version ${summary.version}`);
+      option.value = String(summary.version);
+      select.append(option);
+    }
+    const report = el("div", "version-compare-report");
+    label.append(select);
+    block.append(label, report);
+    select.addEventListener("change", async () => {
+      report.replaceChildren();
+      if (!select.value) return;
+      report.textContent = "Reading that version…";
+      try {
+        const other = await loadVersion(Number(select.value));
+        const changes = entryDelta(other, entry);
+        report.replaceChildren();
+        if (!changes.length) {
+          report.textContent = "Those versions agree on the title, abstract, theorems, classification, trust, and source commit.";
+          return;
+        }
+        const list = el("dl", "version-delta");
+        for (const change of changes) {
+          list.append(
+            el("dt", "", change.field),
+            el("dd", "", `${change.before || "empty"} → ${change.after || "empty"}`),
+          );
+        }
+        report.append(list);
+      } catch (error) {
+        report.textContent = `That version could not be compared: ${error.message}`;
+      }
+    });
+    return block;
   }
 
   return { setCanonicalEntryPage, versionHistory, versionNotice };

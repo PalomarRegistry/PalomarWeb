@@ -579,7 +579,12 @@ const {
   setCanonicalEntryPage,
   versionHistory,
   versionNotice,
-} = createEntryHistoryPresentation({ document, localPageUrl, window });
+} = createEntryHistoryPresentation({
+  document,
+  localPageUrl,
+  window,
+  loadVersion: async (version) => (await loadEntry(params.get("id"), version)).entry,
+});
 const { citationSection } = createCitationPresentation({ document, navigator, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
