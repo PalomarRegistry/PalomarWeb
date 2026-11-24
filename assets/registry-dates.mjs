@@ -83,8 +83,14 @@ export function compareRows(left, right, order) {
   if (normalizeOrder(order) === FIRST_REGISTRATION_ORDER) {
     return compareIdentifiers(left.id, right.id);
   }
-  const difference = Date.parse(right.registeredAt) - Date.parse(left.registeredAt);
-  if (difference) return difference;
+  const rightMs = Date.parse(right.registeredAt);
+  const leftMs = Date.parse(left.registeredAt);
+  const rightOk = Number.isFinite(rightMs);
+  const leftOk = Number.isFinite(leftMs);
+  // NaN is falsy, so `if (rightMs - leftMs)` treated a broken timestamp as a
+  // tie with every real instant and then ordered it by identifier.
+  if (rightOk !== leftOk) return rightOk ? 1 : -1;
+  if (rightOk && leftOk && rightMs !== leftMs) return rightMs - leftMs;
   return compareIdentifiers(left.id, right.id);
 }
 
