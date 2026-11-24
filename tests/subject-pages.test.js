@@ -289,3 +289,59 @@ test("a failed archive read keeps the page it has and does not step over the day
   assert.equal(status.classList.contains("error"), false);
   assert.equal(more.hidden, true);
 });
+
+function sparseArchivePage({ failPage = null } = {}) {
+  const page = subjectPage();
+  const oldDay = "2026-06-01";
+  const first = ROW(oldDay, 1);
+  const last = { ...ROW(oldDay, 7201), published_at: `${oldDay}T10:00:00Z` };
+  page.fixture.year.days[0] = {
+    day: oldDay, first_page: 1, last_page: 37, results: 2, versions: 2,
+  };
+  const reads = [];
+  let failure = failPage;
+  const serve = page.settings.loadSubjectPage;
+  page.settings.loadSubjectPage = async (kind, code, day, number) => {
+    reads.push({ day, number });
+    if (day !== oldDay) return serve(kind, code, day, number);
+    if (number === failure) { failure = null; throw new Error("503 Service Unavailable"); }
+    if (number === 1 || number === 37) {
+      return { entries: [number === 1 ? first : last] };
+    }
+    throw Object.assign(new Error("404 Not Found"), { status: 404 });
+  };
+  return { ...page, reads, first, last };
+}
+
+test("a sparse day yields within the page budget without publishing half a day", async () => {
+  const page = sparseArchivePage();
+  await renderSubjectPage(page.settings);
+  const more = page.view.nodes.get("#subject-more");
+  await more.click();
+  assert(page.reads.length <= 20, "one click must not scan the whole sparse page range");
+  assert.equal(page.shown.length, 2, "partial days remain private until totals reconcile");
+  assert.equal(more.disabled, false);
+  assert.equal(more.hidden, false);
+  assert.match(page.view.nodes.get("#subject-more-status").textContent, /Still reading.*2026-06-01/);
+  const firstReadCount = page.reads.length;
+  await more.click();
+  assert(page.reads.length - firstReadCount <= 20);
+  assert.deepEqual(page.shown.slice(2), [page.last, page.first]);
+  assert.equal(more.hidden, true);
+});
+
+test("a failed continuation retries the whole day without losing or duplicating rows", async () => {
+  const page = sparseArchivePage({ failPage: 10 });
+  await renderSubjectPage(page.settings);
+  const more = page.view.nodes.get("#subject-more");
+  await more.click();
+  await more.click();
+  assert.match(page.view.nodes.get("#subject-more-status").textContent, /503/);
+  assert.equal(page.shown.length, 2);
+  await more.click();
+  assert.equal(page.shown.length, 2);
+  await more.click();
+  assert.deepEqual(page.shown.slice(2), [page.last, page.first]);
+  assert.equal(page.view.nodes.get("#subject-more-status").textContent, "");
+  assert.equal(more.hidden, true);
+});

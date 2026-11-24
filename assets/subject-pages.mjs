@@ -3,11 +3,14 @@ const SUBJECT_KINDS = new Set(["arxiv", "msc"]);
 // than refusing outright keeps a mistyped link answering "no such code" from
 // the page instead of putting an unbounded string into a request.
 const CODE_PARAMETER_LIMIT = 32;
-// One click reads one day of the archive, and keeps reading only while the days
-// it finds hold nothing a reader has not already seen. The bound is what stops
+// One click advances through days only while they hold nothing a reader has
+// not already seen. The day bound is what stops
 // a code whose newest fifty span a busy week from walking the whole year to
 // find its fifty-first row.
 const MAX_DAYS_PER_STEP = 20;
+// Sparse serial ranges can span thousands of absent pages within a single
+// day. Bound page requests too, and retain that day's unpublished progress.
+const MAX_PAGES_PER_STEP = 20;
 
 function rowKey(row) {
   return `${row.id}-v${row.version}`;
@@ -27,6 +30,7 @@ function createArchiveWalk({ years, loadYear, loadPage }) {
   let yearIndex = 0;
   let days = null;
   let dayIndex = 0;
+  let pendingDay = null;
 
   /**
    * The day the walk is standing on, without stepping off it.
@@ -73,16 +77,21 @@ function createArchiveWalk({ years, loadYear, loadPage }) {
    * without a request: a seeded page that no current version lands on says so
    * in the day row's count.
    *
-   * A day is held whole. Its rows are published as one ordered run, so half of
-   * one shown now and the rest after a retry would be a listing out of the
-   * order it claims to be in.
+   * A day is held whole, even if its pages need several bounded steps. Its
+   * rows are published as one ordered run, so half of one shown now and the
+   * rest after a retry would be a listing out of the order it claims to be in.
    */
   async function next(seen) {
     const rows = [];
+    const budget = { pages: MAX_PAGES_PER_STEP };
     for (let read = 0; read < MAX_DAYS_PER_STEP && rows.length === 0; read += 1) {
       const day = await currentDay();
       if (day === null) return { rows, exhausted: true };
-      if (day.versions !== 0) rows.push(...await readDay(day, seen));
+      if (day.versions !== 0) {
+        const completed = await readDay(day, seen, budget);
+        if (completed === null) return { rows, exhausted: false, pendingDay: day.day };
+        rows.push(...completed);
+      }
       dayIndex += 1;
     }
     return { rows, exhausted: atEnd() };
@@ -104,24 +113,36 @@ function createArchiveWalk({ years, loadYear, loadPage }) {
    * than it says it has is a contract failure, and saying so is better than a
    * listing that quietly stops short of what its heading promises.
    */
-  async function readDay(day, seen) {
-    const found = [];
-    const identifiers = new Set();
-    let rows = 0;
-    for (let page = day.last_page; page >= day.first_page; page -= 1) {
-      const loaded = await emptyIfAbsent(() => loadPage(day.day, page));
-      rows += loaded.length;
-      for (const row of [...loaded].reverse()) {
-        identifiers.add(row.id);
-        if (!seen.has(rowKey(row))) found.push(row);
+  async function readDay(day, seen, budget) {
+    if (pendingDay === null) {
+      pendingDay = { page: day.last_page, found: [], identifiers: new Set(), rows: 0 };
+    }
+    try {
+      while (pendingDay.page >= day.first_page && budget.pages > 0) {
+        budget.pages -= 1;
+        const loaded = await emptyIfAbsent(() => loadPage(day.day, pendingDay.page));
+        pendingDay.rows += loaded.length;
+        for (const row of [...loaded].reverse()) {
+          pendingDay.identifiers.add(row.id);
+          if (!seen.has(rowKey(row))) pendingDay.found.push(row);
+        }
+        pendingDay.page -= 1;
       }
+      if (pendingDay.page >= day.first_page) return null;
+      if (pendingDay.rows !== day.versions || pendingDay.identifiers.size !== day.results) {
+        throw new Error(
+          `${day.day} serves ${pendingDay.rows} of the ${day.versions} results it lists`,
+        );
+      }
+      const found = pendingDay.found;
+      pendingDay = null;
+      return found;
+    } catch (error) {
+      // Retry the whole failed day: none of its rows has been published, and
+      // keeping a partial snapshot across a failed read could mix projections.
+      pendingDay = null;
+      throw error;
     }
-    if (rows !== day.versions || identifiers.size !== day.results) {
-      throw new Error(
-        `${day.day} serves ${rows} of the ${day.versions} results it lists`,
-      );
-    }
-    return found;
   }
 
   async function emptyIfAbsent(read) {
@@ -245,7 +266,9 @@ function bindArchive({
       show(step.rows);
       // The walk is bounded per click, so an empty step is "not yet" as long
       // as there is archive left to read.
-      if (!step.rows.length && !exhausted && seen.size < head.versions) {
+      if (step.pendingDay) {
+        moreStatus.textContent = `Still reading earlier results for ${step.pendingDay}. Ask again to continue.`;
+      } else if (!step.rows.length && !exhausted && seen.size < head.versions) {
         moreStatus.textContent = "No earlier results in the days read. Ask again to keep going.";
       }
     } catch (error) {
