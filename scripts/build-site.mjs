@@ -23,6 +23,7 @@ const browserModuleFiles = [
   "challenge-presentation.mjs",
   "citation-presentation.mjs",
   "clipboard.mjs",
+  "entry-evidence-view.mjs",
   "entry-history-presentation.mjs",
   "entry-pages.mjs",
   "formalization-presentation.mjs",

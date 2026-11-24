@@ -109,6 +109,10 @@
   `assets/formalization-presentation.mjs` owns statement trust labels plus the
   statement and accepted-proof dependency DOM, while continuing to consume
   source locations and confined URLs from their existing owners;
+  `assets/entry-evidence-view.mjs` owns the exact entry's focused evidence
+  disclosure and reads only statement dependencies, proof-package dependencies,
+  recorded kernels, source pins, and preservation links that are already on
+  that version;
   `assets/entry-history-presentation.mjs` owns the entry page's canonical link,
   supersession notice, and immutable version-history section, while consuming
   validated records and the existing confined local-entry URL builder;

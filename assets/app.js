@@ -20,6 +20,7 @@ import { createChallengePresentation } from "./challenge-presentation.mjs";
 import { entryReferenceLinks, mathematicalSourceUrl } from "./bibliography.mjs";
 import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
+import { createEntryEvidenceView } from "./entry-evidence-view.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
 import { createStatementPreview } from "./statement-preview.mjs";
@@ -295,6 +296,7 @@ const {
   statementDependencies,
   trustBadge,
 } = createFormalizationPresentation({ document });
+const { evidenceSection } = createEntryEvidenceView({ document });
 
 /**
  * Everything on a card that a reader might type at it, as one lowercase run.
@@ -1094,6 +1096,7 @@ async function renderEntry(
   content.append(
     challenge.section,
     evidence,
+    evidenceSection(entry),
     trust,
     solutionMetadata(entry, challenge.metadata, sourceAvailability),
     provenanceSection(entry, sourceAvailability),

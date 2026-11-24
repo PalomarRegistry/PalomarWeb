@@ -1502,6 +1502,20 @@ body[data-page="not-found"] main a {
   }
 }
 
+.entry-evidence-view {
+  margin: 1.5rem 0;
+}
+
+.entry-evidence-view h3,
+.entry-evidence-view h4 {
+  margin: .8rem 0 .3rem;
+  font: 600 .95rem/1.3 var(--sans);
+}
+
+.entry-evidence-view .not-recorded {
+  color: var(--muted);
+}
+
 .registration-callout {
   display: flex;
   gap: .8rem;
