@@ -42,6 +42,41 @@ export function bibtexCitation(entry) {
   ].join("\n");
 }
 
+function citationAuthors(entry) {
+  return entry.authors.map((author) => author.name.trim()).filter(Boolean);
+}
+
+/** RIS for the same immutable snapshot. One author per `AU` line. */
+export function risCitation(entry) {
+  const url = canonicalEntryPageUrl(entry).href;
+  const lines = ["TY  - GEN"];
+  for (const author of citationAuthors(entry)) lines.push(`AU  - ${author}`);
+  lines.push(
+    `TI  - ${entry.title.replace(/\s+/gu, " ").trim()}`,
+    `PY  - ${entry.registered_at.slice(0, 4)}`,
+    `DA  - ${entry.registered_at.slice(0, 10).replaceAll("-", "/")}`,
+    `ID  - ${entry.id} v${entry.version}`,
+    `UR  - ${url}`,
+    "ER  - ",
+  );
+  return lines.join("\n");
+}
+
+/** CSL-JSON for the same snapshot, including the theorem names the record lists. */
+export function cslCitation(entry) {
+  const item = {
+    type: "article",
+    id: `${entry.id}-v${entry.version}`,
+    title: entry.title.replace(/\s+/gu, " ").trim(),
+    author: citationAuthors(entry).map((name) => ({ literal: name })),
+    issued: { "date-parts": [entry.registered_at.slice(0, 10).split("-").map(Number)] },
+    URL: canonicalEntryPageUrl(entry).href,
+    "container-title": "Palomar",
+    note: (entry.formalization?.theorem_names || []).join("; "),
+  };
+  return JSON.stringify([item], null, 2);
+}
+
 /** Bind the citation and its clipboard control to an entry page. */
 export function createCitationPresentation({ document, navigator, window }) {
   const { announce, copyText } = createClipboard({ document, navigator, window });
@@ -66,10 +101,14 @@ export function createCitationPresentation({ document, navigator, window }) {
 
     const copy = el("button", "citation-copy", "Copy BibTeX");
     copy.type = "button";
+    const copyRis = el("button", "citation-copy citation-copy-ris", "Copy RIS");
+    copyRis.type = "button";
+    const copyCsl = el("button", "citation-copy citation-copy-csl", "Copy CSL");
+    copyCsl.type = "button";
     const status = el("span", "visually-hidden citation-status");
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
-    heading.append(title, copy);
+    heading.append(title, copy, copyRis, copyCsl);
 
     const code = el("code", "", citation);
     const block = el("pre", "citation-bibtex");
@@ -89,20 +128,23 @@ export function createCitationPresentation({ document, navigator, window }) {
     );
 
     let resetTimer;
-    copy.addEventListener("click", async () => {
-      const copied = await copyText(citation);
-      window.clearTimeout(resetTimer);
-      copy.classList.toggle("copied", copied);
-      copy.textContent = copied ? "Copied!" : "Copy failed";
-      announce(status, copied
-        ? "Copied BibTeX citation."
-        : "Could not copy BibTeX citation.");
-      resetTimer = window.setTimeout(() => {
-        copy.classList.remove("copied");
-        copy.textContent = "Copy BibTeX";
-        status.textContent = "";
-      }, CLIPBOARD_RESET_DELAY_MS);
-    });
+    function onCopy(button, text, idle, spoken, failureSpoken) {
+      return async () => {
+        const copied = await copyText(text);
+        window.clearTimeout(resetTimer);
+        button.classList.toggle("copied", copied);
+        button.textContent = copied ? "Copied!" : "Copy failed";
+        announce(status, copied ? spoken : failureSpoken);
+        resetTimer = window.setTimeout(() => {
+          button.classList.remove("copied");
+          button.textContent = idle;
+          status.textContent = "";
+        }, CLIPBOARD_RESET_DELAY_MS);
+      };
+    }
+    copy.addEventListener("click", onCopy(copy, citation, "Copy BibTeX", "Copied BibTeX citation.", "Could not copy BibTeX citation."));
+    copyRis.addEventListener("click", onCopy(copyRis, risCitation(entry), "Copy RIS", "Copied RIS citation.", "Could not copy RIS citation."));
+    copyCsl.addEventListener("click", onCopy(copyCsl, cslCitation(entry), "Copy CSL", "Copied CSL-JSON citation.", "Could not copy CSL-JSON citation."));
 
     return section;
   }
