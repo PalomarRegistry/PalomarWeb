@@ -128,9 +128,9 @@ export function createRegistryLoader({
     try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)); }
     catch { throw new Error(`Registry returned an invalid response (HTTP ${response.status})`); }
     if (!response.ok) {
-      const error = new Error(typeof value.message === "string" ? value.message.slice(0, 512) : "Registry is temporarily unavailable");
+      const error = new Error(typeof value?.message === "string" ? value.message.slice(0, 512) : "Registry is temporarily unavailable");
       error.status = response.status;
-      error.code = value.error;
+      error.code = value?.error;
       throw error;
     }
     return validateQueryPage(value);
