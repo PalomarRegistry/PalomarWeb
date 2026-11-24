@@ -1502,6 +1502,25 @@ body[data-page="not-found"] main a {
   }
 }
 
+.evidence-dossier-export {
+  display: inline-flex;
+  align-items: center;
+  margin-top: .8rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: .35rem .7rem;
+  border: 1px solid var(--line);
+  background: var(--control);
+  color: var(--ink);
+  font: .8rem var(--sans);
+  cursor: pointer;
+}
+
+.evidence-dossier-export:hover,
+.evidence-dossier-export:focus-visible {
+  background: var(--control-hover);
+}
+
 .registration-callout {
   display: flex;
   gap: .8rem;

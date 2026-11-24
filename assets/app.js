@@ -20,6 +20,7 @@ import { createChallengePresentation } from "./challenge-presentation.mjs";
 import { entryReferenceLinks, mathematicalSourceUrl } from "./bibliography.mjs";
 import { createCitationPresentation } from "./citation-presentation.mjs";
 import { createEntryHistoryPresentation } from "./entry-history-presentation.mjs";
+import { createEvidenceDossier } from "./evidence-dossier.mjs";
 import { createFormalizationPresentation } from "./formalization-presentation.mjs";
 import { createRegistryLoader } from "./registry-loading.mjs";
 import { createStatementPreview } from "./statement-preview.mjs";
@@ -581,6 +582,7 @@ const {
   versionNotice,
 } = createEntryHistoryPresentation({ document, localPageUrl, window });
 const { citationSection } = createCitationPresentation({ document, navigator, window });
+const { exportButton: evidenceDossierButton } = createEvidenceDossier({ document, window });
 
 /** One kind of assurance, named so the two can be told apart at a glance. */
 function assurance(kind, ...content) {
@@ -852,6 +854,7 @@ async function renderEntry(
   const byline = el("p", "byline", "By ");
   appendPeople(byline, entry.authors);
   heading.append(byline);
+  heading.append(evidenceDossierButton(entry, () => sourceAvailability.current));
   const references = entryReferenceLinks(entry.provenance);
   if (references.length) {
     const navigation = el("nav", "entry-references");
