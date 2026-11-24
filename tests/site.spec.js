@@ -1776,11 +1776,16 @@ test("qualified statement and proof dependencies retain their distinct presentat
   const statement = page.locator("#statement-dependencies");
   await expect(statement.getByRole("heading", { name: "Depends on additional libraries" }))
     .toBeVisible();
+  await expect(statement.locator("h3").first()).toHaveText("Why additional libraries are needed");
+  await expect(statement.locator("#statement-reason-1")).toHaveText("Challenge imports Tau Ceti");
   await expect(statement.locator(".plain-list li")).toHaveText([
     "leanprover-community/mathlib4",
     "TauCetiProject/TauCeti",
   ]);
   await expect(statement.locator(".reason-list li")).toHaveText("Challenge imports Tau Ceti");
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000124&version=1&database=${database}#statement-reason-1`);
+  await expect(page.locator("#statement-dependencies .section-collapse")).toHaveAttribute("open", "");
+  await expect(page.locator("#statement-reason-1")).toBeInViewport();
 
   const proof = page.locator(".entry-solution");
   await expect(proof.getByRole("heading", { name: "Verified proof" })).toBeVisible();
