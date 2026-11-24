@@ -70,6 +70,24 @@ test("an August result beyond 200 newer registrations remains reachable", async 
   await expect(page.locator(".entry-row")).toContainText("nf-not-wpp");
 });
 
+test("switching view keeps previous results dated by their loaded order after a failed update", async ({ page }) => {
+  const base = await fixture(page);
+  const row = { ...base.entries[0], version: 2, versions: 2,
+    published_at: "2026-09-30T12:00:00Z", preview: { ...base.entries[0].preview, version: 2 },
+    path: `entries/${base.entries[0].id}-v2.json` };
+  let fail = false;
+  await page.route("**/database/api/v1/results**", route => fail
+    ? route.fulfill({ status: 503, json: { message: "Unavailable" } })
+    : route.fulfill({ json: { ...base, entries: [row] } }));
+  await page.goto(home);
+  await settled(page);
+  fail = true;
+  await page.locator("#order-by").selectOption("registered");
+  await expect(page.locator("#status")).toContainText("Previously loaded results");
+  await page.getByRole("button", { name: "Cards", exact: true }).click();
+  await expect(page.locator(".entry-card .entry-date").first()).toContainText("30 September 2026");
+});
+
 test("query errors retain visibly stale content and refresh preserves filters", async ({ page }) => {
   const base = await fixture(page);
   let fail = false;
@@ -132,3 +150,5 @@ test("typing invalidates a slow response and keeps combined filters on clear", a
   await expect(page).toHaveURL(/msc=05/);
   await expect(page).not.toHaveURL(/[?&]q=/);
 });
+
+
