@@ -1488,12 +1488,42 @@ body[data-page="not-found"] main a {
   border: 0;
 }
 
+.statement-preview-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: .4rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: .35rem .7rem;
+  border: 1px solid var(--line);
+  background: var(--control);
+  color: var(--ink);
+  font: .8rem var(--sans);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.statement-preview-control:hover,
+.statement-preview-control:focus-visible {
+  background: var(--control-hover);
+}
+
+.statement-preview-control:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
 @media (hover: none) {
-  /* Never raised without a pointer that can rest. Belt to the media query the
-     controller itself asks, so a panel cannot be left over a touch reader by a
-     browser that answers the two differently. */
+  /* A panel raised by a resting pointer stays hidden where a pointer cannot
+     rest. One opened from the explicit control is the touch and keyboard path
+     and stays visible. */
   .statement-preview {
     display: none;
+  }
+
+  .statement-preview.statement-preview-explicit {
+    display: block;
   }
 
   .challenge-playground-button {

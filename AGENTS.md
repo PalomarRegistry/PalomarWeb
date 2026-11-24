@@ -124,17 +124,18 @@
   validation or route ownership. Entry and render content must consume that
   availability result progressively through `source-preservation.mjs`; an
   ancillary health request must never delay a verified record or render;
-  `assets/statement-preview.mjs` owns the listing grids' hover preview: pointer
-  intent and its delays, panel placement and lifetime, and resolving a card to
-  its rendering from either a whole record or the bounded companion document.
+  `assets/statement-preview.mjs` owns the listing grids' statement preview:
+  pointer intent and its delays, the explicit control and its keyboard path,
+  panel placement and lifetime, and resolving a card to its rendering from
+  either a whole record or the bounded companion document.
   It consumes the confined artifact URL and the disposable sandboxed frame from
   their owners and must not acquire its own; `challenge-presentation.mjs` still
   owns the frame, and a surface that mounts and discards frames must dispose
   them, because the height listener is on `window` rather than on the frame.
-  The preview is deliberately pointer-only and deliberately does not repeat the
-  entry page's render-metadata correspondence check; it is a preview of an
-  immutable artifact at a content address, and the entry page remains where a
-  rendering is tied to its accepted record.
+  The preview deliberately does not repeat the entry page's render-metadata
+  correspondence check; it is a preview of an immutable artifact at a content
+  address, and the entry page remains where a rendering is tied to its
+  accepted record.
   `assets/registry-dates.mjs` owns the two dates a registered result has — the
   first-registration day its identifier carries, and the instant the listed
   version was registered — together with the order each one implies, the
