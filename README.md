@@ -219,10 +219,10 @@ them would mean something upstream had gone wrong, and displaying it would be
 the worst moment to find out.
 
 The site accepts the sole current entry contract, `schema_version: 3`, and
-requires its source-preservation receipt. Superseded pre-launch drafts have no
+requires its source-preservation receipt. Superseded drafts have no
 browser fallback; an obsolete or malformed record fails closed.
-The review-language cutover deploys this strict consumer together with the
-schema-v3 producer and rewritten public data; it does not infer an endorsement
+The review-language cutover deployed this strict consumer after the
+schema-v3 producer and rewritten public data; the consumer does not infer an endorsement
 from a legacy positive review value.
 That ordering is gated by a complete traversal of what the producer advertises:
 CI and Pages deployment walk the browse hierarchy, reconcile every advertised
@@ -236,7 +236,7 @@ It uses at most eight concurrent reads; each read gets at most three five-second
 attempts with short backoff. The hourly job has a fifteen-minute ceiling, and a
 new observation supersedes an older queued or stuck one.
 
-The review-language cutover also moves `recent.json`, per-result version
+The review-language cutover also moved `recent.json`, per-result version
 indexes, and browse, subject projections to schema version 2.
 Source availability and independent render and evidence metadata keep their
 own versioned contracts. Only the registered-entry contract is v3-only.
