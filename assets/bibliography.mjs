@@ -29,6 +29,28 @@ function encodePathSegment(segment) {
   );
 }
 
+const ARXIV_CODE_RE = /^[a-z]+(?:-[a-z]+)*(?:\.[A-Za-z-]+)?$/;
+const MSC_CODE_RE = /^[0-9]{2}(?:[A-Z][0-9]{2}|-[0-9]{2})$/;
+
+/**
+ * The public catalog page for one classification code.
+ *
+ * The subject page lists what Palomar has registered under the code. These
+ * are the catalogs the code comes from, so a reader can see the subject as
+ * arXiv or zbMATH define it. A code that is not one of those grammars has
+ * no catalog page to offer.
+ */
+export function classificationCatalogUrl(kind, code) {
+  if (typeof code !== "string") return null;
+  if (kind === "arxiv" && ARXIV_CODE_RE.test(code)) {
+    return safeExternalUrl(`https://arxiv.org/list/${code}/recent`);
+  }
+  if (kind === "msc" && MSC_CODE_RE.test(code)) {
+    return safeExternalUrl(`https://zbmath.org/classification/?q=${encodeURIComponent(`cc:${code}`)}`);
+  }
+  return null;
+}
+
 /** Resolve recognized bibliography identifiers without ever hiding raw text. */
 export function mathematicalSourceUrl(identifier) {
   if (typeof identifier !== "string") return null;
