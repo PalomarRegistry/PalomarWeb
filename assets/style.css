@@ -1533,6 +1533,36 @@ body[data-page="not-found"] main a {
   margin: .2rem 0 0;
 }
 
+.entry-page .confidential-release {
+  margin-bottom: 1rem;
+  padding: .8rem;
+  border: 1px solid var(--line);
+  border-left: .35rem solid var(--success-mark);
+}
+
+.entry-page .confidential-release h3 {
+  margin: 0;
+  font: bold 1rem/1.3 var(--sans);
+}
+
+.confidential-release p {
+  margin: .35rem 0 0;
+}
+
+.confidential-release .certificate-digests {
+  margin: .6rem 0 0;
+}
+
+.certificate-digest {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.confidential-release-note {
+  color: var(--muted);
+  font: .85rem/1.4 var(--sans);
+}
+
 .card-identity {
   display: grid;
   gap: .18rem;

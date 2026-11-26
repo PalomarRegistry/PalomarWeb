@@ -20,6 +20,7 @@ import {
   availabilityEndpoint,
   availabilityManifest,
   availabilityRow,
+  confidentialEntry,
   entry,
   recent,
   recentRow,
@@ -127,6 +128,7 @@ test("source location switches only from a confirmed missing original to its rec
     archiveStatus: "available",
     checkedAt: CHECKED_AT,
     useArchive: true,
+    restored: false,
   });
   assert.equal(
     sourceFileUrl(record, "Challenge.lean", availability).href,
@@ -364,4 +366,34 @@ test("card decoration transfers focus before hiding the archive link", () => {
     assert.equal(card.archiveLink.hidden, true);
     assert.equal(document.activeElement, card.repositoryLink);
   });
+});
+
+test("a source restored from Palomar's snapshot links its standalone copy from the start", () => {
+  const record = validateEntry(confidentialEntry(), summary());
+  const archive = "PalomarArchive/example--challenge--fixture";
+  for (const availability of [
+    null,
+    manifest({ original: "available", archive: "available", forkRepository: archive }),
+    manifest({ original: "missing", archive: "available", forkRepository: archive }),
+  ]) {
+    const location = topSourceLocation(record, availability);
+    assert.equal(location.restored, true);
+    assert.equal(location.useArchive, true);
+    assert.equal(
+      sourceFileUrl(record, "Challenge.lean", availability).href,
+      `https://github.com/${archive}/blob/${COMMIT}/Challenge.lean`,
+    );
+  }
+  // With the copy itself gone there is nothing better than the recorded name.
+  const degraded = topSourceLocation(
+    record,
+    manifest({ original: "missing", archive: "missing", forkRepository: archive }),
+  );
+  assert.equal(degraded.useArchive, false);
+  assert.equal(degraded.repository, "example/challenge");
+
+  // Its forked dependency keeps the ordinary rule.
+  const dependency = sourceLocation(record, null, "leanprover-community/mathlib4", COMMIT);
+  assert.equal(dependency.restored, false);
+  assert.equal(dependency.useArchive, false);
 });

@@ -8,7 +8,9 @@ import {
   safeInternalUrl,
   subjectHeadUrl,
   workflowRunId,
+  hasPublicVerificationRun,
   hasToolchainProvenance,
+  isConfidentialRelease,
 } from "./security.mjs";
 import { renderRegistryPage } from "./registry-page.mjs";
 import {
@@ -410,9 +412,15 @@ function entryCard(
   footer.append(internalLink("View record", localPageUrl("/entry", entry)));
   if (entry.source && location) {
     footer.append(
-      externalLink(entry.source.repository, pinnedRepositoryDirectoryUrl(entry.source.repository, entry.source.commit), "repo-link"),
+      externalLink(
+        location.useArchive ? "Palomar preserved copy" : entry.source.repository,
+        pinnedRepositoryDirectoryUrl(location.repository, entry.source.commit),
+        "repo-link",
+      ),
       externalLink("Palomar preserved copy", pinnedRepositoryDirectoryUrl(location.archiveRepository, entry.source.commit), "archive-link"),
     );
+    // Only a copy restored from Palomar's snapshot starts on the archive.
+    if (location.useArchive) footer.querySelector(".archive-link").hidden = true;
   }
   if (versionCount > 1) {
     const historyLink = internalLink(
@@ -671,6 +679,72 @@ function registrationCallout(entry, databaseBase) {
   return callout;
 }
 
+/**
+ * What a result released from confidential review adds to its evidence.
+ *
+ * The run happened in a private repository, so there is nothing to link and
+ * the archived mechanical report stands in for it. The two certificate
+ * digests are shown whole, because their only use is to be compared with the
+ * document a journal or referee was shown before release.
+ */
+function confidentialReleasePanel(entry) {
+  const confidential = entry.confidential;
+  const panel = el("section", "confidential-release");
+  const heading = el("h3", "", "Released from confidential review");
+  heading.id = "confidential-release-heading";
+  panel.setAttribute("aria-labelledby", heading.id);
+  const statement = el(
+    "p",
+    "",
+    `Verified confidentially and released by the authors on ${displayDate(entry.first_registered_on)}. ` +
+      "The verification run was private; its mechanical report is archived with this record.",
+  );
+  const digests = el("dl", "certificate-digests");
+  for (const [label, value] of [
+    ["Held for review", displayTimestamp(confidential.held_at)],
+    ["Full certificate SHA-256", confidential.certificate_sha256.full],
+    ["Anonymous certificate SHA-256", confidential.certificate_sha256.anonymous],
+  ]) {
+    const row = el("div", "detail-row");
+    const dd = el("dd");
+    dd.append(label.endsWith("SHA-256") ? el("code", "certificate-digest", value) : value);
+    row.append(el("dt", "", label), dd);
+    digests.append(row);
+  }
+  panel.append(
+    heading,
+    statement,
+    digests,
+    el(
+      "p",
+      "confidential-release-note",
+      "A Palomar certificate seen before release describes this entry when its SHA-256 equals one of these digests.",
+    ),
+  );
+  return panel;
+}
+
+function verificationRunRow(entry, databaseBase) {
+  if (hasPublicVerificationRun(entry)) {
+    return externalDetailRow(
+      "Verification workflow",
+      `Actions run ${workflowRunId(entry.verification.workflow_url)}`,
+      entry.verification.workflow_url,
+    );
+  }
+  const row = el("div", "detail-row");
+  const value = el("dd");
+  value.append(
+    "Private run, not public · ",
+    dataLink(
+      "Archived mechanical report",
+      evidenceDataUrl(entry, databaseBase, "mechanical-report.json"),
+    ),
+  );
+  row.append(el("dt", "", "Verification workflow"), value);
+  return row;
+}
+
 function classificationSection(entry) {
   const categories = classification(entry);
   const section = el("section", "entry-classification");
@@ -885,7 +959,9 @@ async function renderEntry(
   evidenceTitle.append(titleBlock);
   const evidenceDetails = el("details", "section-collapse evidence-collapse");
   evidenceDetails.append(el("summary", "", "Verification details"));
-  evidence.append(evidenceTitle, registrationCallout(entry, databaseBase), evidenceDetails);
+  evidence.append(evidenceTitle, registrationCallout(entry, databaseBase));
+  if (isConfidentialRelease(entry)) evidence.append(confidentialReleasePanel(entry));
+  evidence.append(evidenceDetails);
   const details = el("dl", "details");
   details.append(
     detailRow("Mechanically verified", displayTimestamp(entry.verification.verified_at)),
@@ -957,11 +1033,7 @@ async function renderEntry(
     hasToolchainProvenance(entry)
       ? detailRow("Lean toolchain commit", entry.verification.toolchain_commit)
       : detailRow("Comparator commit", entry.verification.comparator_commit),
-    externalDetailRow(
-      "Verification workflow",
-      `Actions run ${workflowRunId(entry.verification.workflow_url)}`,
-      entry.verification.workflow_url,
-    ),
+    verificationRunRow(entry, databaseBase),
     dataDetailRow(
       "Full registry record",
       `${entry.id}-v${entry.version}.json`,
@@ -998,6 +1070,13 @@ async function renderEntry(
         evidenceDataUrl(entry, databaseBase, "mechanical-report.json"),
       ),
       detailRow("Verification workflow commit", entry.verification.workflow_commit),
+    );
+    if (entry.verification.called_workflow_commit !== undefined) {
+      details.append(
+        detailRow("Called PalomarSubmission commit", entry.verification.called_workflow_commit),
+      );
+    }
+    details.append(
       detailRow("Workflow run attempt", String(entry.verification.workflow_run_attempt)),
       licenceRow(entry, sourceAvailability),
     );

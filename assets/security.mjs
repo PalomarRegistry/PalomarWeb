@@ -26,12 +26,17 @@ const BROWSE_MAX_PAGE = Math.ceil(999_999 / BROWSE_PAGE_SERIALS);
 const yearTemplate = (directory) => `${directory}/{year}.json`;
 const pageTemplate = (directory) => `${directory}/{day}/{page}.json`;
 const BROWSE_DIRECTORY = "browse";
+// The newest entry schema the Database publishes, whose document the contract
+// test reads. Schema 6 (a result released from confidential review) is
+// accepted ahead of its publication: a widening deploys this consumer first,
+// and the constant moves to 6 when `schema-v6.json` is served.
 export const ENTRY_SCHEMA_VERSION = 5;
-const SUPPORTED_ENTRY_SCHEMA_VERSIONS = new Set([3, 4, 5]);
+const SUPPORTED_ENTRY_SCHEMA_VERSIONS = new Set([3, 4, 5, 6]);
 // Schema 5 records are verified by the Lean toolchain's own `lake comparator`
 // and name the toolchain and its bundled tools; earlier records name the four
-// separately built tools.
-const TOOLCHAIN_PROVENANCE_VERSIONS = new Set([5]);
+// separately built tools. Schema 6 is schema 5 plus where the run happened.
+const TOOLCHAIN_PROVENANCE_VERSIONS = new Set([5, 6]);
+const RUN_ORIGIN_VERSIONS = new Set([6]);
 const BUNDLED_TOOLS = ["lake", "lean", "leanexport", "leanchecker", "nanoda_bin", "con-ron", "bwrap"];
 const RELEASE_TAG_RE = /^v[0-9]+\.[0-9]+\.[0-9]+$/;
 const KERNEL_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -65,10 +70,25 @@ export const REPOSITORY_ROLE_LABELS = Object.freeze({
   "thin-wrapper": "Thin Comparator wrapper around another formalization repository",
 });
 
-// Verification runs in exactly one public workflow, and every run URL a record
-// carries is derived from the repository the record itself names, which must
-// be this one.
+// Verification runs in one public workflow, or (schema 6) in the private
+// caller repository for confidential submissions, which calls that same
+// workflow. Every run URL a record carries is derived from the repository the
+// record itself names, and only a public run's URL is ever linked.
 const SUBMISSION_REPOSITORY = "PalomarRegistry/PalomarSubmission";
+export const CONFIDENTIAL_RUNS_REPOSITORY = "PalomarRegistry/PalomarConfidentialRuns";
+const VERIFICATION_WORKFLOWS = Object.freeze({
+  [SUBMISSION_REPOSITORY]: ".github/workflows/submission.yml",
+  [CONFIDENTIAL_RUNS_REPOSITORY]: ".github/workflows/verify.yml",
+});
+const RENDER_WORKFLOWS = Object.freeze({
+  [SUBMISSION_REPOSITORY]: ".github/workflows/render-challenge.yml",
+  [CONFIDENTIAL_RUNS_REPOSITORY]: ".github/workflows/render.yml",
+});
+// How each repository of a schema-6 record was preserved. Absent means a
+// native fork, which is all an earlier record can be. A source that was still
+// private at release is pushed from Palomar's snapshot into a standalone public
+// PalomarArchive repository instead.
+const PRESERVATION_KINDS = new Set(["fork", "restored-from-bundle"]);
 const ID_RE = /^PALOMAR-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{6})$/;
 const SUBMISSION_ID_RE = /^[0-9a-z]{12}$/;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -113,6 +133,7 @@ function sourceMappingSnapshot(row) {
     source_repository: row.source_repository,
     commit: row.commit,
     fork_repository: row.fork_repository,
+    restored: row.kind === "restored-from-bundle",
   });
 }
 
@@ -423,6 +444,9 @@ function validateRecentRow(value, position, allowOmittedSource = false) {
       !REPOSITORY_RE.test(mapping.fork_repository) ||
       !mapping.fork_repository.startsWith("PalomarArchive/")) {
     fail(`${field}.preservation does not match source`);
+  }
+  if (mapping.kind !== undefined && !PRESERVATION_KINDS.has(mapping.kind)) {
+    fail(`${field}.preservation.kind is not recognized`);
   }
   const key = `${mapping.source_repository.toLowerCase()}\0${mapping.commit}`;
   return {
@@ -1279,7 +1303,9 @@ function validateCanonicalRecordLinks(entry) {
   // The run URL is derived, never trusted: a record names the repository, the
   // run id and the workflow, and the link follows from those.
   const verification = entry.verification;
-  if (verification.repository !== SUBMISSION_REPOSITORY) {
+  if (verification.repository !== SUBMISSION_REPOSITORY &&
+      !(RUN_ORIGIN_VERSIONS.has(entry.schema_version) &&
+        verification.repository === CONFIDENTIAL_RUNS_REPOSITORY)) {
     fail("verification.repository is not the Palomar verification repository");
   }
   const expectedRunUrl =
@@ -1620,6 +1646,10 @@ export function validateEntry(entry, summary) {
         !row.fork_repository.startsWith("PalomarArchive/")) {
       fail(`entry.preservation.repositories[${position}].fork_repository is malformed`);
     }
+    if (row.kind !== undefined &&
+        (!RUN_ORIGIN_VERSIONS.has(entry.schema_version) || !PRESERVATION_KINDS.has(row.kind))) {
+      fail(`entry.preservation.repositories[${position}].kind is not recognized`);
+    }
     const key = `${row.source_repository.toLowerCase()}\0${row.commit}`;
     if (seen.has(key)) fail(`entry.preservation.repositories[${position}] is duplicated`);
     seen.add(key);
@@ -1761,6 +1791,7 @@ export function validateEntry(entry, summary) {
   }
   string(render.rendered_at, "entry.challenge_render.rendered_at");
 
+  validateRunOrigin(entry);
   validateCanonicalRecordLinks(entry);
   validatedSourceRecords.set(entry, {
     repositories: entry.preservation.repositories,
@@ -1784,6 +1815,84 @@ export function pinnedRepositoryDirectoryUrl(repository, revision, path = ".") {
   safeDependencyPath(path, "source directory path");
   const suffix = path === "." ? "" : `/${encodedRepositoryPath(path)}`;
   return safeExternalUrl(`https://github.com/${repository}/tree/${revision}${suffix}`);
+}
+
+/**
+ * Where a record says it was verified, and what that may say.
+ *
+ * A schema-6 record names its run's repository and workflow as a pair, and a
+ * run in the private caller repository also names the public PalomarSubmission
+ * commit it called. It carries a `confidential` block exactly then: the hold
+ * instant, the run's visibility and the two certificate digests a referee can
+ * compare with what they were shown. Nothing earlier may carry any of it.
+ */
+function validateRunOrigin(entry) {
+  const verification = entry.verification;
+  const render = entry.challenge_render;
+  if (!RUN_ORIGIN_VERSIONS.has(entry.schema_version)) {
+    if (entry.confidential !== undefined) fail("entry.confidential is not part of this schema");
+    if (verification.called_workflow_commit !== undefined) {
+      fail("entry.verification.called_workflow_commit is not part of this schema");
+    }
+    if (render.repository !== undefined || render.workflow_path !== undefined) {
+      fail("entry.challenge_render run origin is not part of this schema");
+    }
+    return;
+  }
+  const repository = verification.repository;
+  if (!Object.hasOwn(VERIFICATION_WORKFLOWS, repository)) {
+    fail("verification.repository is not the Palomar verification repository");
+  }
+  if (verification.workflow_path !== VERIFICATION_WORKFLOWS[repository]) {
+    fail("entry.verification.workflow_path does not match its repository");
+  }
+  const privateRun = repository === CONFIDENTIAL_RUNS_REPOSITORY;
+  if (privateRun) {
+    commit(verification.called_workflow_commit, "entry.verification.called_workflow_commit");
+  } else if (verification.called_workflow_commit !== undefined) {
+    fail("entry.verification.called_workflow_commit is only for a called workflow");
+  }
+  if (render.repository !== undefined || render.workflow_path !== undefined) {
+    if (!Object.hasOwn(RENDER_WORKFLOWS, render.repository) ||
+        render.workflow_path !== RENDER_WORKFLOWS[render.repository]) {
+      fail("entry.challenge_render run origin is not recognized");
+    }
+  }
+  if (!privateRun) {
+    if (entry.confidential !== undefined) {
+      fail("entry.confidential requires a confidential verification run");
+    }
+    return;
+  }
+  const confidential = exactObject(
+    entry.confidential,
+    ["certificate_sha256", "held_at", "run_visibility"],
+    "entry.confidential",
+  );
+  const heldAt = instant(confidential.held_at, "entry.confidential.held_at");
+  if (Date.parse(heldAt) > Date.parse(entry.registered_at)) {
+    fail("entry.confidential.held_at is after the entry was registered");
+  }
+  if (confidential.run_visibility !== "private") {
+    fail("entry.confidential.run_visibility is not recognized");
+  }
+  const certificates = exactObject(
+    confidential.certificate_sha256,
+    ["anonymous", "full"],
+    "entry.confidential.certificate_sha256",
+  );
+  digest(certificates.full, "entry.confidential.certificate_sha256.full");
+  digest(certificates.anonymous, "entry.confidential.certificate_sha256.anonymous");
+}
+
+/** Whether the record's verification run is public, and so may be linked. */
+export function hasPublicVerificationRun(entry) {
+  return entry.verification.repository === SUBMISSION_REPOSITORY;
+}
+
+/** Whether a validated record is a result released from confidential review. */
+export function isConfidentialRelease(entry) {
+  return RUN_ORIGIN_VERSIONS.has(entry.schema_version) && entry.confidential !== undefined;
 }
 
 export function workflowRunId(workflowUrl) {

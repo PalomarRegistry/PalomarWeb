@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { entry, toolchainEntry } from "./registry-fixture.mjs";
+import { confidentialEntry, entry, toolchainEntry } from "./registry-fixture.mjs";
 
 
 const database = encodeURIComponent("http://127.0.0.1:4173/database/");
@@ -1301,6 +1301,62 @@ for (const [label, record, kernels] of [
     if (kernels.length === 1) await expect(assurance).not.toContainText("con-ron");
   });
 }
+
+test("a result released from confidential review says so, and links no private run", async ({ page }) => {
+  const record = confidentialEntry({ title: "Fixture PALOMAR-2026-07-29-000123 version 1" });
+  await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", (route) =>
+    route.fulfill({ json: record }),
+  );
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+
+  const panel = page.getByRole("region", { name: "Released from confidential review" });
+  await expect(panel).toContainText(
+    "Verified confidentially and released by the authors on 29 July 2026. " +
+      "The verification run was private; its mechanical report is archived with this record.",
+  );
+  await expect(panel).toContainText("Held for review29 July 2026");
+  await expect(panel.locator(".certificate-digest")).toHaveText([
+    record.confidential.certificate_sha256.full,
+    record.confidential.certificate_sha256.anonymous,
+  ]);
+
+  // Nothing on the page sends a reader to the private repository's run.
+  await expect(page.locator('a[href*="PalomarConfidentialRuns"]')).toHaveCount(0);
+  await expect(page.locator('a[href*="/actions/runs/"]')).toHaveCount(0);
+  await page.locator(".evidence-collapse > summary").click();
+  const run = page.locator(".detail-row", { hasText: "Verification workflow" }).first();
+  await expect(run).toContainText("Private run, not public");
+  await expect(run.getByRole("link", { name: "Archived mechanical report" })).toHaveAttribute(
+    "href",
+    `http://127.0.0.1:4173/database/${record.verification.evidence_path}mechanical-report.json`,
+  );
+  await expect(page.locator(".detail-row", { hasText: "Called PalomarSubmission commit" }))
+    .toContainText(record.verification.called_workflow_commit);
+
+  // The source was private at release, so its standalone Palomar copy is
+  // where every source link goes, before and after availability arrives.
+  const notice = page.locator(".source-availability.restored");
+  await expect(notice).toContainText("The original repository was not public when this result was released");
+  await expect(page.locator(".detail-row", { hasText: "Statement file" }).getByRole("link"))
+    .toHaveAttribute(
+      "href",
+      `https://github.com/PalomarArchive/example--challenge--fixture/blob/${record.source.commit}/Challenge.lean`,
+    );
+});
+
+test("an ordinary entry keeps its public run link and has no confidential panel", async ({ page }) => {
+  await page.goto(`/entry.html?id=PALOMAR-2026-07-29-000123&version=1&database=${database}`);
+  await expect(page.locator(".registration-callout")).toBeVisible();
+  await expect(page.locator(".confidential-release")).toHaveCount(0);
+  await expect(page.locator(".source-availability.restored")).toHaveCount(0);
+  await page.locator(".evidence-collapse > summary").click();
+  await expect(
+    page.locator(".detail-row", { hasText: "Verification workflow" }).first()
+      .getByRole("link", { name: "Actions run 12345" }),
+  ).toHaveAttribute("href", "https://github.com/PalomarRegistry/PalomarSubmission/actions/runs/12345");
+  await expect(page.locator(".detail-row", { hasText: "Called PalomarSubmission commit" }))
+    .toHaveCount(0);
+});
 
 test("entry schema v1 fails closed before rendering", async ({ page }) => {
   await page.route("**/entries/PALOMAR-2026-07-29-000123-v1.json", async (route) => {

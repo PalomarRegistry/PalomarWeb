@@ -122,6 +122,25 @@ export function createSourceAvailabilityNotice(
         " · ",
         archived,
       );
+    } else if (location.restored) {
+      // Preserved from Palomar's own snapshot, not forked: the original was
+      // not public when the result was released, so it is not where anyone
+      // should be sent first, whatever its status today.
+      notice.classList.add("preserved", "restored");
+      archived.textContent = "Palomar preserved copy";
+      notice.replaceChildren(
+        el("strong", "", "Source preserved by Palomar"),
+        el(
+          "p",
+          "",
+          "The original repository was not public when this result was released, so Palomar " +
+            "preserved the verified snapshot as a standalone repository. Source links on this " +
+            "page use that copy.",
+        ),
+        archived,
+        " · ",
+        original,
+      );
     } else if (location.originalStatus === "missing") {
       notice.classList.add("original-missing");
       const checked = location.checkedAt ? ` (checked ${location.checkedAt})` : "";
@@ -177,7 +196,12 @@ export function sourceLocation(entry, availability, repository, commit) {
     : null;
   const originalStatus = status?.original.status || "unknown";
   const archiveStatus = status?.archive.status || "unknown";
-  const useArchive = originalStatus === "missing" && archiveStatus !== "missing";
+  // A standalone copy restored from Palomar's snapshot is the canonical
+  // location from the start; a fork is a fallback for a missing original.
+  const restored = mapping.restored === true;
+  const useArchive = restored
+    ? archiveStatus !== "missing"
+    : originalStatus === "missing" && archiveStatus !== "missing";
   return {
     repository: useArchive ? mapping.fork_repository : repository,
     originalRepository: repository,
@@ -187,6 +211,7 @@ export function sourceLocation(entry, availability, repository, commit) {
     archiveStatus,
     checkedAt: status?.original.checked_at || null,
     useArchive,
+    restored,
   };
 }
 
@@ -228,7 +253,7 @@ function decorateCardAvailability(card, entry, availability) {
   if (location.useArchive && !missing) {
     missing = document.createElement("span");
     missing.className = "source-status missing";
-    missing.textContent = "Original unavailable";
+    missing.textContent = location.restored ? "Original was private at release" : "Original unavailable";
     archiveLink.insertAdjacentElement("afterend", missing);
   }
   if (!location.useArchive) missing?.remove();

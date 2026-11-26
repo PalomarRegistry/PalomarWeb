@@ -65,6 +65,16 @@
   schema-v2 protocols. Source availability and independent render/evidence
   metadata retain their own versioned contracts.
 
+- Schema-6 entry records (results released from confidential review) are
+  accepted consumer-first: `ENTRY_SCHEMA_VERSION` stays at the newest schema
+  the Database serves, which the contract test downloads, and moves to 6 when
+  `schema-v6.json` is published. A v6 record whose verification ran in the
+  private `PalomarRegistry/PalomarConfidentialRuns` repository carries a
+  `confidential` block and never has its run linked; a preservation row with
+  `kind: "restored-from-bundle"` is a standalone PalomarArchive repository, not
+  a fork, and its copy is linked first. The fixture is `confidentialEntry` in
+  `tests/registry-fixture.mjs`.
+
 - Challenge render metadata is versioned independently inside each immutable,
   content-addressed render bundle. A version widening deploys the Web consumer
   first; PalomarSubmission may emit the new metadata version only after that

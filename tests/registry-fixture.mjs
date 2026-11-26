@@ -281,3 +281,44 @@ export function toolchainEntry(overrides = {}) {
     ...overrides,
   };
 }
+
+export const CONFIDENTIAL_RUNS = "PalomarRegistry/PalomarConfidentialRuns";
+
+/**
+ * The schema-6 shape of a result released from confidential review (section
+ * 2.2 of the confidential design): verified and rendered in the private caller
+ * repository, which called PalomarSubmission's public workflow, with the hold
+ * instant and both certificate digests. Its source was still private at
+ * release, so it was preserved as a standalone PalomarArchive repository
+ * restored from Palomar's snapshot; its dependency is an ordinary fork.
+ */
+export function confidentialEntry(overrides = {}) {
+  const base = toolchainEntry();
+  const runId = 67890;
+  const record = {
+    ...base,
+    schema_version: 6,
+    verification: {
+      ...base.verification,
+      repository: CONFIDENTIAL_RUNS,
+      workflow_path: ".github/workflows/verify.yml",
+      run_id: runId,
+      workflow_url: `https://github.com/${CONFIDENTIAL_RUNS}/actions/runs/${runId}`,
+      called_workflow_commit: "4".repeat(40),
+    },
+    challenge_render: {
+      ...base.challenge_render,
+      repository: CONFIDENTIAL_RUNS,
+      workflow_path: ".github/workflows/render.yml",
+    },
+    confidential: {
+      held_at: "2026-07-29T08:55:00Z",
+      run_visibility: "private",
+      certificate_sha256: { full: "1a".repeat(32), anonymous: "2b".repeat(32) },
+    },
+  };
+  record.preservation = structuredClone(base.preservation);
+  record.preservation.repositories[0].kind = "restored-from-bundle";
+  record.preservation.repositories[1].kind = "fork";
+  return Object.assign(record, overrides);
+}

@@ -19,6 +19,7 @@ import {
   secondVersion,
   summary,
   toolchainEntry,
+  confidentialEntry,
 } from "./registry-fixture.mjs";
 
 import {
@@ -28,6 +29,8 @@ import {
   DEFAULT_DATABASE,
   DEFAULT_AVAILABILITY,
   ENTRY_SCHEMA_VERSION,
+  hasPublicVerificationRun,
+  isConfidentialRelease,
   DEFAULT_RENDER_BASE,
   databaseBaseFor,
   availabilityRecord,
@@ -61,6 +64,7 @@ import {
   validateSubjectPage,
   validateSubjectYear,
   validateRecent,
+  validatedSourceMapping,
   validateRecentRenders,
   validateTombstone,
   validateVersions,
@@ -811,7 +815,7 @@ test("withdrawn palomar-indexed provenance is rejected", () => {
 test("entry schema, registration state, verdict, and selected identity fail closed", () => {
   const unsupportedSchemas = [
     entry({ schema_version: 2 }),
-    entry({ schema_version: 6 }),
+    entry({ schema_version: 7 }),
     entry({ schema_version: true }),
     entry({ schema_version: "2" }),
   ];
@@ -1828,4 +1832,116 @@ test("an older record still names the four tools and nothing of schema 5", () =>
   assert.equal(validateEntry(record, summary()).schema_version, 3);
   const { nanoda_commit, ...withoutNanoda } = record.verification;
   assert.throws(() => validateEntry(entry({ verification: withoutNanoda }), summary()), /nanoda_commit/);
+});
+
+test("schema 6 accepts a result released from confidential review", () => {
+  const record = validateEntry(confidentialEntry(), summary());
+  assert.equal(isConfidentialRelease(record), true);
+  assert.equal(hasPublicVerificationRun(record), false);
+  assert.equal(validatedSourceMapping(record, "example/challenge", COMMIT).restored, true);
+  assert.equal(
+    validatedSourceMapping(record, "leanprover-community/mathlib4", COMMIT).restored,
+    false,
+  );
+});
+
+test("schema 6 accepts an ordinary public run without a confidential block", () => {
+  const base = toolchainEntry();
+  const record = validateEntry(toolchainEntry({
+    schema_version: 6,
+    challenge_render: {
+      ...base.challenge_render,
+      repository: "PalomarRegistry/PalomarSubmission",
+      workflow_path: ".github/workflows/render-challenge.yml",
+    },
+  }), summary());
+  assert.equal(isConfidentialRelease(record), false);
+  assert.equal(hasPublicVerificationRun(record), true);
+});
+
+test("earlier schemas are unchanged and cannot carry a confidential run", () => {
+  const current = validateEntry(toolchainEntry(), summary());
+  assert.equal(isConfidentialRelease(current), false);
+  assert.equal(hasPublicVerificationRun(current), true);
+  assert.equal(validatedSourceMapping(current, "example/challenge", COMMIT).restored, false);
+  const released = confidentialEntry();
+  for (const [label, mutate, message] of [
+    ["confidential block", (record) => {
+      record.confidential = released.confidential;
+    }, /entry\.confidential is not part of this schema/],
+    ["runs repository", (record) => {
+      record.verification = { ...released.verification };
+      delete record.verification.called_workflow_commit;
+    }, /not the Palomar verification repository/],
+    ["called workflow", (record) => {
+      record.verification.called_workflow_commit = "4".repeat(40);
+    }, /called_workflow_commit is not part of this schema/],
+    ["render origin", (record) => {
+      record.challenge_render = released.challenge_render;
+    }, /run origin is not part of this schema/],
+    ["preservation kind", (record) => {
+      record.preservation.repositories[0].kind = "fork";
+    }, /kind is not recognized/],
+  ]) {
+    const record = toolchainEntry();
+    mutate(record);
+    assert.throws(() => validateEntry(record, summary()), message, label);
+  }
+});
+
+test("a confidential release names its private run and certificates exactly", () => {
+  for (const [label, mutate, message] of [
+    ["missing block", (record) => { delete record.confidential; },
+      /entry\.confidential must be an object/],
+    ["public run with block", (record) => {
+      const base = toolchainEntry();
+      record.verification = base.verification;
+    }, /requires a confidential verification run/],
+    ["workflow pairing", (record) => {
+      record.verification.workflow_path = ".github/workflows/submission.yml";
+    }, /workflow_path does not match its repository/],
+    ["called workflow", (record) => { delete record.verification.called_workflow_commit; },
+      /called_workflow_commit is not a full lowercase commit/],
+    ["called workflow on a public run", (record) => {
+      const base = toolchainEntry();
+      record.verification = { ...base.verification, called_workflow_commit: "4".repeat(40) };
+      delete record.confidential;
+    }, /only for a called workflow/],
+    ["undeclared run URL", (record) => {
+      record.verification.workflow_url =
+        "https://github.com/PalomarRegistry/PalomarSubmission/actions/runs/67890";
+    }, /not derived from the recorded run/],
+    ["render pairing", (record) => {
+      record.challenge_render.workflow_path = ".github/workflows/render-challenge.yml";
+    }, /run origin is not recognized/],
+    ["extra field", (record) => { record.confidential.expires_on = "2027-01-01"; },
+      /entry\.confidential has an invalid shape/],
+    ["visibility", (record) => { record.confidential.run_visibility = "public"; },
+      /run_visibility is not recognized/],
+    ["held after release", (record) => { record.confidential.held_at = "2026-07-30T00:00:00Z"; },
+      /held_at is after the entry was registered/],
+    ["malformed hold", (record) => { record.confidential.held_at = "2026-07-29"; },
+      /held_at is malformed/],
+    ["certificate shape", (record) => {
+      record.confidential.certificate_sha256 = { full: DIGEST };
+    }, /certificate_sha256 has an invalid shape/],
+    ["certificate digest", (record) => {
+      record.confidential.certificate_sha256.anonymous = "A".repeat(64);
+    }, /certificate_sha256\.anonymous is not a SHA-256 digest/],
+    ["preservation kind", (record) => {
+      record.preservation.repositories[0].kind = "copy";
+    }, /kind is not recognized/],
+  ]) {
+    const record = confidentialEntry();
+    mutate(record);
+    assert.throws(() => validateEntry(record, summary()), message, label);
+  }
+});
+
+test("a summary row may say its source was restored from Palomar's snapshot", () => {
+  const row = recentRow();
+  row.preservation.repositories[0].kind = "restored-from-bundle";
+  assert.equal(validateRecent(recent([row])).entries.length, 1);
+  row.preservation.repositories[0].kind = "copy";
+  assert.equal(validateRecent(recent([row])).entries.length, 0);
 });
