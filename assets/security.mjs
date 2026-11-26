@@ -1823,8 +1823,9 @@ export function pinnedRepositoryDirectoryUrl(repository, revision, path = ".") {
  * A schema-6 record names its run's repository and workflow as a pair, and a
  * run in the private caller repository also names the public PalomarSubmission
  * commit it called. It carries a `confidential` block exactly then: the hold
- * instant, the run's visibility and the two certificate digests a referee can
- * compare with what they were shown. Nothing earlier may carry any of it.
+ * instant, the run's visibility and the two certificate digests. Only the
+ * full certificate's digest is ever displayed; see `confidentialReleasePanel`.
+ * Nothing earlier may carry any of it.
  */
 function validateRunOrigin(entry) {
   const verification = entry.verification;

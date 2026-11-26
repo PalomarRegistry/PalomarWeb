@@ -683,9 +683,12 @@ function registrationCallout(entry, databaseBase) {
  * What a result released from confidential review adds to its evidence.
  *
  * The run happened in a private repository, so there is nothing to link and
- * the archived mechanical report stands in for it. The two certificate
- * digests are shown whole, because their only use is to be compared with the
- * document a journal or referee was shown before release.
+ * the archived mechanical report stands in for it. The full certificate's
+ * digest is shown whole, because its only use is to be compared with the
+ * document a journal was shown before release. The anonymous certificate's
+ * digest is deliberately never shown, even though the record carries it: a
+ * referee holding an anonymous certificate could hash it and find this entry,
+ * unblinding a double-blind review.
  */
 function confidentialReleasePanel(entry) {
   const confidential = entry.confidential;
@@ -703,7 +706,6 @@ function confidentialReleasePanel(entry) {
   for (const [label, value] of [
     ["Held for review", displayTimestamp(confidential.held_at)],
     ["Full certificate SHA-256", confidential.certificate_sha256.full],
-    ["Anonymous certificate SHA-256", confidential.certificate_sha256.anonymous],
   ]) {
     const row = el("div", "detail-row");
     const dd = el("dd");
@@ -718,7 +720,7 @@ function confidentialReleasePanel(entry) {
     el(
       "p",
       "confidential-release-note",
-      "A Palomar certificate seen before release describes this entry when its SHA-256 equals one of these digests.",
+      "A full Palomar certificate seen before release describes this entry when its SHA-256 equals this digest.",
     ),
   );
   return panel;

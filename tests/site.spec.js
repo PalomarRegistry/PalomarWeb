@@ -1317,8 +1317,12 @@ test("a result released from confidential review says so, and links no private r
   await expect(panel).toContainText("Held for review29 July 2026");
   await expect(panel.locator(".certificate-digest")).toHaveText([
     record.confidential.certificate_sha256.full,
-    record.confidential.certificate_sha256.anonymous,
   ]);
+  // Publishing the anonymous certificate's digest would let a referee find,
+  // and so unblind, the entry their anonymous certificate describes.
+  await expect(page.locator("body")).not.toContainText(
+    record.confidential.certificate_sha256.anonymous,
+  );
 
   // Nothing on the page sends a reader to the private repository's run.
   await expect(page.locator('a[href*="PalomarConfidentialRuns"]')).toHaveCount(0);
