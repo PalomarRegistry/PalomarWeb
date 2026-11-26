@@ -1553,6 +1553,12 @@ body[data-page="not-found"] main a {
   margin: .6rem 0 0;
 }
 
+.certificate-id {
+  font-family: var(--mono);
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}
+
 .certificate-digest {
   overflow-wrap: anywhere;
   word-break: break-all;

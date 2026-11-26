@@ -1314,15 +1314,22 @@ test("a result released from confidential review says so, and links no private r
     "Verified confidentially and released by the authors on 29 July 2026. " +
       "The verification run was private; its mechanical report is archived with this record.",
   );
-  await expect(panel).toContainText("Held for review29 July 2026");
-  await expect(panel.locator(".certificate-digest")).toHaveText([
-    record.confidential.certificate_sha256.full,
-  ]);
-  // Publishing the anonymous certificate's digest would let a referee find,
-  // and so unblind, the entry their anonymous certificate describes.
-  await expect(page.locator("body")).not.toContainText(
-    record.confidential.certificate_sha256.anonymous,
+  await expect(panel).toContainText(
+    "With the authors' consent, release published the commit that was verified, unchanged and " +
+      "with its complete history. Palomar preserved it as a standalone public repository in " +
+      "PalomarArchive, because the original repository was not public at release.",
   );
+  await expect(panel).toContainText("Held for review29 July 2026");
+  await expect(panel.locator(".detail-row", { hasText: "Source snapshot SHA-256" }))
+    .toContainText(record.confidential.snapshot_sha256);
+  const certificates = panel.locator(".full-certificate");
+  await expect(certificates).toHaveCount(2);
+  for (const [position, certificate] of record.confidential.full_certificates.entries()) {
+    await expect(certificates.nth(position).locator(".certificate-id")).toHaveText(certificate.id);
+    await expect(certificates.nth(position).locator(".certificate-digest"))
+      .toHaveText(certificate.sha256);
+  }
+  await expect(panel).not.toContainText(/anonymous/i);
 
   // Nothing on the page sends a reader to the private repository's run.
   await expect(page.locator('a[href*="PalomarConfidentialRuns"]')).toHaveCount(0);

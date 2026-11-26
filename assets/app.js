@@ -683,12 +683,14 @@ function registrationCallout(entry, databaseBase) {
  * What a result released from confidential review adds to its evidence.
  *
  * The run happened in a private repository, so there is nothing to link and
- * the archived mechanical report stands in for it. The full certificate's
- * digest is shown whole, because its only use is to be compared with the
- * document a journal was shown before release. The anonymous certificate's
- * digest is deliberately never shown, even though the record carries it: a
- * referee holding an anonymous certificate could hash it and find this entry,
- * unblinding a double-blind review.
+ * the archived mechanical report stands in for it. Release published the
+ * commit that was verified, with its complete history, so the source links on
+ * this page are to exactly what was checked; the snapshot digest names the
+ * private copy every stage read it from. Every full certificate issued is
+ * listed whole, because its only use is to be compared with a document a
+ * journal was shown before release. The record carries nothing anonymous, and
+ * nothing anonymous is shown: a referee could otherwise find, and so unblind,
+ * the entry an anonymous certificate describes.
  */
 function confidentialReleasePanel(entry) {
   const confidential = entry.confidential;
@@ -696,31 +698,56 @@ function confidentialReleasePanel(entry) {
   const heading = el("h3", "", "Released from confidential review");
   heading.id = "confidential-release-heading";
   panel.setAttribute("aria-labelledby", heading.id);
+  const preserved = topSourceLocation(entry, null).restored
+    ? "Palomar preserved it as a standalone public repository in PalomarArchive, because the " +
+      "original repository was not public at release."
+    : "Palomar preserved it in its PalomarArchive fork of the original repository.";
   const statement = el(
     "p",
     "",
     `Verified confidentially and released by the authors on ${displayDate(entry.first_registered_on)}. ` +
       "The verification run was private; its mechanical report is archived with this record.",
   );
+  const publication = el(
+    "p",
+    "",
+    "With the authors' consent, release published the commit that was verified, unchanged and " +
+      `with its complete history. ${preserved}`,
+  );
   const digests = el("dl", "certificate-digests");
-  for (const [label, value] of [
-    ["Held for review", displayTimestamp(confidential.held_at)],
-    ["Full certificate SHA-256", confidential.certificate_sha256.full],
-  ]) {
+  const digestRow = (label, value) => {
     const row = el("div", "detail-row");
     const dd = el("dd");
-    dd.append(label.endsWith("SHA-256") ? el("code", "certificate-digest", value) : value);
-    row.append(el("dt", "", label), dd);
+    dd.append(el("code", "certificate-digest", value));
+    const dt = el("dt");
+    dt.append(...label);
+    row.append(dt, dd);
+    return row;
+  };
+  {
+    const row = el("div", "detail-row");
+    row.append(el("dt", "", "Held for review"), el("dd", "", displayTimestamp(confidential.held_at)));
+    digests.append(row);
+  }
+  digests.append(digestRow(["Source snapshot SHA-256"], confidential.snapshot_sha256));
+  for (const certificate of confidential.full_certificates) {
+    const row = digestRow(
+      ["Full certificate ", el("code", "certificate-id", certificate.id)],
+      certificate.sha256,
+    );
+    row.classList.add("full-certificate");
     digests.append(row);
   }
   panel.append(
     heading,
     statement,
+    publication,
     digests,
     el(
       "p",
       "confidential-release-note",
-      "A full Palomar certificate seen before release describes this entry when its SHA-256 equals this digest.",
+      "A full Palomar certificate issued before release describes this entry when its identifier " +
+        "and SHA-256 are listed here. Every full certificate issued is listed, including superseded ones.",
     ),
   );
   return panel;

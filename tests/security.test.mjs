@@ -1845,6 +1845,29 @@ test("schema 6 accepts a result released from confidential review", () => {
   );
 });
 
+test("a public schema-6 run may not render privately or restore a private source", () => {
+  const released = confidentialEntry();
+  const publicRun = () => {
+    const record = confidentialEntry();
+    record.verification = { ...toolchainEntry().verification };
+    delete record.confidential;
+    delete record.challenge_render.repository;
+    delete record.challenge_render.workflow_path;
+    delete record.challenge_render.called_workflow_commit;
+    record.preservation.repositories[0].kind = "fork";
+    return record;
+  };
+  assert.equal(isConfidentialRelease(validateEntry(publicRun(), summary())), false);
+  const privateRender = publicRun();
+  privateRender.challenge_render = released.challenge_render;
+  assert.throws(() => validateEntry(privateRender, summary()),
+    /challenge_render repository does not match the verification run/);
+  const restored = publicRun();
+  restored.preservation.repositories[0].kind = "restored-from-bundle";
+  assert.throws(() => validateEntry(restored, summary()),
+    /restored from a snapshot requires a confidential verification run/);
+});
+
 test("schema 6 accepts an ordinary public run without a confidential block", () => {
   const base = toolchainEntry();
   const record = validateEntry(toolchainEntry({
@@ -1896,6 +1919,7 @@ test("a confidential release names its private run and certificates exactly", ()
     ["public run with block", (record) => {
       const base = toolchainEntry();
       record.verification = base.verification;
+      record.challenge_render = base.challenge_render;
     }, /requires a confidential verification run/],
     ["workflow pairing", (record) => {
       record.verification.workflow_path = ".github/workflows/submission.yml";
@@ -1922,12 +1946,55 @@ test("a confidential release names its private run and certificates exactly", ()
       /held_at is after the entry was registered/],
     ["malformed hold", (record) => { record.confidential.held_at = "2026-07-29"; },
       /held_at is malformed/],
-    ["certificate shape", (record) => {
+    ["v1 certificate block", (record) => {
+      delete record.confidential.full_certificates;
       record.confidential.certificate_sha256 = { full: DIGEST };
-    }, /certificate_sha256 has an invalid shape/],
+    }, /entry\.confidential has an invalid shape/],
+    ["anonymous digest", (record) => { record.confidential.anonymous_sha256 = DIGEST; },
+      /entry\.confidential has an invalid shape/],
+    ["anonymous certificate", (record) => {
+      record.confidential.full_certificates[0].anonymous = DIGEST;
+    }, /full_certificates\[0\] has an invalid shape/],
+    ["no certificate", (record) => { record.confidential.full_certificates = []; },
+      /full_certificates is not a bounded list/],
+    ["too many certificates", (record) => {
+      record.confidential.full_certificates = Array.from({ length: 21 }, (_, index) => ({
+        id: `pcf-${"c".repeat(25)}${"abcdefghijklmnopqrstuvwxyz"[index]}`,
+        sha256: String(index % 10).repeat(64),
+      }));
+    }, /full_certificates is not a bounded list/],
+    ["certificate id", (record) => { record.confidential.full_certificates[0].id = "pca-" + "a".repeat(26); },
+      /full_certificates\[0\]\.id is malformed/],
+    ["duplicate certificate", (record) => {
+      record.confidential.full_certificates[1].id = record.confidential.full_certificates[0].id;
+    }, /full_certificates\[1\]\.id is duplicated/],
     ["certificate digest", (record) => {
-      record.confidential.certificate_sha256.anonymous = "A".repeat(64);
-    }, /certificate_sha256\.anonymous is not a SHA-256 digest/],
+      record.confidential.full_certificates[1].sha256 = "A".repeat(64);
+    }, /full_certificates\[1\]\.sha256 is not a SHA-256 digest/],
+    ["uppercase certificate id", (record) => {
+      record.confidential.full_certificates[0].id = "pcf-" + "A".repeat(26);
+    }, /full_certificates\[0\]\.id is malformed/],
+    ["certificate id outside base32", (record) => {
+      record.confidential.full_certificates[0].id = "pcf-" + "1".repeat(26);
+    }, /full_certificates\[0\]\.id is malformed/],
+    ["duplicate certificate digest", (record) => {
+      record.confidential.full_certificates[1].sha256 = record.confidential.full_certificates[0].sha256;
+    }, /full_certificates\[1\]\.sha256 is duplicated/],
+    ["render outside the runs repository", (record) => {
+      delete record.challenge_render.repository;
+      delete record.challenge_render.workflow_path;
+      delete record.challenge_render.called_workflow_commit;
+    }, /challenge_render repository does not match the verification run/],
+    ["snapshot digest", (record) => { delete record.confidential.snapshot_sha256; },
+      /entry\.confidential has an invalid shape/],
+    ["manifest digest", (record) => { record.confidential.publication_manifest_sha256 = "x"; },
+      /publication_manifest_sha256 is not a SHA-256 digest/],
+    ["render called workflow", (record) => { delete record.challenge_render.called_workflow_commit; },
+      /challenge_render\.called_workflow_commit is not a full lowercase commit/],
+    ["render called workflow on a public render", (record) => {
+      record.challenge_render.repository = "PalomarRegistry/PalomarSubmission";
+      record.challenge_render.workflow_path = ".github/workflows/render-challenge.yml";
+    }, /challenge_render\.called_workflow_commit is only for a called workflow/],
     ["preservation kind", (record) => {
       record.preservation.repositories[0].kind = "copy";
     }, /kind is not recognized/],
@@ -1936,6 +2003,23 @@ test("a confidential release names its private run and certificates exactly", ()
     mutate(record);
     assert.throws(() => validateEntry(record, summary()), message, label);
   }
+});
+
+test("the PalomarDatabaseTools schema-6 fixture, in the v2 shape, is accepted", async () => {
+  const record = JSON.parse(await readFile(
+    new URL("./fixtures/entry-v6-confidential.json", import.meta.url),
+    "utf8",
+  ));
+  const accepted = validateEntry(record, {
+    id: record.id,
+    version: record.version,
+    title: record.title,
+    status: record.status,
+    path: `entries/${record.id}-v${record.version}.json`,
+  });
+  assert.equal(isConfidentialRelease(accepted), true);
+  assert.equal(hasPublicVerificationRun(accepted), false);
+  assert.equal(JSON.stringify(record).includes("anonymous"), false);
 });
 
 test("a summary row may say its source was restored from Palomar's snapshot", () => {

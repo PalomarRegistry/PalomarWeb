@@ -1,0 +1,205 @@
+{
+  "schema_version": 6,
+  "id": "PALOMAR-2026-11-26-000001",
+  "first_registered_on": "2026-11-26",
+  "registered_at": "2026-11-26T09:00:00Z",
+  "version": 1,
+  "status": "registered",
+  "title": "Synthetic confidential fixture: every natural number is at most its successor",
+  "abstract": "A synthetic record used to test confidential-mode tooling. It describes no real submission.\n",
+  "authors": [
+    {
+      "name": "Example Author"
+    }
+  ],
+  "classification": {
+    "arxiv": [
+      "math.LO"
+    ],
+    "msc2020": [
+      "03B35"
+    ]
+  },
+  "provenance": {
+    "mathematical_sources": [
+      {
+        "authors": [
+          {
+            "name": "Example Author"
+          }
+        ],
+        "identifier": "https://example.org/synthetic-confidential-fixture",
+        "relationship": "other",
+        "title": "Synthetic confidential fixture"
+      }
+    ],
+    "related_formalizations": [],
+    "repository_role": "substantive-development",
+    "responsible_maintainers": [
+      {
+        "name": "Example Maintainer"
+      }
+    ],
+    "result_origin": "original"
+  },
+  "source": {
+    "repository": "example-org/confidential-fixture",
+    "repository_url": "https://github.com/example-org/confidential-fixture",
+    "commit": "1111111111111111111111111111111111111111",
+    "tree_url": "https://github.com/example-org/confidential-fixture/tree/1111111111111111111111111111111111111111",
+    "license": {
+      "path": "LICENSE",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "declared_identifier": "Apache-2.0",
+      "detected_identifier": "Apache-2.0"
+    }
+  },
+  "preservation": {
+    "archive_owner": "PalomarArchive",
+    "archived_at": "2026-11-26T08:55:00Z",
+    "receipt_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "repositories": [
+      {
+        "source_repository": "example-org/confidential-fixture",
+        "commit": "1111111111111111111111111111111111111111",
+        "fork_repository": "PalomarArchive/example-org-confidential-fixture",
+        "ref": "refs/tags/palomar/PALOMAR-2026-11-26-000001-v1/1111111111111111111111111111111111111111",
+        "kind": "restored-from-bundle"
+      },
+      {
+        "source_repository": "leanprover-community/mathlib4",
+        "commit": "2222222222222222222222222222222222222222",
+        "fork_repository": "PalomarArchive/mathlib4",
+        "ref": "refs/tags/palomar/PALOMAR-2026-11-26-000001-v1/2222222222222222222222222222222222222222",
+        "kind": "fork"
+      }
+    ]
+  },
+  "formalization": {
+    "challenge_path": "Challenge.lean",
+    "solution_path": "Solution.lean",
+    "comparator_config_path": "comparator.json",
+    "formalization_metadata_path": "formalization.yaml",
+    "lakefile_path": "lakefile.toml",
+    "lean_toolchain": "leanprover/lean4:v4.31.0",
+    "definition_names": [],
+    "theorem_names": [
+      "SyntheticFixture.le_succ"
+    ],
+    "permitted_axioms": [
+      "propext",
+      "Quot.sound",
+      "Classical.choice"
+    ],
+    "project_dependencies": [
+      {
+        "name": "mathlib",
+        "repository": "leanprover-community/mathlib4",
+        "revision": "2222222222222222222222222222222222222222"
+      }
+    ]
+  },
+  "verification": {
+    "repository": "PalomarRegistry/PalomarConfidentialRuns",
+    "workflow_path": ".github/workflows/verify.yml",
+    "called_workflow_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id": 41000000001,
+    "workflow_url": "https://github.com/PalomarRegistry/PalomarConfidentialRuns/actions/runs/41000000001",
+    "workflow_commit": "5555555555555555555555555555555555555555",
+    "workflow_run_attempt": 1,
+    "verified_at": "2026-07-20T08:00:00Z",
+    "evidence_path": "evidence/PALOMAR-2026-11-26-000001-v1/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/",
+    "evidence_tree_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "mechanical_report_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+    "challenge_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+    "solution_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+    "toolchain_commit": "9999999999999999999999999999999999999999",
+    "tool_digests": {
+      "lake": "0000000000000000000000000000000000000000000000000000000000000000",
+      "lean": "0000000000000000000000000000000000000000000000000000000000000001",
+      "leanexport": "0000000000000000000000000000000000000000000000000000000000000002",
+      "leanchecker": "0000000000000000000000000000000000000000000000000000000000000003",
+      "nanoda_bin": "0000000000000000000000000000000000000000000000000000000000000004",
+      "con-ron": "0000000000000000000000000000000000000000000000000000000000000005",
+      "bwrap": "0000000000000000000000000000000000000000000000000000000000000006"
+    },
+    "kernels": [
+      {
+        "name": "nanoda",
+        "argv": [
+          "/toolchain/bin/nanoda_bin"
+        ]
+      },
+      {
+        "name": "con-ron",
+        "argv": [
+          "/toolchain/bin/con-ron"
+        ]
+      }
+    ],
+    "protected_config_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "bwrap_source_tag": "v0.12.0"
+  },
+  "challenge_render": {
+    "repository": "PalomarRegistry/PalomarConfidentialRuns",
+    "workflow_path": ".github/workflows/render.yml",
+    "called_workflow_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "format": "verso-html",
+    "artifact_path": "renders/PALOMAR-2026-11-26-000001-v1/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff/",
+    "entrypoint": "Challenge/index.html",
+    "artifact_tree_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "verso_commit": "cccccccccccccccccccccccccccccccccccccccc",
+    "renderer_commit": "dddddddddddddddddddddddddddddddddddddddd",
+    "rendered_at": "2026-07-20T09:00:00Z",
+    "bwrap_source_tag": "v0.12.0"
+  },
+  "review": {
+    "policy_commit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "reviewed_at": "2026-07-20T12:00:00Z",
+    "reviewer_models": [
+      "claude:default"
+    ],
+    "outcome": "neutral",
+    "warnings": [],
+    "report": {
+      "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  },
+  "trust": {
+    "challenge_bytes": 120,
+    "challenge_dependencies": [
+      {
+        "provenance": "allowlisted",
+        "repository": "leanprover-community/mathlib4"
+      }
+    ],
+    "challenge_imports": [
+      "Mathlib"
+    ],
+    "challenge_lines": 6,
+    "level": "high",
+    "reasons": []
+  },
+  "submission": {
+    "submission_id": "c0nf1d3nt1a1",
+    "authorization": {
+      "relationship": "maintainer"
+    }
+  },
+  "confidential": {
+    "held_at": "2026-07-21T10:00:00Z",
+    "run_visibility": "private",
+    "snapshot_sha256": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+    "publication_manifest_sha256": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+    "full_certificates": [
+      {
+        "id": "pcf-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+      },
+      {
+        "id": "pcf-bbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "sha256": "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b"
+      }
+    ]
+  }
+}

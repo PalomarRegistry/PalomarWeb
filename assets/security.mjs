@@ -89,6 +89,10 @@ const RENDER_WORKFLOWS = Object.freeze({
 // private at release is pushed from Palomar's snapshot into a standalone public
 // PalomarArchive repository instead.
 const PRESERVATION_KINDS = new Set(["fork", "restored-from-bundle"]);
+// A full referee certificate's identifier: a fixed prefix and 26 random
+// lowercase RFC 4648 base32 characters.
+const FULL_CERTIFICATE_ID_RE = /^pcf-[a-z2-7]{26}$/;
+const MAX_FULL_CERTIFICATES = 20;
 const ID_RE = /^PALOMAR-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{6})$/;
 const SUBMISSION_ID_RE = /^[0-9a-z]{12}$/;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -1823,9 +1827,9 @@ export function pinnedRepositoryDirectoryUrl(repository, revision, path = ".") {
  * A schema-6 record names its run's repository and workflow as a pair, and a
  * run in the private caller repository also names the public PalomarSubmission
  * commit it called. It carries a `confidential` block exactly then: the hold
- * instant, the run's visibility and the two certificate digests. Only the
- * full certificate's digest is ever displayed; see `confidentialReleasePanel`.
- * Nothing earlier may carry any of it.
+ * instant, the run's visibility, the digests of the source snapshot and of the
+ * publication manifest the authors consented to, and every full certificate
+ * issued. Nothing earlier may carry any of it.
  */
 function validateRunOrigin(entry) {
   const verification = entry.verification;
@@ -1835,7 +1839,8 @@ function validateRunOrigin(entry) {
     if (verification.called_workflow_commit !== undefined) {
       fail("entry.verification.called_workflow_commit is not part of this schema");
     }
-    if (render.repository !== undefined || render.workflow_path !== undefined) {
+    if (render.repository !== undefined || render.workflow_path !== undefined ||
+        render.called_workflow_commit !== undefined) {
       fail("entry.challenge_render run origin is not part of this schema");
     }
     return;
@@ -1853,21 +1858,37 @@ function validateRunOrigin(entry) {
   } else if (verification.called_workflow_commit !== undefined) {
     fail("entry.verification.called_workflow_commit is only for a called workflow");
   }
-  if (render.repository !== undefined || render.workflow_path !== undefined) {
+  if (render.repository !== undefined || render.workflow_path !== undefined ||
+      render.called_workflow_commit !== undefined) {
     if (!Object.hasOwn(RENDER_WORKFLOWS, render.repository) ||
         render.workflow_path !== RENDER_WORKFLOWS[render.repository]) {
       fail("entry.challenge_render run origin is not recognized");
     }
+    if (render.repository === CONFIDENTIAL_RUNS_REPOSITORY) {
+      commit(render.called_workflow_commit, "entry.challenge_render.called_workflow_commit");
+    } else if (render.called_workflow_commit !== undefined) {
+      fail("entry.challenge_render.called_workflow_commit is only for a called workflow");
+    }
+  }
+  // A confidential run's render ran in the same private repository; a public
+  // run's render, when it says where, ran in the public one.
+  if (privateRun ? render.repository !== CONFIDENTIAL_RUNS_REPOSITORY
+    : render.repository !== undefined && render.repository !== SUBMISSION_REPOSITORY) {
+    fail("entry.challenge_render repository does not match the verification run");
   }
   if (!privateRun) {
     if (entry.confidential !== undefined) {
       fail("entry.confidential requires a confidential verification run");
     }
+    // Only a release from confidential review can have had a private source.
+    if (entry.preservation.repositories.some((row) => row.kind === "restored-from-bundle")) {
+      fail("entry.preservation restored from a snapshot requires a confidential verification run");
+    }
     return;
   }
   const confidential = exactObject(
     entry.confidential,
-    ["certificate_sha256", "held_at", "run_visibility"],
+    ["full_certificates", "held_at", "publication_manifest_sha256", "run_visibility", "snapshot_sha256"],
     "entry.confidential",
   );
   const heldAt = instant(confidential.held_at, "entry.confidential.held_at");
@@ -1877,13 +1898,33 @@ function validateRunOrigin(entry) {
   if (confidential.run_visibility !== "private") {
     fail("entry.confidential.run_visibility is not recognized");
   }
-  const certificates = exactObject(
-    confidential.certificate_sha256,
-    ["anonymous", "full"],
-    "entry.confidential.certificate_sha256",
+  digest(confidential.snapshot_sha256, "entry.confidential.snapshot_sha256");
+  digest(
+    confidential.publication_manifest_sha256,
+    "entry.confidential.publication_manifest_sha256",
   );
-  digest(certificates.full, "entry.confidential.certificate_sha256.full");
-  digest(certificates.anonymous, "entry.confidential.certificate_sha256.anonymous");
+  // Every full certificate ever issued, so a journal holding a superseded one
+  // can still match it. There is deliberately nothing anonymous here: an
+  // anonymous certificate's digest would let a referee find, and so unblind,
+  // the entry it describes.
+  const certificates = array(confidential.full_certificates, "entry.confidential.full_certificates");
+  if (certificates.length < 1 || certificates.length > MAX_FULL_CERTIFICATES) {
+    fail("entry.confidential.full_certificates is not a bounded list");
+  }
+  const certificateIds = new Set();
+  const certificateDigests = new Set();
+  for (const [position, value] of certificates.entries()) {
+    const field = `entry.confidential.full_certificates[${position}]`;
+    const certificate = exactObject(value, ["id", "sha256"], field);
+    if (!FULL_CERTIFICATE_ID_RE.test(string(certificate.id, `${field}.id`))) {
+      fail(`${field}.id is malformed`);
+    }
+    if (certificateIds.has(certificate.id)) fail(`${field}.id is duplicated`);
+    certificateIds.add(certificate.id);
+    digest(certificate.sha256, `${field}.sha256`);
+    if (certificateDigests.has(certificate.sha256)) fail(`${field}.sha256 is duplicated`);
+    certificateDigests.add(certificate.sha256);
+  }
 }
 
 /** Whether the record's verification run is public, and so may be linked. */

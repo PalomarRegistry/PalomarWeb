@@ -134,8 +134,8 @@ export function createSourceAvailabilityNotice(
           "p",
           "",
           "The original repository was not public when this result was released, so Palomar " +
-            "preserved the verified snapshot as a standalone repository. Source links on this " +
-            "page use that copy.",
+            "preserved the verified commit and its complete history as a standalone repository. " +
+            "Source links on this page use that copy.",
         ),
         archived,
         " · ",
